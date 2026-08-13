@@ -20,14 +20,15 @@
       } catch (_) {}
     })();
   </script>
-  <link rel="stylesheet" href="css/app.css?v=20260813c" />
-  <script src="js/app.js?v=20260813c" defer></script>
+  <link rel="stylesheet" href="css/app.css?v=20260813d" />
+  <script src="js/app.js?v=20260813d" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/");
       renderFooter();
       renderToolCards();
       initReveal();
+      initStats();
       initSuite();
       typeConsole();
     });
@@ -43,8 +44,9 @@
       <span class="line">report needs.</span>
     </h1>
     <p class="lead reveal" style="--d: .14s; margin-top: 16px;">
-      Clickjacking, security headers, and CORS — scored in the browser with
-      evidence you can screenshot. Authorized testing only. All checks are read-only.
+      Clickjacking, security headers, and CORS — scored against
+      OWASP-aligned methodology with raw evidence you can screenshot.
+      Authorized testing only. All checks are read-only GETs.
     </p>
 
     <div class="suite-wrap reveal" style="--d: .2s;">
@@ -55,7 +57,7 @@
         </div>
         <button id="suiteGo" type="button" class="btn btn-primary">Run suite</button>
       </div>
-      <p class="form-hint">Works on this hosted site. Prefers the Python engine when <code>server.py</code> is running; otherwise uses the live graders.</p>
+      <p class="form-hint">Works on this hosted site. Python engine when available, cached reports for configured targets, live graders otherwise.</p>
       <div id="suiteResults" class="suite-results hidden" aria-live="polite"></div>
     </div>
 
@@ -81,6 +83,23 @@
     </div>
   </section>
 
+  <div class="ticker reveal" aria-hidden="true">
+    <div class="ticker-track">
+      <span>CSP frame-ancestors</span><span>X-Frame-Options</span>
+      <span>Strict-Transport-Security</span><span>X-Content-Type-Options</span>
+      <span>Referrer-Policy</span><span>Permissions-Policy</span>
+      <span>COOP · COEP · CORP</span><span>Cookie flags — Secure · HttpOnly · SameSite</span>
+      <span>Access-Control-Allow-Origin</span><span>Allow-Credentials</span>
+      <span>Vary: Origin</span><span>Raw evidence on every finding</span>
+      <span>CSP frame-ancestors</span><span>X-Frame-Options</span>
+      <span>Strict-Transport-Security</span><span>X-Content-Type-Options</span>
+      <span>Referrer-Policy</span><span>Permissions-Policy</span>
+      <span>COOP · COEP · CORP</span><span>Cookie flags — Secure · HttpOnly · SameSite</span>
+      <span>Access-Control-Allow-Origin</span><span>Allow-Credentials</span>
+      <span>Vary: Origin</span><span>Raw evidence on every finding</span>
+    </div>
+  </div>
+
   <div class="section-head reveal">
     <h2>Assessment tools</h2>
     <span class="count" id="toolCount">03 live</span>
@@ -91,6 +110,25 @@
     <a class="tool-card card corner-card" href="tools/headers/"><h3>Security Headers</h3></a>
     <a class="tool-card card corner-card" href="tools/cors/"><h3>CORS Validator</h3></a>
   </section>
+
+  <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
+    <div class="stat reveal" style="--d: .05s;" role="listitem">
+      <span class="stat-num" data-count="3" data-pad="2">0</span>
+      <span class="stat-label">Live assessment tools</span>
+    </div>
+    <div class="stat reveal" style="--d: .12s;" role="listitem">
+      <span class="stat-num" data-count="10">0</span>
+      <span class="stat-label">Header classes graded</span>
+    </div>
+    <div class="stat reveal" style="--d: .19s;" role="listitem">
+      <span class="stat-num" data-count="100">0</span>
+      <span class="stat-label">Point scoring scale (0–100)</span>
+    </div>
+    <div class="stat reveal" style="--d: .26s;" role="listitem">
+      <span class="stat-num" data-count="6">0</span>
+      <span class="stat-label">Grade bands, A–F</span>
+    </div>
+  </div>
 
   <div class="section-head reveal">
     <h2>How an assessment runs</h2>
@@ -109,6 +147,50 @@
       <p>Every result is a self-contained card. Screenshot it, or use Export / Print.</p>
     </div>
   </div>
+
+  <div class="section-head reveal">
+    <h2>Aligned with industry methodology</h2>
+  </div>
+  <div class="standards">
+    <div class="std-card reveal" style="--d: .05s;">
+      <div class="std-tool">
+        <span class="std-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg></span>
+        Clickjacking Validator
+      </div>
+      <div class="std-ids">
+        <span class="std-id">OWASP WSTG-CLNT-09</span>
+        <span class="std-id">CWE-1021</span>
+      </div>
+      <p class="std-meta">UI-redressing checks: X-Frame-Options and CSP frame-ancestors, plus a live iframe proof.</p>
+    </div>
+    <div class="std-card reveal" style="--d: .12s;">
+      <div class="std-tool">
+        <span class="std-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        Security Headers
+      </div>
+      <div class="std-ids">
+        <span class="std-id">OWASP WSTG-CONF-07</span>
+        <span class="std-id">WSTG-CONF-12</span>
+        <span class="std-id">CWE-693</span>
+      </div>
+      <p class="std-meta">Transport security (HSTS), Content-Security-Policy and the cookie-flag hardening family.</p>
+    </div>
+    <div class="std-card reveal" style="--d: .19s;">
+      <div class="std-tool">
+        <span class="std-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg></span>
+        CORS Validator
+      </div>
+      <div class="std-ids">
+        <span class="std-id">OWASP WSTG-CLNT-07</span>
+        <span class="std-id">CWE-942</span>
+      </div>
+      <p class="std-meta">Cross-origin access posture: ACAO reflection vs allowlist, credentials and Vary: Origin.</p>
+    </div>
+  </div>
+  <p class="form-hint reveal" style="--d: .26s;">
+    Methodology references: OWASP Web Security Testing Guide v4.2 · OWASP ASVS ·
+    NIST SP 800-53 · PCI DSS 4.0 · CIS Benchmarks.
+  </p>
 
   <div class="section-head reveal">
     <h2>Shape what's next</h2>

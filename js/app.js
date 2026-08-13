@@ -11,9 +11,9 @@ document.documentElement.classList.add("js");
 /* ---------- Icon set ---------------------------------------------------- */
 const ICONS = {
   logo: '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="7" stroke="currentColor" stroke-width="2.2"/><path d="M8 16h4l3-7 6 14 3-7h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  frame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg>',
+  frame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path class="dashed" d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
-  cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
+  cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -98,6 +98,8 @@ function initThemeToggle() {
 function renderHeader(current) {
   const base = appBase();
   const html =
+    '<div class="page-load-bar" aria-hidden="true"></div>' +
+    '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>' +
     '<div class="ambient" aria-hidden="true"></div>' +
     '<a class="skip-link" href="#main">Skip to content</a>' +
     '<header class="site-header"><div class="container header-inner">' +
@@ -137,7 +139,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "frame",
     desc: "Load a target in a live frame. If the real UI appears, the page can be clickjacked — screenshot the result as proof.",
-    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"]
+    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC", "WSTG-CLNT-09"]
   },
   {
     href: "/tools/headers/",
@@ -145,7 +147,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "shield",
     desc: "Grade CSP, X-Frame-Options, HSTS, cookie flags and the COOP/COEP family into an A–F score with the raw header behind every finding.",
-    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"]
+    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F", "WSTG-CONF-07/12"]
   },
   {
     href: "/tools/cors/",
@@ -153,7 +155,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "cors",
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
-    tags: ["ACAO", "credentials", "Vary: Origin"]
+    tags: ["ACAO", "credentials", "Vary: Origin", "WSTG-CLNT-07"]
   }
 ];
 const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enumeration"];
@@ -503,6 +505,42 @@ function countUp(el, target, suffix) {
     el.textContent = Math.round(target * eased) + suffix;
     if (p < 1) requestAnimationFrame(frame);
   })(t0);
+}
+
+function initStats() {
+  const els = Array.prototype.slice.call(document.querySelectorAll("[data-count]"));
+  if (!els.length) return;
+  const pad = (n, w) => String(n).padStart(w || 0, "0");
+  const run = (el) => {
+    const target = parseInt(el.getAttribute("data-count") || "0", 10);
+    const suffix = el.getAttribute("data-suffix") || "";
+    const width = parseInt(el.getAttribute("data-pad") || "0", 10);
+    if (prefersReduced() || !("requestAnimationFrame" in window)) {
+      el.textContent = pad(target, width) + suffix;
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 900;
+    (function frame(t) {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = pad(Math.round(target * eased), width) + suffix;
+      if (p < 1) requestAnimationFrame(frame);
+    })(t0);
+  };
+  if (!("IntersectionObserver" in window)) {
+    els.forEach(run);
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        run(e.target);
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.4 });
+  els.forEach((el) => io.observe(el));
 }
 
 function initReveal() {
