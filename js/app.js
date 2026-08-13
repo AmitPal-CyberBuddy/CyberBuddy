@@ -20,7 +20,8 @@ const ICONS = {
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
   arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
   linkedin: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>',
-  medium: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.7 8.4a1 1 0 0 0-.33-.85L4.3 5.1V4.7h5.2l4 8.9 3.55-8.9H22v.4l-1.6 1.55a.5.5 0 0 0-.2.47v11.76a.5.5 0 0 0 .2.47l1.55 1.52v.4h-7.8v-.4l1.6-1.56a.5.5 0 0 0 .2-.47V8.2L11.2 18.9h-.55l-5-10.7v7.2a.7.7 0 0 0 .2.55l2.1 2.56v.4H2.6v-.4l2.1-2.56a.7.7 0 0 0 .2-.55l.03-7.2a.5.5 0 0 0-.23-.4z"/></svg>'
+  medium: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.7 8.4a1 1 0 0 0-.33-.85L4.3 5.1V4.7h5.2l4 8.9 3.55-8.9H22v.4l-1.6 1.55a.5.5 0 0 0-.2.47v11.76a.5.5 0 0 0 .2.47l1.55 1.52v.4h-7.8v-.4l1.6-1.56a.5.5 0 0 0 .2-.47V8.2L11.2 18.9h-.55l-5-10.7v7.2a.7.7 0 0 0 .2.55l2.1 2.56v.4H2.6v-.4l2.1-2.56a.7.7 0 0 0 .2-.55l.03-7.2a.5.5 0 0 0-.23-.4z"/></svg>',
+  github: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>'
 };
 
 /* ---------- Site root + optional hosted API ------------------------------ */
@@ -41,8 +42,8 @@ function appBase() {
     } catch (_) { /* ignore */ }
   }
   const path = (window.location.pathname || "").replace(/\\/g, "/");
-  const fromTool = path.match(/^(.*)\/tools\/[^/]+\/?$/);
-  if (fromTool) return fromTool[1];
+  const fromDir = path.match(/^(.*)\/(?:tools\/[^/]+|methodology)\/?$/);
+  if (fromDir) return fromDir[1];
   const known = path.match(/^(\/CyberBuddy)(?=\/|$)/i);
   return known ? known[1] : "";
 }
@@ -79,8 +80,9 @@ function applyTheme(theme, persist) {
   if (persist !== false) {
     try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* private mode */ }
   }
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#eef2f7" : "#07090d");
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    meta.setAttribute("content", theme === "light" ? "#eef2f7" : "#07090d");
+  });
   const btn = document.getElementById("themeToggle");
   if (btn) {
     const next = theme === "light" ? "dark" : "light";
@@ -162,6 +164,7 @@ function renderHeader(current) {
     '<span class="brand-mark">' + ICONS.logo + "</span><span>CyberBuddy</span></a>" +
     '<nav class="main-nav" aria-label="Tools">' +
     navLink(base, "/", "Hub", current) +
+    navLink(base, "/#methodology", "Method", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
     '<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch theme" title="Switch theme">' +
@@ -177,6 +180,7 @@ function renderHeader(current) {
   initAmbient();
   initThemeToggle();
   initScrollChrome();
+  initKeyboard();
 
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {
@@ -252,12 +256,15 @@ function renderFooter() {
     "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span></div></div>" +
     '<nav class="footer-nav" aria-label="Footer">' +
     '<a href="' + base + '/">Hub</a>' +
+    '<a href="' + base + '/#methodology">Methodology</a>' +
     toolsMenu(base, "ftr") +
     "</nav>" +
     '<div class="footer-contact">' +
     "<strong>Connect</strong>" +
     "<span>Ideas, feedback, or collaboration on improving CyberBuddy?</span>" +
     '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
+    '<a class="social-link" href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">' +
+    ICONS.github + "Source on GitHub</a>" +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
@@ -428,20 +435,43 @@ async function apiCors(url) {
    metadata blocking) with no third-party relays. If the file is absent,
    scans fall through to the live engines. */
 
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // prefer cache fresher than 24h
+const CACHE_MAX_AGE_MS = 48 * 60 * 60 * 1000; // prefer cache fresher than 48h
+
+function cacheLookupKeys(url) {
+  const keys = [];
+  const add = (u) => { if (u && keys.indexOf(u) === -1) keys.push(u); };
+  add(url);
+  try {
+    const u = new URL(url);
+    const path = u.pathname || "/";
+    const trimmed = path !== "/" ? path.replace(/\/+$/, "") : "/";
+    const withSlash = trimmed === "/" ? "/" : trimmed + "/";
+    add(u.origin + trimmed + u.search);
+    add(u.origin + withSlash + u.search);
+    add(u.origin);
+    add(u.origin + "/");
+  } catch (_) { /* ignore */ }
+  return keys;
+}
 
 async function cachedReportFor(url) {
   let host = "";
   try { host = new URL(url).hostname; } catch (_) { return null; }
   let data = null;
   try {
-    // Cached reports live on the Pages origin (GitHub Actions commits them
+    // Cached reports live on the Pages origin (GitHub Actions publishes them
     // into the site), so always use appBase() — never API_BASE.
-    const res = await fetch(appBase() + "cache/" + host + ".json", { cache: "no-store" });
+    // Leading slash is required: appBase() is "/CyberBuddy" on Pages, "" locally.
+    const res = await fetch(appBase() + "/cache/" + encodeURIComponent(host) + ".json", { cache: "no-store" });
     if (!res.ok) return null;
     data = await res.json();
   } catch (_) { return null; }
-  const entry = (data && data.urls) ? data.urls[url] : null;
+  const urls = (data && data.urls) ? data.urls : {};
+  let entry = null;
+  const keys = cacheLookupKeys(url);
+  for (let i = 0; i < keys.length; i++) {
+    if (urls[keys[i]]) { entry = urls[keys[i]]; break; }
+  }
   if (!entry) return null;
   // Only accept entries where at least one engine actually reached the
   // target (a full network failure means the cache job could not scan it),
@@ -683,37 +713,50 @@ function toMarkdown(data) {
   return lines.join("\n");
 }
 
-async function copyMarkdown(data, btn) {
-  const md = toMarkdown(data);
-  let ok = false;
+async function copyText(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(md);
-      ok = true;
+      await navigator.clipboard.writeText(text);
+      return true;
     }
   } catch (_) { /* fall through */ }
-  if (!ok) {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = md;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-    } catch (_) { ok = false; }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch (_) {
+    return false;
   }
-  if (btn) {
-    const original = btn.textContent;
-    btn.textContent = ok ? "Copied ✓" : "Copy failed";
-    btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.classList.remove("flash", "flash-ok", "flash-err");
-    }, 1600);
-  }
+}
+
+function flashBtn(btn, ok, okLabel) {
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.textContent = ok ? (okLabel || "Copied ✓") : "Copy failed";
+  btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.classList.remove("flash", "flash-ok", "flash-err");
+  }, 1600);
+}
+
+async function copyMarkdown(data, btn) {
+  const ok = await copyText(toMarkdown(data));
+  flashBtn(btn, ok);
+  return ok;
+}
+
+async function copyJsonReport(data, btn) {
+  if (!data) return false;
+  const ok = await copyText(JSON.stringify(data, null, 2));
+  flashBtn(btn, ok, "JSON copied ✓");
   return ok;
 }
 
@@ -1396,14 +1439,21 @@ function initSuite() {
   const out = document.getElementById("suiteResults");
   if (!input || !go || !out) return;
 
-    async function run() {
-      const url = normalizeUrl(input.value);
-      if (!url || !validUrl(url)) { input.focus(); return; }
-      input.value = url;
-      addRecentScan(url);
-      renderRecentScans();
-      setLoading(go, true);
+  let lastSuite = null;
+  const toolbar = document.getElementById("suiteToolbar");
+  const shareBtn = document.getElementById("suiteShare");
+  const copyBtn = document.getElementById("suiteCopy");
+
+  async function run() {
+    const url = normalizeUrl(input.value);
+    if (!url || !validUrl(url)) { input.focus(); return; }
+    input.value = url;
+    pushUrlParam(url);
+    addRecentScan(url);
+    renderRecentScans();
+    setLoading(go, true);
     out.classList.remove("hidden");
+    if (toolbar) toolbar.classList.add("hidden");
     out.innerHTML = '<div class="suite-grid">' +
       suiteSkeleton("Clickjacking") + suiteSkeleton("Headers") + suiteSkeleton("CORS") +
       "</div>";
@@ -1412,17 +1462,40 @@ function initSuite() {
       apiHeaders(url).catch(() => null),
       apiCors(url).catch(() => null)
     ]);
+    lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr };
     const base = appBase();
     out.innerHTML = '<div class="suite-grid">' +
       suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) +
       suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) +
       suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) +
       "</div>";
+    if (toolbar) toolbar.classList.remove("hidden");
     setLoading(go, false);
   }
 
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+  if (shareBtn) {
+    shareBtn.addEventListener("click", async () => {
+      const ok = await copyText(window.location.href);
+      flashBtn(shareBtn, ok, "Link copied ✓");
+    });
+  }
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      if (!lastSuite) return;
+      const parts = [
+        toMarkdown(lastSuite.clickjacking),
+        "",
+        toMarkdown(lastSuite.headers),
+        "",
+        toMarkdown(lastSuite.cors)
+      ];
+      const ok = await copyText(parts.join("\n"));
+      flashBtn(copyBtn, ok, "Suite copied ✓");
+    });
+  }
+  initSuggestedTargets();
   const initial = new URLSearchParams(location.search).get("url");
   if (initial) {
     input.value = normalizeUrl(initial);
@@ -1472,34 +1545,8 @@ function initShareButton() {
   const btn = document.getElementById("shareLink");
   if (!btn) return;
   btn.addEventListener("click", async () => {
-    const url = window.location.href;
-    let ok = false;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(url);
-        ok = true;
-      }
-    } catch (_) { /* fall through */ }
-    if (!ok) {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-      } catch (_) { ok = false; }
-    }
-    const original = btn.textContent;
-    btn.textContent = ok ? "Link copied ✓" : "Copy failed";
-    btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.classList.remove("flash", "flash-ok", "flash-err");
-    }, 1600);
+    const ok = await copyText(window.location.href);
+    flashBtn(btn, ok, "Link copied ✓");
   });
 }
 
@@ -1529,30 +1576,132 @@ function addRecentScan(url) {
   } catch (_) { /* quota / private mode */ }
 }
 
+function clearRecentScans() {
+  try { localStorage.removeItem(RECENT_KEY); } catch (_) { /* private mode */ }
+}
+
 function renderRecentScans() {
   const wrap = document.getElementById("recentScans");
   if (!wrap) return;
   const items = getRecentScans();
   if (!items.length) {
     wrap.classList.add("hidden");
+    wrap.innerHTML = "";
     return;
   }
   wrap.classList.remove("hidden");
-  const base = appBase();
   const chips = items.map((url) =>
     '<button type="button" class="recent-chip" data-url="' + esc(url) + '">' +
     esc(url) + "</button>"
   ).join("");
-  wrap.innerHTML = '<span class="recent-label">Recent:</span> ' + chips;
+  wrap.innerHTML = '<span class="recent-label">Recent:</span> ' + chips +
+    '<button type="button" class="recent-clear" id="clearRecent" title="Clear recent scans">Clear</button>';
   wrap.querySelectorAll(".recent-chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       const url = chip.getAttribute("data-url");
-      const input = document.getElementById("suiteUrl");
+      const input = document.getElementById("suiteUrl") || document.getElementById("url");
       if (input) {
         input.value = url;
-        const go = document.getElementById("suiteGo");
+        const go = document.getElementById("suiteGo") || document.getElementById("go");
         if (go) go.click();
       }
     });
+  });
+  const clear = document.getElementById("clearRecent");
+  if (clear) {
+    clear.addEventListener("click", () => {
+      clearRecentScans();
+      renderRecentScans();
+    });
+  }
+}
+
+function initSuggestedTargets() {
+  const wrap = document.getElementById("suggestedTargets");
+  if (!wrap) return;
+  wrap.querySelectorAll("[data-url]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const url = chip.getAttribute("data-url");
+      const input = document.getElementById("suiteUrl") || document.getElementById("url");
+      if (!input || !url) return;
+      input.value = url;
+      const go = document.getElementById("suiteGo") || document.getElementById("go");
+      if (go) go.click();
+    });
+  });
+}
+
+/* ---------- Keyboard shortcuts ---------------------------------------- */
+
+function hideHelp() {
+  const el = document.getElementById("kbdHelp");
+  if (el) {
+    el.classList.add("hidden");
+    el.setAttribute("aria-hidden", "true");
+  }
+}
+
+function toggleHelp() {
+  const el = document.getElementById("kbdHelp");
+  if (!el) return;
+  const open = el.classList.contains("hidden");
+  el.classList.toggle("hidden", !open);
+  el.setAttribute("aria-hidden", open ? "false" : "true");
+  if (open) {
+    const close = document.getElementById("kbdHelpClose");
+    if (close) close.focus();
+  }
+}
+
+function initKeyboard() {
+  if (document.getElementById("kbdHelp")) return;
+  const html =
+    '<div id="kbdHelp" class="kbd-help hidden" role="dialog" aria-modal="true" aria-labelledby="kbdHelpTitle" aria-hidden="true">' +
+    '<div class="kbd-help-panel">' +
+    '<div class="kbd-help-head"><h2 id="kbdHelpTitle">Keyboard shortcuts</h2>' +
+    '<button type="button" id="kbdHelpClose" class="btn btn-ghost btn-sm" aria-label="Close shortcuts">Close</button></div>' +
+    "<dl>" +
+    "<div><dt><kbd>/</kbd></dt><dd>Focus the target URL</dd></div>" +
+    "<div><dt><kbd>t</kbd></dt><dd>Toggle light / dark theme</dd></div>" +
+    "<div><dt><kbd>?</kbd></dt><dd>Show or hide this help</dd></div>" +
+    "<div><dt><kbd>Esc</kbd></dt><dd>Close menus and this help</dd></div>" +
+    "</dl>" +
+    '<p class="form-hint">Authorized testing only. All checks are read-only GETs.</p>' +
+    "</div></div>";
+  document.body.insertAdjacentHTML("beforeend", html);
+  const close = document.getElementById("kbdHelpClose");
+  if (close) close.addEventListener("click", hideHelp);
+  const overlay = document.getElementById("kbdHelp");
+  if (overlay) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) hideHelp();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    const tag = ((e.target && e.target.tagName) || "").toLowerCase();
+    const typing = tag === "input" || tag === "textarea" || tag === "select" ||
+      !!(e.target && e.target.isContentEditable);
+    if (e.key === "Escape") {
+      hideHelp();
+      return;
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "?") {
+      e.preventDefault();
+      toggleHelp();
+    } else if (e.key === "/") {
+      const input = document.getElementById("suiteUrl") || document.getElementById("url");
+      if (input) {
+        e.preventDefault();
+        input.focus();
+        if (input.select) input.select();
+      }
+    } else if (e.key === "t" || e.key === "T") {
+      const btn = document.getElementById("themeToggle");
+      if (btn) {
+        e.preventDefault();
+        btn.click();
+      }
+    }
   });
 }

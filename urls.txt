@@ -1,12 +1,14 @@
 # Targets pre-scanned into the hosted cache by GitHub Actions
-# (tools/build_cache.py + .github/workflows/cache.yml).
+# (tools/build_cache.py + .github/workflows/pages.yml).
 #
 # One URL per line; blank lines and '#' comments are ignored. Only add
 # systems you own or have written permission to test — every refresh
 # performs read-only GETs from GitHub's runners.
 #
-# Remove the example lines below and add your own targets, then run the
-# "Build hosted scan cache" workflow (Actions tab → manual run) once.
+# IANA documentation hosts (example.com / .org / .net) are the public
+# demos. The CyberBuddy GitHub Pages origin is this project's own site.
 
 https://example.com
 https://example.org
+https://example.net
+https://amitpal-cyberbuddy.github.io/CyberBuddy/

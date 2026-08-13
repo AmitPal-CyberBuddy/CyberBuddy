@@ -5,11 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
   <meta name="description" content="CyberBuddy: clickjacking validation, security header grading, and CORS posture checks — evidence-grade results you can drop straight into your report." />
-  <meta name="theme-color" content="#07090d" />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/" />
+  <link rel="author" href="https://amitpxl.medium.com/" />
+  <link rel="prefetch" href="tools/clickjacking/" />
+  <link rel="prefetch" href="tools/headers/" />
+  <link rel="prefetch" href="tools/cors/" />
+
   <meta property="og:title" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta property="og:description" content="Clickjacking, security headers, and CORS — evidence-grade checks you can screenshot." />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/" />
   <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta property="og:image:width" content="1200" />
@@ -19,6 +31,7 @@
   <meta name="twitter:title" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:description" content="Clickjacking, security headers, and CORS — evidence-grade checks you can screenshot." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -36,7 +49,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="css/app.css?v=20260814a" />
+  <link rel="stylesheet" href="css/app.css?v=20260814b" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -53,12 +66,13 @@
         "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/",
         "sameAs": [
           "https://www.linkedin.com/in/amitpal-wb/",
-          "https://amitpxl.medium.com/"
+          "https://amitpxl.medium.com/",
+          "https://github.com/AmitPal-CyberBuddy/CyberBuddy"
         ]
       }
     }
   </script>
-  <script src="js/app.js?v=20260814a" defer></script>
+  <script src="js/app.js?v=20260814b" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/");
@@ -95,15 +109,24 @@
         </div>
         <button id="suiteGo" type="button" class="btn btn-primary">Run suite</button>
       </div>
-      <p class="form-hint">Works on this hosted site. Python engine when available, cached reports for configured targets, live graders otherwise.</p>
+      <p class="form-hint">Works on this hosted site. Python engine when available, cached reports for configured targets, live graders otherwise. Press <kbd>?</kbd> for shortcuts.</p>
+      <div id="suggestedTargets" class="suggested-targets" aria-label="Demo targets">
+        <span class="recent-label">Try:</span>
+        <button type="button" class="recent-chip" data-url="https://example.com">example.com <span class="chip-hint">cached</span></button>
+        <button type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site</button>
+      </div>
       <div id="recentScans" class="recent-scans hidden" aria-label="Recent scans"></div>
+      <div id="suiteToolbar" class="suite-toolbar hidden">
+        <button type="button" id="suiteShare" class="btn btn-ghost btn-sm">Share suite</button>
+        <button type="button" id="suiteCopy" class="btn btn-ghost btn-sm">Copy suite report</button>
+      </div>
       <div id="suiteResults" class="suite-results hidden" aria-live="polite"></div>
     </div>
 
     <div class="grid-2 reveal" style="margin-top: 36px; --d: .28s;">
       <div class="card console-card corner-card">
         <div class="radar" aria-hidden="true"></div>
-        <p class="card-title" style="margin-bottom: 12px;">Sample scan · example.com</p>
+        <p class="card-title" style="margin-bottom: 12px;">Sample scan · example.com (live cache)</p>
         <div id="demoConsole" class="console" aria-label="Sample scan output"></div>
       </div>
 
@@ -229,6 +252,34 @@
   <p class="form-hint reveal" style="--d: .26s;">
     Methodology references: OWASP Web Security Testing Guide v4.2 · OWASP ASVS ·
     NIST SP 800-53 · PCI DSS 4.0 · CIS Benchmarks.
+    <a href="#methodology">How CyberBuddy scores these checks →</a>
+  </p>
+
+  <div class="section-head reveal" id="methodology">
+    <h2>How CyberBuddy scores</h2>
+    <span class="count">python · cache · live</span>
+  </div>
+  <div class="method-grid">
+    <article class="card reveal" style="--d: .06s;">
+      <h3>Clickjacking</h3>
+      <p class="std-meta">Restrictive <code>frame-ancestors</code> is low risk. X-Frame-Options alone is medium. <code>frame-ancestors *</code> or neither control is high. The live iframe is the proof — if the real UI appears, the page can be framed in this browser.</p>
+    </article>
+    <article class="card reveal" style="--d: .12s;">
+      <h3>Headers (0–100)</h3>
+      <p class="std-meta">CSP 25 · XFO 15 · HSTS 15 · nosniff 10 · Referrer-Policy 10 · Permissions-Policy 5 · COOP/COEP/CORP 5 each. A ≥ 90, B ≥ 75, C ≥ 60, D ≥ 45, else F. Every finding shows the raw value it used.</p>
+    </article>
+    <article class="card reveal" style="--d: .18s;">
+      <h3>CORS</h3>
+      <p class="std-meta">The Python engine probes two origins to prove reflection vs an allowlist. On GitHub Pages the browser can only speak as this origin — a single-origin probe, labelled honestly on the report.</p>
+    </article>
+    <article class="card reveal" style="--d: .24s;">
+      <h3>Hosted scan layers</h3>
+      <p class="std-meta">Python when <code>server.py</code> or <code>api/</code> is up. Otherwise a same-origin cached report from <code>urls.txt</code> (fresh within 48h). Otherwise a live header lookup. The source chip always says which layer ran.</p>
+    </article>
+  </div>
+  <p class="form-hint reveal" style="--d: .2s;">
+    Keyboard: <kbd>/</kbd> focuses the URL, <kbd>t</kbd> toggles theme, <kbd>?</kbd> opens shortcuts.
+    Authorized testing only — IANA example hosts and this GitHub Pages origin are the cached demos.
   </p>
 
   <div class="section-head reveal">
@@ -266,6 +317,7 @@
         <span class="tool-tag">HTTP</span><span class="tool-tag">Smuggling</span><span class="tool-tag">Burp</span>
       </div>
       <h3>HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused</h3>
+      <p class="blog-excerpt">Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.</p>
       <div class="blog-post-foot">
         <span class="blog-date">Jun 19, 2026</span>
         <span class="blog-open">Read on Medium <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -276,6 +328,7 @@
         <span class="tool-tag">Client-side</span><span class="tool-tag">Crypto</span><span class="tool-tag">JS analysis</span>
       </div>
       <h3>How I Broke Client-Side Encryption By Frontend JavaScript Analysis</h3>
+      <p class="blog-excerpt">A walkthrough of finding hardcoded AES keys in frontend JavaScript and decrypting protected API traffic outside the browser.</p>
       <div class="blog-post-foot">
         <span class="blog-date">May 27, 2026</span>
         <span class="blog-open">Read on Medium <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -327,12 +380,12 @@
     const lines = [
       '<div><span class="c-prompt">$</span> cyberbuddy scan https://example.com</div>',
       '<div class="c-dim">─ framing protections ─────────────────────</div>',
-      '<div><span class="c-ok">[protected]</span> CSP frame-ancestors &nbsp;=&nbsp; \\\'none\\\'</div>',
-      '<div><span class="c-ok">[protected]</span> X-Frame-Options &nbsp;&nbsp;&nbsp;=&nbsp; DENY</div>',
+      '<div><span class="c-red">[missing]</span>&nbsp; CSP frame-ancestors</div>',
+      '<div><span class="c-red">[missing]</span>&nbsp; X-Frame-Options</div>',
       '<div><span class="c-red">[missing]</span>&nbsp; Strict-Transport-Security</div>',
-      '<div><span class="c-amber">[weak]</span>&nbsp;&nbsp; Referrer-Policy &nbsp;&nbsp;=&nbsp; default leaks</div>',
+      '<div><span class="c-red">[missing]</span>&nbsp; X-Content-Type-Options</div>',
       '<div class="c-dim">──────────────────────────────────────────</div>',
-      '<div>risk: <span class="c-red">MEDIUM</span> &nbsp; grade: <span class="c-amber">C</span></div>'
+      '<div>risk: <span class="c-red">HIGH</span> &nbsp; grade: <span class="c-red">F</span> &nbsp; <span class="c-dim">via cached report</span></div>'
     ];
     if (prefersReduced()) {
       c.innerHTML = lines.join("") + '<span class="caret"></span>';

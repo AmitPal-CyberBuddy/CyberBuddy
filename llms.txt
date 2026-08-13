@@ -1,0 +1,26 @@
+# CyberBuddy
+
+> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), and CORS posture checks with evidence-grade output.
+
+- Hub: https://amitpal-cyberbuddy.github.io/CyberBuddy/
+- Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology
+- Source: https://github.com/AmitPal-CyberBuddy/CyberBuddy
+- Author: Amit Pal — https://amitpxl.medium.com/ · https://www.linkedin.com/in/amitpal-wb/
+- Contact: amitpal.secure@gmail.com
+- Disclosure: https://amitpal-cyberbuddy.github.io/CyberBuddy/.well-known/security.txt
+
+## Tools
+
+- Clickjacking Validator (`/tools/clickjacking/`) — X-Frame-Options + CSP frame-ancestors + live iframe proof. OWASP WSTG-CLNT-09, CWE-1021.
+- Security Headers (`/tools/headers/`) — CSP, HSTS, XFO, nosniff, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP, cookie flags. OWASP WSTG-CONF-07/12, CWE-693.
+- CORS Validator (`/tools/cors/`) — ACAO reflection vs allowlist, credentials, Vary: Origin. OWASP WSTG-CLNT-07, CWE-942.
+
+## How scans run
+
+1. Python engines (`server.py` or optional Vercel `api/`) when reachable.
+2. Same-origin cached reports at `cache/<host>.json` for URLs listed in `urls.txt` (GitHub Actions, every 6 hours).
+3. In-browser graders + public header lookup otherwise. All checks are read-only GETs.
+
+## Constraints
+
+Authorized testing only. Do not scan systems without permission. Results are advisory, never a guarantee of safety. Cloud-metadata and link-local targets are always blocked.
