@@ -3,6 +3,9 @@
    ========================================================================== */
 "use strict";
 
+// Mark JS as available so .reveal stays visible if this file never loads.
+document.documentElement.classList.add("js");
+
 /* ---------- Icon set (inline SVG, currentColor) ------------------------- */
 const ICONS = {
   logo: '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="4" stroke="currentColor" stroke-width="2.4"/><path d="M8 16h4l3-7 6 14 3-7h4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -23,6 +26,10 @@ function appBase() {
   return window.location.pathname.indexOf("/CyberBuddy/") === 0 ? "/CyberBuddy" : "";
 }
 
+function apiHeadersInit() {
+  return { cache: "no-store", headers: { "X-Requested-With": "CyberBuddy" } };
+}
+
 // Renders <header class="site-header"> + skip link; call once per page.
 function renderHeader(current) {
   const base = appBase();
@@ -40,7 +47,6 @@ function renderHeader(current) {
     "</div></header>";
   document.body.insertAdjacentHTML("afterbegin", html);
 
-  // Close any open Tools dropdown on outside click / Escape.
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {
       if (!m.contains(e.target)) m.removeAttribute("open");
@@ -53,17 +59,36 @@ function renderHeader(current) {
   });
 }
 
-// The Tools dropdown — add new tools here and they appear in the header
-// and footer. "In development" entries show as disabled items.
+// The Tools dropdown + hub cards — add a tool here and it appears in the
+// header, footer, and hub grid. "In development" entries show as disabled.
 const TOOLS_MENU = [
-  { href: "/tools/clickjacking/", label: "Clickjacking Validator", status: "live" },
-  { href: "/tools/headers/", label: "Security Headers", status: "beta" },
-  { href: "/tools/cors/", label: "CORS Validator", status: "beta" }
+  {
+    href: "/tools/clickjacking/",
+    label: "Clickjacking Validator",
+    status: "live",
+    icon: "frame",
+    desc: "Frame a target live and confirm whether it renders. With the local engine, get severity-scored X-Frame-Options and CSP frame-ancestors findings, plus a shareable PoC overlay.",
+    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"]
+  },
+  {
+    href: "/tools/headers/",
+    label: "Security Headers",
+    status: "beta",
+    icon: "shield",
+    desc: "Grades the full header set — CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP — into an A–F score with per-finding evidence and remediation notes.",
+    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"]
+  },
+  {
+    href: "/tools/cors/",
+    label: "CORS Validator",
+    status: "beta",
+    icon: "cors",
+    desc: "Two-origin server probe for ACAO reflection, plus an in-browser check of what this page is allowed to read. Preflight explorer is in the pipeline.",
+    tags: ["ACAO", "credentials", "Vary: Origin"]
+  }
 ];
 const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enumeration"];
 
-// uid keeps header/footer dropdown ids unique ("hdr" / "ftr");
-// "ftr" renders the panel opening upward so it never clips the page bottom.
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
   const up = uid === "ftr" ? " up" : "";
@@ -116,10 +141,46 @@ function renderFooter() {
   document.body.insertAdjacentHTML("beforeend", html);
 }
 
+function renderToolCards() {
+  const grid = document.getElementById("toolGrid");
+  if (!grid) return;
+  const base = appBase();
+  const live = TOOLS_MENU.filter((t) => t.status === "live").length;
+  const beta = TOOLS_MENU.filter((t) => t.status === "beta").length;
+  const count = document.getElementById("toolCount");
+  if (count) {
+    count.textContent = String(live).padStart(2, "0") + " live · " +
+      String(beta).padStart(2, "0") + " beta · more in build";
+  }
+  const cards = TOOLS_MENU.map((t, i) => {
+    const icon = ICONS[t.icon] || ICONS.plus;
+    const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
+    const led = t.status === "live" ? "status-led" : "status-led " + t.status;
+    return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
+      base + t.href + '">' +
+      '<div class="tool-card-top"><span class="tool-card-icon">' + icon +
+      '</span><span class="' + led + '">' + esc(t.status) + "</span></div>" +
+      "<div><h3>" + esc(t.label) + '</h3><p class="tool-card-desc">' + esc(t.desc) + "</p></div>" +
+      '<div class="tool-card-tags">' + tags + "</div>" +
+      '<span class="tool-card-open">Run check ' + ICONS.chevron + "</span></a>";
+  }).join("");
+  const soonTags = TOOLS_SOON.map((s) => {
+    const short = s.split(" ")[0];
+    return '<span class="tool-tag">' + esc(short) + "</span>";
+  }).join("");
+  const ghost =
+    '<div class="tool-card card tool-card--ghost reveal" style="--d: .26s">' +
+    '<div class="tool-card-top"><span class="tool-card-icon">' + ICONS.plus +
+    '</span><span class="status-led soon">soon</span></div>' +
+    "<div><h3>More tools coming soon</h3>" +
+    '<p class="tool-card-desc">' + esc(TOOLS_SOON.join(", ")) +
+    " and more are on the bench — this slot is reserved for the next check to ship.</p></div>" +
+    '<div class="tool-card-tags">' + soonTags + "</div></div>";
+  grid.innerHTML = cards + ghost;
+}
+
 /* ---------- Engine availability ------------------------------------------- */
 
-// Probe the local scan API (served by server.py). Falls back to a static
-// mode when the page is opened from disk or a plain static host.
 async function detectEngine() {
   const chip = document.getElementById("engineChip");
   const dot = document.getElementById("engineDot");
@@ -129,7 +190,7 @@ async function detectEngine() {
   const timeout = new Promise((resolve) => setTimeout(() => resolve("timeout"), 3500));
   try {
     const res = await Promise.race([
-      fetch("/api/health", { cache: "no-store" }),
+      fetch("/api/health", apiHeadersInit()),
       timeout
     ]);
     if (res === "timeout" || !res.ok) throw new Error("unreachable");
@@ -149,27 +210,33 @@ async function detectEngine() {
 
 /* ---------- API ------------------------------------------------------------ */
 
-// Scan a URL for clickjacking / framing protections.
-// Returns null when the engine is not reachable (static mode).
-async function apiScan(url) {
+async function apiCall(path, url) {
   try {
-    const res = await fetch("/api/scan?" + new URLSearchParams({ url }), { cache: "no-store" });
-    if (!res.ok) throw new Error("API " + res.status);
-    return await res.json();
+    const res = await fetch(path + "?" + new URLSearchParams({ url }), apiHeadersInit());
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = null; }
+    if (!res.ok) {
+      return { error: (data && data.error) || ("API " + res.status), status: res.status };
+    }
+    return data;
   } catch (err) {
     return null;
   }
 }
 
-// Scan a URL for security headers. Same engine, extra endpoint.
-async function apiHeaders(url) {
-  try {
-    const res = await fetch("/api/headers?" + new URLSearchParams({ url }), { cache: "no-store" });
-    if (!res.ok) throw new Error("API " + res.status);
-    return await res.json();
-  } catch (err) {
-    return null;
-  }
+function apiScan(url) { return apiCall("/api/scan", url); }
+function apiHeaders(url) { return apiCall("/api/headers", url); }
+function apiCors(url) { return apiCall("/api/cors", url); }
+
+function isEngineDown(data) {
+  return data == null;
+}
+
+function apiErrorMessage(data) {
+  if (!data) return "";
+  if (data.error) return String(data.error);
+  if (data.summary && data.risk === "unknown") return String(data.summary);
+  return "";
 }
 
 /* ---------- Small helpers --------------------------------------------------- */
@@ -180,10 +247,10 @@ function esc(s) {
   }[c]));
 }
 
-// Prepend https:// when no scheme is given.
 function normalizeUrl(raw) {
   raw = (raw || "").trim();
   if (!raw) return "";
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) && !/^https?:\/\//i.test(raw)) return "";
   if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
   return raw;
 }
@@ -197,20 +264,26 @@ function validUrl(raw) {
   }
 }
 
-// Write ?url=… into the address bar without reloading (shareable links).
+function gradeFor(score) {
+  score = Number(score) || 0;
+  if (score >= 90) return "a";
+  if (score >= 75) return "b";
+  if (score >= 60) return "c";
+  if (score >= 45) return "d";
+  return "f";
+}
+
 function pushUrlParam(url) {
   const next = new URL(window.location.href);
   next.searchParams.set("url", url);
   history.replaceState(null, "", next);
 }
 
-// Human-readable timestamp for the report header.
 function fmtStamp(d) {
   d = d || new Date();
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-// Loading state for buttons: disables, adds a spinner.
 function setLoading(btn, loading) {
   if (!btn) return;
   btn.disabled = loading;
@@ -225,7 +298,6 @@ function setLoading(btn, loading) {
   }
 }
 
-// Re-trigger the risk-pill pop animation after a status change.
 function bump(el) {
   if (!el) return;
   el.classList.remove("bump");
@@ -237,7 +309,6 @@ function prefersReduced() {
   return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 }
 
-// Animate a number from 0 to target (e.g. the header score).
 function countUp(el, target, suffix) {
   if (!el) return;
   suffix = suffix || "";
@@ -255,10 +326,6 @@ function countUp(el, target, suffix) {
   })(t0);
 }
 
-// Scroll-triggered entrance animation for .reveal elements.
-// Fail-safe: everything already on screen is revealed immediately, and a
-// timeout force-reveals the rest — content can never stay invisible
-// (important inside embedded preview panes where observers can misfire).
 function initReveal() {
   const els = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
   if (!els.length) return;
@@ -273,7 +340,6 @@ function initReveal() {
     return;
   }
 
-  // Immediate reveal for everything already on screen.
   els.forEach((el) => { if (inView(el)) el.classList.add("in"); });
 
   const io = new IntersectionObserver((entries) => {
@@ -286,13 +352,11 @@ function initReveal() {
   }, { threshold: 0.05 });
   els.forEach((el) => io.observe(el));
 
-  // Never leave content hidden, whatever the embedding does.
   setTimeout(() => {
     els.forEach((el) => el.classList.add("in"));
   }, 2000);
 }
 
-// Open the browser print dialog (Export / Save as PDF for reports).
 function exportReport() {
   window.print();
 }

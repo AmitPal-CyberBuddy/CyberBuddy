@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Security Headers — CyberBuddy</title>
   <meta name="description" content="Grade a URL's security headers: CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP — report-ready A–F assessment." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="../../css/app.css" />
   <script src="../../js/app.js" defer></script>
   <script>
@@ -147,7 +145,7 @@
       const risk = (data.risk || "unknown").toUpperCase();
 
       $("grade").textContent = grade;
-      $("grade").className = "grade " + gradeFor(score);
+      $("grade").className = "grade " + (gradeFor(score) || grade.toLowerCase());
       bump($("grade"));
 
       $("risk").textContent = risk;
@@ -179,7 +177,7 @@
       setLoading($("go"), true);
       const data = await apiHeaders(url);
       setLoading($("go"), false);
-      if (!data) {
+      if (isEngineDown(data)) {
         $("staticNotice").classList.remove("hidden");
         $("results").classList.add("hidden");
         return;
