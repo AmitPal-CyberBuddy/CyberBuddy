@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methodology — CyberBuddy</title>
+  <meta name="description" content="How CyberBuddy scores clickjacking, security headers, and CORS — engines, grades, and what the hosted site can and cannot prove." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
+  <meta property="og:title" content="Methodology — CyberBuddy" />
+  <meta property="og:description" content="How CyberBuddy scores clickjacking, security headers, and CORS." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Methodology — CyberBuddy" />
+  <meta name="twitter:description" content="How CyberBuddy scores clickjacking, security headers, and CORS." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../icon-512.png" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><style>.reveal{opacity:1!important}</style></noscript>
+  <script>
+    (function () {
+      try {
+        var s = localStorage.getItem("cb-theme");
+        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
+        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="../css/app.css?v=20260814b" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "CyberBuddy methodology",
+      "description": "How CyberBuddy scores clickjacking, security headers, and CORS.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../js/app.js?v=20260814b" defer></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      renderHeader("/methodology/");
+      renderFooter();
+      initReveal();
+    });
+  </script>
+</head>
+<body>
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal">How it scores</p>
+  <h1 class="reveal">Methodology</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Three read-only checks, the same graders in Python and in the browser,
+    and a report card you can paste into an assessment. Authorized testing only.
+  </p>
+
+  <div class="section-head reveal">
+    <h2>What each tool proves</h2>
+  </div>
+  <div class="method-grid">
+    <article class="card reveal" style="--d: .06s;">
+      <h3>Clickjacking Validator</h3>
+      <p>
+        Reads <code>X-Frame-Options</code> and CSP <code>frame-ancestors</code>,
+        then loads the target in a live iframe. If the real UI appears, the page
+        can be framed in this browser — that is the proof, not just the headers.
+      </p>
+      <p class="std-line">OWASP WSTG-CLNT-09 · CWE-1021</p>
+    </article>
+    <article class="card reveal" style="--d: .12s;">
+      <h3>Security Headers</h3>
+      <p>
+        Grades ten header families on a 0–100 scale (A–F). Every finding
+        shows the raw value it used. Cookie flags are checked when
+        <code>Set-Cookie</code> is present.
+      </p>
+      <p class="std-line">OWASP WSTG-CONF-07 / CONF-12 · CWE-693</p>
+    </article>
+    <article class="card reveal" style="--d: .18s;">
+      <h3>CORS Validator</h3>
+      <p>
+        The Python engine probes two fake origins to prove reflection vs an
+        allowlist. On GitHub Pages, the browser can only speak as
+        <code>github.io</code> — a single-origin probe, marked honestly.
+      </p>
+      <p class="std-line">OWASP WSTG-CLNT-07 · CWE-942</p>
+    </article>
+    <article class="card reveal" style="--d: .24s;">
+      <h3>What it does not do</h3>
+      <p>
+        No exploits, no authenticated sessions, no POST/PUT/DELETE.
+        Results are advisory. A green grade is not a guarantee of safety
+        and a red grade is not a CVE.
+      </p>
+    </article>
+  </div>
+
+  <div class="section-head reveal">
+    <h2>Header scoring (0–100)</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="Header weights">
+      <thead>
+        <tr><th scope="col">Check</th><th scope="col">Weight</th><th scope="col">What “ok” means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="k">Content-Security-Policy</td><td>25</td><td>Present, with a real script policy (not <code>*</code> / unsafe-inline / unsafe-eval).</td></tr>
+        <tr><td class="k">X-Frame-Options</td><td>15</td><td><code>DENY</code> or <code>SAMEORIGIN</code>. Deduction drops to 5 if CSP frame-ancestors already restricts framing.</td></tr>
+        <tr><td class="k">Strict-Transport-Security</td><td>15</td><td><code>max-age</code> ≥ 180 days and <code>includeSubDomains</code>. HTTPS only.</td></tr>
+        <tr><td class="k">X-Content-Type-Options</td><td>10</td><td>Exactly <code>nosniff</code>.</td></tr>
+        <tr><td class="k">Referrer-Policy</td><td>10</td><td>A policy that does not leak full URLs cross-origin.</td></tr>
+        <tr><td class="k">Permissions-Policy</td><td>5</td><td>Present, no bare <code>*</code> allowlists.</td></tr>
+        <tr><td class="k">COOP / COEP / CORP</td><td>5 each</td><td>Isolation headers set to a meaningful token.</td></tr>
+        <tr><td class="k">Set-Cookie flags</td><td>5</td><td>Secure, HttpOnly, and SameSite on cookies that are set.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      Grade bands: <strong>A</strong> ≥ 90 · <strong>B</strong> ≥ 75 · <strong>C</strong> ≥ 60 · <strong>D</strong> ≥ 45 · <strong>F</strong> below that.
+      Risk follows the grade (A/B low, C/D medium, F high).
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Clickjacking risk</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="Clickjacking risk">
+      <thead>
+        <tr><th scope="col">Condition</th><th scope="col">Risk</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>CSP <code>frame-ancestors</code> is <code>*</code> (or otherwise too open)</td><td>High — modern browsers honour CSP over XFO</td></tr>
+        <tr><td>Restrictive <code>frame-ancestors</code> is set</td><td>Low</td></tr>
+        <tr><td>Only X-Frame-Options protects the page</td><td>Medium — add frame-ancestors</td></tr>
+        <tr><td>Neither control is effective</td><td>High — likely clickjackable</td></tr>
+      </tbody>
+    </table>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>How the hosted site scans</h2>
+  </div>
+  <div class="roadmap">
+    <div class="roadmap-item reveal" style="--d: .05s;">
+      <div class="rm-title">01 · Python engine</div>
+      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin CORS.</p>
+    </div>
+    <div class="roadmap-item reveal" style="--d: .12s;">
+      <div class="rm-title">02 · Cached report</div>
+      <p>GitHub Actions pre-scans the URLs in <code>urls.txt</code> every six hours. Fresh reports (under 48 hours) are served same-origin as <code>cache/&lt;host&gt;.json</code> and labelled <em>via cached report</em>.</p>
+    </div>
+    <div class="roadmap-item reveal" style="--d: .19s;">
+      <div class="rm-title">03 · Live fallback</div>
+      <p>Otherwise the browser grades headers through a public read-only lookup (10-minute local cache) and probes CORS from this origin only. The source chip says so.</p>
+    </div>
+  </div>
+
+  <div class="section-head reveal">
+    <h2>Authorized testing</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      You may only point CyberBuddy at systems you own or have written
+      permission to assess. The hosted cache only includes IANA documentation
+      hosts (<code>example.com</code>, <code>example.org</code>, <code>example.net</code>)
+      and this project’s own GitHub Pages origin. Cloud-metadata and
+      link-local addresses are always refused. Private RFC1918 targets are
+      allowed only when <code>server.py</code> is loopback-bound (or you pass
+      <code>--allow-private</code>).
+    </p>
+    <p>
+      Responsible disclosure: <a href="../.well-known/security.txt">.well-known/security.txt</a>
+      · <a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>
+    </p>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Keyboard:</strong> <kbd>/</kbd> focuses the URL field,
+      <kbd>t</kbd> toggles theme, <kbd>?</kbd> opens this cheat-sheet,
+      <kbd>Esc</kbd> closes menus.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

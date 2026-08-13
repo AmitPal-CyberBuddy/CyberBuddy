@@ -316,6 +316,11 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("gradeHeadersFromMap", src)
         self.assertIn("lookupHeadersLive", src)
         self.assertIn("probeCorsLive", src)
+        # Hosted cache must join appBase() with a leading slash or Pages
+        # fetches /CyberBuddycache/... instead of /CyberBuddy/cache/...
+        self.assertIn('appBase() + "/cache/"', src)
+        self.assertNotIn('appBase() + "cache/"', src)
+        self.assertIn("cacheLookupKeys", src)
 
     def test_tool_pages_exist(self):
         for slug in ("clickjacking", "headers", "cors"):
@@ -450,6 +455,24 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("javascript", headers.get("content-type", ""))
         self.assertIn(b"function appBase", body)
+        status, headers, body = self._req("/humans.txt")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Amit Pal", body)
+        status, headers, body = self._req("/llms.txt")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CyberBuddy", body)
+
+    def test_methodology_page(self):
+        status, headers, _ = self._req("/methodology")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/methodology/")
+        status, headers, body = self._req("/methodology/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"Methodology", body)
+        status, _, body = self._req("/CyberBuddy/methodology/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"How it scores", body)
 
     def test_health_and_api_validation(self):
         status, headers, body = self._req("/api/health")
@@ -482,6 +505,42 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         cors_data = json.loads(body)
         self.assertTrue(cors_data.get("checks"))
+
+
+class HostedSiteTests(unittest.TestCase):
+    def test_urls_txt_lists_own_site(self):
+        text = (ROOT / "urls.txt").read_text(encoding="utf-8")
+        self.assertIn("https://example.com", text)
+        self.assertIn("https://amitpal-cyberbuddy.github.io/CyberBuddy/", text)
+
+    def test_cache_buster_is_consistent(self):
+        pages = [
+            ROOT / "index.html",
+            ROOT / "methodology" / "index.html",
+            ROOT / "tools" / "clickjacking" / "index.html",
+            ROOT / "tools" / "headers" / "index.html",
+            ROOT / "tools" / "cors" / "index.html",
+        ]
+        versions = set()
+        for page in pages:
+            text = page.read_text(encoding="utf-8")
+            self.assertIn("css/app.css?v=", text, page)
+            self.assertIn("js/app.js?v=", text, page)
+            css = [part.split('"')[0] for part in text.split("css/app.css?v=")[1:]]
+            js = [part.split('"')[0] for part in text.split("js/app.js?v=")[1:]]
+            versions.update(css)
+            versions.update(js)
+        self.assertEqual(len(versions), 1, versions)
+
+    def test_pages_workflow_is_resilient(self):
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("test -f \"$f\" && cp \"$f\" _site/ || true", text)
+        self.assertIn("test -d .well-known && cp -a .well-known _site/ || true", text)
+
+    def test_hub_has_methodology_anchor(self):
+        text = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="methodology"', text)
+        self.assertIn("/tools/clickjacking/", (ROOT / "sitemap.xml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

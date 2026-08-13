@@ -6,6 +6,7 @@
   <title>Page not found — CyberBuddy</title>
   <meta name="robots" content="noindex" />
   <meta name="theme-color" content="#07090d" />
+  <meta name="color-scheme" content="dark light" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
@@ -106,6 +107,10 @@
         <strong>CORS Validator</strong>
         <span>Origin reflection, credentials, and Vary: Origin.</span>
       </a>
+      <a class="card" id="methodLink" href="#methodology">
+        <strong>Methodology</strong>
+        <span>How scoring, cache, and live graders work.</span>
+      </a>
     </div>
     <a class="home" id="home" href="./">← Back to the hub</a>
   </main>
@@ -115,6 +120,8 @@
       document.querySelectorAll("a.card[data-slug]").forEach(function (a) {
         a.href = base + "/tools/" + a.getAttribute("data-slug") + "/";
       });
+      var method = document.getElementById("methodLink");
+      if (method) method.href = base + "/#methodology";
       var home = document.getElementById("home");
       if (home) home.href = base + "/";
 

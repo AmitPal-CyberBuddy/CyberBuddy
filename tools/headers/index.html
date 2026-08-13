@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Security Headers — CyberBuddy</title>
   <meta name="description" content="Grade a URL's security headers into an A–F score." />
-  <meta name="theme-color" content="#07090d" />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/headers/" />
   <meta property="og:title" content="Security Headers — CyberBuddy" />
   <meta property="og:description" content="Grade a URL's security headers into an A–F score." />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/headers/" />
   <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta property="og:image:width" content="1200" />
@@ -19,6 +26,7 @@
   <meta name="twitter:title" content="Security Headers — CyberBuddy" />
   <meta name="twitter:description" content="Grade a URL's security headers into an A–F score." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../../icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
@@ -36,8 +44,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814a" />
-  <script src="../../js/app.js?v=20260814a" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814b" />
+  <script src="../../js/app.js?v=20260814b" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/headers/");
@@ -67,6 +75,7 @@
     <button id="go" type="button" class="btn btn-primary">Scan</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
     <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
+    <button id="copyJson" type="button" class="btn btn-ghost" onclick="copyJson()">Copy JSON</button>
     <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
   </div>
 
@@ -152,6 +161,9 @@
   let cbLastData = null;
   function copyReport() {
     if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
+  }
+  function copyJson() {
+    if (cbLastData) copyJsonReport(cbLastData, document.getElementById("copyJson"));
   }
 
   async function initHeaders() {

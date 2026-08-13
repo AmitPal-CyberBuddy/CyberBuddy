@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /CyberBuddy/
 
+User-agent: GPTBot
+Allow: /CyberBuddy/
+
+User-agent: ChatGPT-User
+Allow: /CyberBuddy/
+
 Sitemap: https://amitpal-cyberbuddy.github.io/CyberBuddy/sitemap.xml

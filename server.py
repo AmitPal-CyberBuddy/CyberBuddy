@@ -6,6 +6,7 @@ With performance optimizations: streaming I/O, connection pooling, concurrent sc
 Routes
 ------
 GET /                       hub (index.html)
+GET /methodology/           scoring + engine notes
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
@@ -44,11 +45,12 @@ ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
 
 ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json", ".png", ".xml", ".webmanifest", ".txt"}
-STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/")
+STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/", "methodology/")
 ROOT_STATIC = frozenset({
     "index.html", "404.html",
     "robots.txt", "sitemap.xml", "manifest.webmanifest",
     "og-cyberbuddy.png", "icon-192.png", "icon-512.png",
+    "humans.txt", "llms.txt",
 })
 # GitHub Pages project URL is /CyberBuddy/… — accept the same prefix locally
 # so a hosted-style path does not 404 when someone points server.py at it.
@@ -344,9 +346,10 @@ class Handler(BaseHTTPRequestHandler):
             self._static("404.html")
             return
 
-        if path.startswith("/tools/"):
+        if path.startswith("/tools/") or path == "/methodology" or path.startswith("/methodology/"):
             rel = path.lstrip("/")
             # /tools/clickjacking → /tools/clickjacking/
+            # /methodology → /methodology/
             if not rel.endswith("/") and "." not in Path(rel).name:
                 dest = path.rstrip("/") + "/"
                 if parsed.query:

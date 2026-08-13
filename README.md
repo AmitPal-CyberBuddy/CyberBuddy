@@ -47,8 +47,9 @@ possible (browsers can't read cross-origin response headers on their own).
 ## Layout
 
 ```
-index.html                      # hub
+index.html                      # hub (includes #methodology scoring notes)
 404.html                        # hosted 404 + repair for old tool URLs
+methodology/index.html          # full methodology page (local server.py)
 css/app.css                     # shared design system
 js/app.js                       # shared helpers (nav, footer, icons, API)
 tools/
@@ -57,6 +58,8 @@ tools/
   cors/index.html               # CORS probe + roadmap
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 urls.txt                        # targets pre-scanned for the hosted cache
+humans.txt                      # who built it
+llms.txt                        # machine-readable project summary
 api/                            # optional hosted Python API (Vercel)
 apilib.py                       # shared WSGI plumbing for api/ (outside api/)
 vercel.json                     # Vercel config for api/
@@ -127,8 +130,9 @@ layers make the hosted site as close to `server.py` as possible:
      `test -d .well-known && cp -a .well-known _site/ || true` for the
      security contact file.
 
-   The UI prefers the cache over the public lookups (fresh within 24h) and
-   marks reports `via cached report`.
+   The UI prefers the cache over the public lookups (fresh within 48h) and
+   marks reports `via cached report`. The lookup path is `appBase() + "/cache/"`
+   so GitHub Pages resolves `/CyberBuddy/cache/<host>.json`.
 2. **Optional hosted API (`api/`).** Deploy the `api/` folder (Vercel free
    tier: `vercel --prod`), then set `API_BASE` in `js/app.js` to the
    deployment URL. The frontend health check finds it and the same Python
@@ -143,7 +147,11 @@ layers make the hosted site as close to `server.py` as possible:
 
 - Every tool renders results as a self-contained **report card** — target, final
   URL, HTTP status, generated timestamp, verdict, and per-finding evidence —
-  ready to screenshot or export via **Export / Print** (print stylesheet included).
+  ready to screenshot or export via **Export / Print**, **Copy report**
+  (Markdown), or **Copy JSON**.
+- Keyboard: `/` focuses the URL field, `t` toggles theme, `?` opens shortcuts.
+  Scoring notes live on the hub under
+  [`#methodology`](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology).
 - On GitHub Pages the Python process is not running (Pages is static). The UI
   still grades headers and framing by looking up response headers through a
   public read-only relay, and CORS is probed from the `github.io` origin.
