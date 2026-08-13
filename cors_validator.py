@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-CyberBuddy — CORS posture probe.
+CyberBuddy — CORS posture probe with performance optimizations.
 
 Sends two GETs with distinct Origin values so we can tell a reflected
-ACAO from a fixed allowlist. Pure stdlib. Used by /api/cors and as a CLI.
+ACAO from a fixed allowlist. Pure stdlib with connection pooling.
 
-Only test systems you own or have written permission to assess.
+Optimizations:
+- HTTP connection reuse via http_session module
+- Efficient header validation
 """
 
 from __future__ import annotations
