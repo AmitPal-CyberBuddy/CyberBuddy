@@ -10,31 +10,37 @@ GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
 GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
-GET /api/cors?url=…         CORS origin-reflection probe (basic)
+GET /api/cors?url=…         two-origin CORS reflection probe
+GET /api/health             {"ok": true}  (alias: /health)
 GET /poc?url=…              standalone clickjacking PoC page
-GET /health                 {"ok": true}
 
-Everything is stdlib. The API intentionally binds to 0.0.0.0 so a phone on
-the same LAN can reach it, but it performs only read-only GET scans and holds
-no state — treat it as a local-only tool.
+Everything is stdlib. Binds 127.0.0.1 by default (loopback only). Pass
+--host 0.0.0.0 to reach it from the LAN — that also disables private-IP
+scans unless you add --allow-private.
 
 Only test systems you own or have written permission to assess.
 """
 
 from __future__ import annotations
 
+import argparse
 import html
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from clickjacking_validator import USER_AGENT, scan_url
+from clickjacking_validator import USER_AGENT, normalize_url, scan_url, validate_target
+from cors_validator import scan_cors
 from security_headers import scan_headers
 
-HOST = "0.0.0.0"
+HOST = "127.0.0.1"
 PORT = 8080
+ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
+
+ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js"}
+STATIC_PREFIXES = ("tools/", "css/", "js/")
 
 POC_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -70,8 +76,17 @@ POC_HTML = """<!DOCTYPE html>
 """
 
 
+def _under_root(path: Path) -> bool:
+    try:
+        path.relative_to(ROOT)
+        return True
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "CyberBuddy/" + USER_AGENT.split("/")[-1].split()[0]
+    server_version = "CyberBuddy"
+    sys_version = ""
 
     def log_message(self, fmt: str, *args) -> None:
         print("[http] " + fmt % args)
@@ -82,19 +97,66 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        # Inline scripts/styles are used by the static pages; frame-src must
+        # allow http(s) so the clickjacking iframe can load a target.
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "frame-src http: https:; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
         self.end_headers()
         self.wfile.write(body)
 
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload, indent=2).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _our_origin(self) -> set[str]:
+        host = self.headers.get("Host", f"{HOST}:{PORT}")
+        return {f"http://{host}", f"https://{host}"}
+
+    def _api_allowed(self) -> bool:
+        """Stop drive-by GETs from other sites (img/fetch CSRF).
+
+        Browser fetch from this app sends Origin (and X-Requested-With).
+        curl (no Origin, no Referer) is allowed. A third-party page's
+        Origin/Referer will not match our Host.
+        """
+        ours = self._our_origin()
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin:
+            return origin in ours
+        referer = (self.headers.get("Referer") or "").strip()
+        if referer:
+            parsed = urlparse(referer)
+            return f"{parsed.scheme}://{parsed.netloc}" in ours
+        xrw = (self.headers.get("X-Requested-With") or "").strip()
+        if xrw == "CyberBuddy":
+            return True
+        # No Origin/Referer — curl / address-bar. Allow.
+        return True
+
     def _static(self, rel: str) -> None:
-        path = (ROOT / rel).resolve()
-        # stay inside the repo root
-        if ROOT not in path.parents and path != ROOT:
+        rel = rel.lstrip("/").replace("\\", "/")
+        if ".." in rel.split("/"):
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
-        if not path.is_file():
+        if rel not in {"index.html"} and not rel.startswith(STATIC_PREFIXES):
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return
+        path = (ROOT / rel).resolve()
+        if not _under_root(path) or not path.is_file():
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return
+        if path.suffix not in ALLOWED_STATIC_SUFFIXES:
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         ctype = {
@@ -110,47 +172,56 @@ class Handler(BaseHTTPRequestHandler):
         url = (qs.get("url") or [""])[0].strip()
         path = parsed.path
 
-        if path == "/health":
+        if path in ("/health", "/api/health"):
             self._json(200, {"ok": True})
             return
 
-        if path == "/api/scan":
+        if path in ("/api/scan", "/api/headers", "/api/cors"):
+            if not self._api_allowed():
+                self._json(403, {"error": "cross-origin API access denied"})
+                return
             if not url:
                 self._json(400, {"error": "url required"})
                 return
-            self._json(200, scan_url(url, timeout=15.0, insecure=False).to_dict())
-            return
-
-        if path == "/api/headers":
-            if not url:
-                self._json(400, {"error": "url required"})
-                return
-            self._json(200, scan_headers(url, timeout=15.0, insecure=False).to_dict())
-            return
-
-        if path == "/api/cors":
-            if not url:
-                self._json(400, {"error": "url required"})
-                return
-            self._json(200, {"url": url, "note": "server-side CORS preflight explorer lands next; use the in-browser probe on the CORS page."})
+            kwargs = {"timeout": 15.0, "insecure": False, "allow_private": ALLOW_PRIVATE}
+            if path == "/api/scan":
+                self._json(200, scan_url(url, **kwargs).to_dict())
+            elif path == "/api/headers":
+                self._json(200, scan_headers(url, **kwargs).to_dict())
+            else:
+                self._json(200, scan_cors(url, **kwargs).to_dict())
             return
 
         if path == "/poc":
             if not url:
                 self._send(400, b"url required", "text/plain; charset=utf-8")
                 return
+            try:
+                url = normalize_url(url)
+                validate_target(url, allow_private=ALLOW_PRIVATE)
+            except ValueError as exc:
+                self._send(400, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
+                return
             body = POC_HTML.format(url=html.escape(url, quote=True)).encode("utf-8")
             self._send(200, body, "text/html; charset=utf-8")
             return
 
-        # Hub
         if path in ("/", "/index.html"):
             self._static("index.html")
             return
 
-        # Tool pages + assets
         if path.startswith("/tools/"):
             rel = path.lstrip("/")
+            # /tools/clickjacking → /tools/clickjacking/
+            if not rel.endswith("/") and "." not in Path(rel).name:
+                dest = path.rstrip("/") + "/"
+                if parsed.query:
+                    dest += "?" + parsed.query
+                self.send_response(301)
+                self.send_header("Location", dest)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
             if rel.endswith("/"):
                 rel += "index.html"
             self._static(rel)
@@ -163,14 +234,32 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, b"not found", "text/plain; charset=utf-8")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    global HOST, PORT, ALLOW_PRIVATE
+    p = argparse.ArgumentParser(description="CyberBuddy local hub + scan APIs.")
+    p.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1, loopback only)")
+    p.add_argument("--port", type=int, default=8080, help="Bind port (default 8080)")
+    p.add_argument(
+        "--allow-private",
+        action="store_true",
+        help="Allow RFC1918/loopback scan targets even when bound on a non-loopback address.",
+    )
+    args = p.parse_args(argv)
+    HOST = args.host
+    PORT = args.port
+    loopback = HOST in {"127.0.0.1", "localhost", "::1"}
+    ALLOW_PRIVATE = loopback or args.allow_private
+
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"CyberBuddy serving on http://{HOST}:{PORT}")
-    print(f"Hub:        http://127.0.0.1:{PORT}/")
+    print(f"Hub:          http://127.0.0.1:{PORT}/")
     print(f"Clickjacking: http://127.0.0.1:{PORT}/tools/clickjacking/")
-    print(f"Headers:    http://127.0.0.1:{PORT}/tools/headers/")
-    print(f"CORS:       http://127.0.0.1:{PORT}/tools/cors/")
-    print("API:        /api/scan?url=…   /api/headers?url=…   /health")
+    print(f"Headers:      http://127.0.0.1:{PORT}/tools/headers/")
+    print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")
+    print("API:          /api/scan  /api/headers  /api/cors  /api/health")
+    if not loopback:
+        print("WARNING: bound on a non-loopback address. Private-IP scans are "
+              + ("ENABLED (--allow-private)." if ALLOW_PRIVATE else "disabled."))
     print("Press Ctrl+C to stop.")
     try:
         httpd.serve_forever()

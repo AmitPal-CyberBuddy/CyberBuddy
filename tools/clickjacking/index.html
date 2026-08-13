@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Clickjacking Validator — CyberBuddy</title>
   <meta name="description" content="Validate clickjacking (framing) protections on any URL: live iframe test, PoC overlay, and severity-scored header findings — report-ready." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="../../css/app.css" />
   <script src="../../js/app.js" defer></script>
   <script>
@@ -104,7 +102,7 @@
           </p>
           <div id="stage" class="stage">
             <div class="overlay">CLICK HERE — decoy overlay</div>
-            <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
+            <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
           </div>
           <p id="frameStatus" class="stage-note"></p>
         </article>
@@ -180,13 +178,20 @@
       const data = await apiScan(url);
       setLoading($("go"), false);
 
-      if (!data) {
+      if (isEngineDown(data)) {
         // Static mode: frame test only.
         setVerdict("FRAME ONLY",
           "Header API not available (serve via server.py). The visual frame test below still runs.");
         $("findings").querySelector("tbody").innerHTML = "";
         $("headers").textContent = "{}";
         $("staticNotice").classList.remove("hidden");
+        return;
+      }
+
+      if (data.error && !data.findings) {
+        setVerdict("UNKNOWN", data.error);
+        $("findings").querySelector("tbody").innerHTML = "";
+        $("headers").textContent = "{}";
         return;
       }
 

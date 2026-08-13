@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
   <meta name="description" content="CyberBuddy: clickjacking validation, security header grading, and CORS posture checks for VAPT analysts — evidence-grade results you can drop straight into your report." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="css/app.css" />
   <script src="js/app.js" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/");
       renderFooter();
+      renderToolCards();
       detectEngine();
       initReveal();
       typeConsole();
@@ -61,10 +60,10 @@
   <!-- ================= Tools ================= -->
   <div class="section-head reveal">
     <h2>Assessment tools</h2>
-    <span class="count">03 live · more in build</span>
+    <span class="count" id="toolCount">01 live · 02 beta · more in build</span>
   </div>
 
-  <section class="tool-grid" aria-label="Available tools">
+  <section class="tool-grid" id="toolGrid" aria-label="Available tools">
     <!-- Clickjacking -->
     <a class="tool-card card corner-card reveal" style="--d: .05s;" href="tools/clickjacking/">
       <div class="tool-card-top">
