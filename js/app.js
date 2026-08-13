@@ -19,18 +19,35 @@ const ICONS = {
 
 /* ---------- Shell rendering ---------------------------------------------- */
 
-// Base path for links: "" when served at the site root (local server,
-// preview, custom domain) or "/CyberBuddy" when hosted under that subpath
-// (e.g. GitHub Pages). Detected from the URL so both work without config.
 function appBase() {
-  return window.location.pathname.indexOf("/CyberBuddy/") === 0 ? "/CyberBuddy" : "";
+  const scripts = document.getElementsByTagName("script");
+  for (let i = 0; i < scripts.length; i++) {
+    const src = scripts[i].src || "";
+    const idx = src.indexOf("/js/app.js");
+    if (idx === -1) continue;
+    try {
+      let base = new URL(src).pathname.slice(0, idx);
+      if (base === "/") base = "";
+      return base;
+    } catch (_) { /* ignore bad src */ }
+  }
+  const path = window.location.pathname || "";
+  const m = path.match(/^(\/CyberBuddy)(?=\/|$)/i);
+  return m ? m[1] : "";
+}
+
+function pagePath() {
+  return (window.location.pathname || "").replace(/\/index\.html$/, "/") || "/";
+}
+
+function apiUrl(path) {
+  return appBase() + path;
 }
 
 function apiHeadersInit() {
   return { cache: "no-store", headers: { "X-Requested-With": "CyberBuddy" } };
 }
 
-// Renders <header class="site-header"> + skip link; call once per page.
 function renderHeader(current) {
   const base = appBase();
   const html =
@@ -43,7 +60,6 @@ function renderHeader(current) {
     navLink(base, "/", "Hub", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
-    '<span class="engine-chip" id="engineChip" title="Scan engine availability"><span class="engine-dot" id="engineDot"></span><span id="engineText">engine · …</span></span>' +
     "</div></header>";
   document.body.insertAdjacentHTML("afterbegin", html);
 
@@ -59,31 +75,29 @@ function renderHeader(current) {
   });
 }
 
-// The Tools dropdown + hub cards — add a tool here and it appears in the
-// header, footer, and hub grid. "In development" entries show as disabled.
 const TOOLS_MENU = [
   {
     href: "/tools/clickjacking/",
     label: "Clickjacking Validator",
     status: "live",
     icon: "frame",
-    desc: "Frame a target live and confirm whether it renders. With the local engine, get severity-scored X-Frame-Options and CSP frame-ancestors findings, plus a shareable PoC overlay.",
+    desc: "Load a target in a live frame. If the real UI appears, the page can be clickjacked — screenshot the result as proof.",
     tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"]
   },
   {
     href: "/tools/headers/",
     label: "Security Headers",
-    status: "beta",
+    status: "live",
     icon: "shield",
-    desc: "Grades the full header set — CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP — into an A–F score with per-finding evidence and remediation notes.",
+    desc: "Grade CSP, X-Frame-Options, HSTS, cookie flags and the COOP/COEP family into an A–F score with the raw header behind every finding.",
     tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"]
   },
   {
     href: "/tools/cors/",
     label: "CORS Validator",
-    status: "beta",
+    status: "live",
     icon: "cors",
-    desc: "Two-origin server probe for ACAO reflection, plus an in-browser check of what this page is allowed to read. Preflight explorer is in the pipeline.",
+    desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
     tags: ["ACAO", "credentials", "Vary: Origin"]
   }
 ];
@@ -92,7 +106,7 @@ const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enume
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
   const up = uid === "ftr" ? " up" : "";
-  const path = new URL(window.location.href).pathname;
+  const path = pagePath();
   const items = TOOLS_MENU.map((t) => {
     const active = (base + t.href) === path;
     return '<a class="nav-menu-item' + (active ? " active" : "") + '" href="' + base + t.href + '">' +
@@ -110,8 +124,8 @@ function toolsMenu(base, uid) {
 }
 
 function navLink(base, href, label, current) {
-  const path = new URL(window.location.href).pathname;
-  const isCurrent = (base + href) === path || (href === "/" && path === base + "/");
+  const path = pagePath();
+  const isCurrent = (base + href) === path || (href === "/" && (path === base + "/" || path === base));
   return '<a href="' + base + href + '"' + (isCurrent ? ' aria-current="page"' : "") + ">" + label + "</a>";
 }
 
@@ -146,11 +160,9 @@ function renderToolCards() {
   if (!grid) return;
   const base = appBase();
   const live = TOOLS_MENU.filter((t) => t.status === "live").length;
-  const beta = TOOLS_MENU.filter((t) => t.status === "beta").length;
   const count = document.getElementById("toolCount");
   if (count) {
-    count.textContent = String(live).padStart(2, "0") + " live · " +
-      String(beta).padStart(2, "0") + " beta · more in build";
+    count.textContent = String(live).padStart(2, "0") + " live";
   }
   const cards = TOOLS_MENU.map((t, i) => {
     const icon = ICONS[t.icon] || ICONS.plus;
@@ -179,8 +191,6 @@ function renderToolCards() {
   grid.innerHTML = cards + ghost;
 }
 
-/* ---------- Engine availability ------------------------------------------- */
-
 async function detectEngine() {
   const chip = document.getElementById("engineChip");
   const dot = document.getElementById("engineDot");
@@ -190,7 +200,7 @@ async function detectEngine() {
   const timeout = new Promise((resolve) => setTimeout(() => resolve("timeout"), 3500));
   try {
     const res = await Promise.race([
-      fetch("/api/health", apiHeadersInit()),
+      fetch(apiUrl("/api/health"), apiHeadersInit()),
       timeout
     ]);
     if (res === "timeout" || !res.ok) throw new Error("unreachable");
@@ -208,11 +218,9 @@ async function detectEngine() {
   }
 }
 
-/* ---------- API ------------------------------------------------------------ */
-
 async function apiCall(path, url) {
   try {
-    const res = await fetch(path + "?" + new URLSearchParams({ url }), apiHeadersInit());
+    const res = await fetch(apiUrl(path) + "?" + new URLSearchParams({ url }), apiHeadersInit());
     let data = null;
     try { data = await res.json(); } catch (_) { data = null; }
     if (!res.ok) {
@@ -238,8 +246,6 @@ function apiErrorMessage(data) {
   if (data.summary && data.risk === "unknown") return String(data.summary);
   return "";
 }
-
-/* ---------- Small helpers --------------------------------------------------- */
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
