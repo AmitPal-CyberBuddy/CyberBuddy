@@ -6,27 +6,45 @@
   <title>Clickjacking Validator — CyberBuddy</title>
   <meta name="description" content="Live clickjacking proof: frame a target and screenshot the result." />
   <meta name="theme-color" content="#07090d" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/" />
+  <meta property="og:title" content="Clickjacking Validator — CyberBuddy" />
+  <meta property="og:description" content="Live clickjacking proof: frame a target and screenshot the result." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Clickjacking Validator — CyberBuddy" />
+  <meta name="twitter:description" content="Live clickjacking proof: frame a target and screenshot the result." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Cpath d='M10 12h12M10 20h8'/%3E%3C/g%3E%3C/svg%3E" />
   <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <script>
     (function () {
       try {
-        if (localStorage.getItem("cb-theme") === "light") {
-          document.documentElement.setAttribute("data-theme", "light");
-        }
+        var s = localStorage.getItem("cb-theme");
+        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
+        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
       } catch (_) {}
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260813i" />
-  <script src="../../js/app.js?v=20260813i" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814a" />
+  <script src="../../js/app.js?v=20260814a" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/clickjacking/");
       renderFooter();
       initReveal();
       initClickjacking();
+      initShareButton();
     });
   </script>
 </head>
@@ -50,6 +68,7 @@
     <button id="togglePoc" type="button" class="btn btn-ghost">Hide PoC overlay</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
     <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
+    <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -206,6 +225,7 @@
       if (!url || !validUrl(url)) { $("url").focus(); return; }
       $("url").value = url;
       pushUrlParam(url);
+      addRecentScan(url);
       scan(url);
     });
 

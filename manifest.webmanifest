@@ -1,0 +1,45 @@
+{
+  "name": "CyberBuddy",
+  "short_name": "CyberBuddy",
+  "description": "Browser security assessment suite — clickjacking, security headers, and CORS checks with evidence-grade output.",
+  "start_url": "/CyberBuddy/",
+  "scope": "/CyberBuddy/",
+  "display": "standalone",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Clickjacking Validator",
+      "short_name": "Clickjacking",
+      "description": "Live iframe frame-test and framing-header score",
+      "url": "/CyberBuddy/tools/clickjacking/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Security Headers",
+      "short_name": "Headers",
+      "description": "Grade CSP, HSTS, COOP/COEP and cookie flags — A–F",
+      "url": "/CyberBuddy/tools/headers/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "CORS Validator",
+      "short_name": "CORS",
+      "description": "Origin reflection, credentials, and Vary: Origin",
+      "url": "/CyberBuddy/tools/cors/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    }
+  ]
+}

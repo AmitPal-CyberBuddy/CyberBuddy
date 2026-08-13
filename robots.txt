@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /CyberBuddy/
+
+Sitemap: https://amitpal-cyberbuddy.github.io/CyberBuddy/sitemap.xml
