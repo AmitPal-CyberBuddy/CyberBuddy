@@ -6,6 +6,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"   # refresh the hosted scan cache every 6 hours (UTC)
 
 permissions:
   contents: read
@@ -21,6 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Pre-scan the URLs in urls.txt with the real Python engines
+      # (uses tools/build_cache.py -> cache/<host>.json)
+      - name: Build scan cache
+        run: python3 tools/build_cache.py
+
       - name: Assemble static site
         run: |
           mkdir -p _site/css _site/js _site/tools
@@ -30,6 +38,12 @@ jobs:
           cp css/app.css _site/css/
           cp js/app.js _site/js/
           cp -a tools/clickjacking tools/headers tools/cors _site/tools/
+          # Cached reports for configured targets (skipped if the build step
+          # found no targets / network failed)
+          test -d cache && cp -a cache _site/ || true
+          # Metadata assets: social card, app icons, manifest, robots, sitemap
+          cp og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml _site/
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
