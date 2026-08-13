@@ -1,0 +1,5 @@
+# Standard library only. No third-party packages required.
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CORS Validator — CyberBuddy</title>
+  <meta name="description" content="Assess a site's Cross-Origin Resource Sharing (CORS) posture: origin reflection, credential handling, and preflight behavior." />
+  <link rel="stylesheet" href="/CyberBuddy/css/app.css" />
+  <script src="/CyberBuddy/js/app.js" defer></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      renderHeader("/tools/cors/");
+      renderFooter();
+      detectEngine();
+      initCors();
+    });
+  </script>
+</head>
+<body>
+<main id="main" class="container" style="padding-top: 48px;">
+
+  <p class="kicker">Tool 03 · cross-origin policy</p>
+  <h1>CORS Validator</h1>
+  <p class="lead">
+    CORS is the browser's permission system for cross-origin reads. The danger isn't
+    CORS itself — it's <em>lazy</em> CORS: reflecting any origin, allowing credentials
+    from everywhere, or forgetting <code>Vary: Origin</code> so caches poison the policy.
+  </p>
+
+  <!-- Static browser-side probe (works without the local engine) -->
+  <div class="bar">
+    <div class="field">
+      <label for="url">Target URL</label>
+      <input id="url" type="url" placeholder="https://example.com/api" autocomplete="url" spellcheck="false" required />
+    </div>
+    <button id="go" type="button" class="btn btn-primary" data-label="Probe">Probe</button>
+  </div>
+  <p class="form-hint">
+    The probe runs from <em>this origin</em> (the CyberBuddy page you're on). It asks the
+    browser to fetch the target with CORS and reports what the browser allows — the same
+    view any website gets. Change where CyberBuddy is hosted and the results change, which
+    is exactly how CORS works.
+  </p>
+
+  <section id="results" class="grid-2 hidden">
+    <article class="card corner-card">
+      <div class="results-head">
+        <h2>CORS probe</h2>
+        <span id="verdict" class="risk unknown">—</span>
+      </div>
+      <p id="summary" class="summary"></p>
+      <table id="checks" class="findings" aria-label="CORS probe findings"></table>
+    </article>
+
+    <article class="card corner-card">
+      <h2 style="font-size: 1rem;">What this means</h2>
+      <ul style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.88rem; display: grid; gap: 10px;">
+        <li><strong style="color: var(--ink);">Fetch blocked</strong> — no <code>Access-Control-Allow-Origin</code> for this origin. Restrictive and safe.</li>
+        <li><strong style="color: var(--ink);">Origin reflected</strong> — the target echoes <em>any</em> caller's origin. Combine with cookies and a malicious site can read the response as a logged-in user. This is the classic CORS bug.</li>
+        <li><strong style="color: var(--ink);">Allow-origin * + credentials</strong> — invalid per spec: browsers refuse credentialed requests when the wildcard is echoed. Some sites send it anyway; we flag it.</li>
+        <li><strong style="color: var(--ink);">Vary: Origin</strong> — without it, shared caches may serve one origin's CORS headers to everyone. Easy to miss, real-world exploited.</li>
+      </ul>
+    </article>
+  </section>
+
+  <!-- Deep-dive roadmap (still looks finished by design) -->
+  <div class="section-head">
+    <h2>Coming next in this tool</h2>
+  </div>
+  <div class="roadmap">
+    <div class="roadmap-item">
+      <div class="rm-title">Preflight explorer</div>
+      <p>Issue real <code>OPTIONS</code> preflights (server-side via the local engine) and show allowed methods, headers, and max-age.</p>
+    </div>
+    <div class="roadmap-item">
+      <div class="rm-title">Cache-poisoning check</div>
+      <p>Detect missing <code>Vary: Origin</code> on resources served through shared caches / CDNs.</p>
+    </div>
+    <div class="roadmap-item">
+      <div class="rm-title">Credentials matrix</div>
+      <p>Test <code>withCredentials</code> behavior across reflect-vs-wildcard configurations.</p>
+    </div>
+    <div class="roadmap-item">
+      <div class="rm-title">Allowlist audit</div>
+      <p>Flag permissive patterns in explicit origin allowlists (subdomain wildcards, <code>null</code> origins).</p>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> You may only probe systems you own or have
+      explicit permission to assess. This page sends ordinary cross-origin requests from
+      your browser to the target — no payloads, no credentials are attached automatically.
+      CORS findings are advisory: a permissive policy is only exploitable in combination
+      with something else (usually cookies).
+    </span>
+  </div>
+
+</main>
+
+<script>
+  "use strict";
+
+  async function initCors() {
+    const $ = (id) => document.getElementById(id);
+
+    function renderChecks(checks) {
+      $("checks").innerHTML = checks.map((c) => {
+        const ev = c.evidence
+          ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>"
+          : "";
+        return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
+          "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
+          "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
+      }).join("");
+    }
+
+    async function probe(url) {
+      $("results").classList.remove("hidden");
+      $("verdict").textContent = "PROBING";
+      $("verdict").className = "risk unknown";
+      $("summary").textContent = "Fetching " + url + " with CORS from this origin…";
+
+      const checks = [];
+      const origin = window.location.origin || "null";
+      let a = { ok: false, status: 0 };
+
+      try {
+        // A plain CORS request with credentials — the sensitive case.
+        const res = await fetch(url, {
+          mode: "cors",
+          credentials: "include",
+          cache: "no-store"
+        });
+        a = { ok: true, status: res.status };
+
+        const acao = res.headers.get("access-control-allow-origin");
+        const acac = res.headers.get("access-control-allow-credentials");
+        const vary = res.headers.get("vary") || "";
+        const wildcard = acao === "*";
+        const reflected = acao === origin;
+
+        if (!acao) {
+          checks.push({
+            name: "Access-Control-Allow-Origin",
+            status: "missing",
+            detail: "No ACAO header on the response — cross-origin reads from this origin are blocked by the browser. Restrictive and safe.",
+            evidence: "ACAO: (absent)"
+          });
+        } else if (wildcard) {
+          if (acac && acac.trim().toLowerCase() === "true") {
+            checks.push({
+              name: "Access-Control-Allow-Origin",
+              status: "weak",
+              detail: "Wildcard ACAO combined with Allow-Credentials: true. Browsers refuse this for credentialed requests, but the configuration is broken and often masks deeper issues.",
+              evidence: "ACAO: *   ACAC: true"
+            });
+          } else {
+            checks.push({
+              name: "Access-Control-Allow-Origin",
+              status: "info",
+              detail: "Wildcard ACAO, no credentials. Any site can read this resource — acceptable only for fully public data.",
+              evidence: "ACAO: *"
+            });
+          }
+        } else if (reflected) {
+          if (acac && acac.trim().toLowerCase() === "true") {
+            checks.push({
+              name: "Access-Control-Allow-Origin",
+              status: "weak",
+              detail: "Origin is reflected from the request AND credentials are allowed. A malicious site can read authenticated responses as the victim. Restrict the allowlist and never reflect untrusted origins with credentials.",
+              evidence: "ACAO: " + acao + "   ACAC: true"
+            });
+          } else {
+            checks.push({
+              name: "Access-Control-Allow-Origin",
+              status: "info",
+              detail: "Origin reflected (no credentials). Confirm this is a deliberate allowlist — reflection of arbitrary origins is risky if cookies ever get involved.",
+              evidence: "ACAO: " + acao
+            });
+          }
+        } else {
+          checks.push({
+            name: "Access-Control-Allow-Origin",
+            status: "ok",
+            detail: "Fixed origin allowlist — this origin (" + origin + ") is explicitly allowed (or the value is an allowlisted origin).",
+            evidence: "ACAO: " + acao
+          });
+        }
+
+        if (acac && acac.trim().toLowerCase() === "true" && !wildcard) {
+          checks.push({
+            name: "Allow-Credentials",
+            status: "info",
+            detail: "Credentials explicitly allowed for this origin.",
+            evidence: "ACAC: true"
+          });
+        }
+
+        if (!/origin/i.test(vary)) {
+          checks.push({
+            name: "Vary: Origin",
+            status: "weak",
+            detail: "Response is missing Vary: Origin. If this resource sits behind a shared cache (CDN, proxy), one origin's CORS headers can be served to everyone — a classic cache-poisoning bug.",
+            evidence: "Vary: " + (vary || "(absent)")
+          });
+        } else {
+          checks.push({
+            name: "Vary: Origin",
+            status: "ok",
+            detail: "Vary: Origin present — cached responses will be partitioned by caller origin.",
+            evidence: "Vary: " + vary
+          });
+        }
+      } catch (err) {
+        // Blocked by the browser's CORS machinery (or network error).
+        checks.unshift({
+          name: "Fetch result",
+          status: "info",
+          detail: "The browser blocked the cross-origin read (or the request failed). CORS restrictions are working — the server sent no usable ACAO for this origin. Note: network-level failures look identical from JavaScript.",
+          evidence: "mode: cors · credentials: include"
+        });
+        $("summary").textContent =
+          "Blocked or failed: " + err.message;
+        $("verdict").textContent = "BLOCKED";
+        $("verdict").className = "risk low";
+        renderChecks(checks);
+        return;
+      }
+
+      const isWeak = checks.some((c) => c.status === "weak");
+      $("verdict").textContent = isWeak ? "REVIEW" : "OK";
+      $("verdict").className = "risk " + (isWeak ? "medium" : "low");
+      $("summary").textContent =
+        (a.ok ? "HTTP " + a.status + " fetched with CORS." : "Request completed with status " + a.status + ".") +
+        " Findings below describe how this origin (" + origin + ") is treated.";
+      renderChecks(checks);
+    }
+
+    $("go").addEventListener("click", () => {
+      const url = normalizeUrl($("url").value);
+      if (!url || !validUrl(url)) { $("url").focus(); return; }
+      $("url").value = url;
+      pushUrlParam(url);
+      probe(url);
+    });
+
+    $("url").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("go").click();
+    });
+
+    const initial = new URLSearchParams(location.search).get("url");
+    if (initial) {
+      $("url").value = normalizeUrl(initial);
+      probe(normalizeUrl(initial));
+    }
+  }
+</script>
+</body>
+</html>
