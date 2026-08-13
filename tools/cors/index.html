@@ -8,8 +8,19 @@
   <meta name="theme-color" content="#07090d" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Cpath d='M10 12h12M10 20h8'/%3E%3C/g%3E%3C/svg%3E" />
   <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <link rel="stylesheet" href="../../css/app.css" />
-  <script src="../../js/app.js?v=20260813b" defer></script>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("cb-theme") === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="../../css/app.css?v=20260813i" />
+  <script src="../../js/app.js?v=20260813i" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/cors/");
@@ -28,6 +39,7 @@
     See whether this page can read the target across origins — and whether
     the target echoes any caller, allows credentials, or forgets Vary: Origin.
   </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-CLNT-07</strong> &middot; <strong>CWE-942</strong> &mdash; permissive cross-domain policy</p>
 
   <div class="bar reveal" style="--d: .14s;">
     <div class="field">
@@ -36,6 +48,7 @@
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
+    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -46,7 +59,7 @@
         </div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
-          <span id="verdict" class="risk unknown">—</span>
+          <span id="verdict" role="status" class="risk unknown">—</span>
         </div>
       </div>
 
@@ -95,6 +108,11 @@
 <script>
   "use strict";
 
+  let cbLastData = null;
+  function copyReport() {
+    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
+  }
+
   async function initCors() {
     const $ = (id) => document.getElementById(id);
 
@@ -126,6 +144,7 @@
       setLoading($("go"), true);
 
       const engine = await apiCors(url);
+      cbLastData = engine || null;
       setSourceChip(engine || { _source: "none" });
       if (!isEngineDown(engine) && engine && (engine.checks || engine.error)) {
         const origins = (engine.origins_tested || []).join(" · ") || "engine";

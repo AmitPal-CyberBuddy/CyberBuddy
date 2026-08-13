@@ -11,15 +11,19 @@ document.documentElement.classList.add("js");
 /* ---------- Icon set ---------------------------------------------------- */
 const ICONS = {
   logo: '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="7" stroke="currentColor" stroke-width="2.2"/><path d="M8 16h4l3-7 6 14 3-7h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  frame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg>',
+  frame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path class="dashed" d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
-  cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
+  cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  linkedin: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>'
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  arrowUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  linkedin: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>',
+  medium: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.7 8.4a1 1 0 0 0-.33-.85L4.3 5.1V4.7h5.2l4 8.9 3.55-8.9H22v.4l-1.6 1.55a.5.5 0 0 0-.2.47v11.76a.5.5 0 0 0 .2.47l1.55 1.52v.4h-7.8v-.4l1.6-1.56a.5.5 0 0 0 .2-.47V8.2L11.2 18.9h-.55l-5-10.7v7.2a.7.7 0 0 0 .2.55l2.1 2.56v.4H2.6v-.4l2.1-2.56a.7.7 0 0 0 .2-.55l.03-7.2a.5.5 0 0 0-.23-.4z"/></svg>'
 };
 
-/* ---------- Site root (GitHub project pages + local) -------------------- */
+/* ---------- Site root + optional hosted API ------------------------------ */
 
 function appBase() {
   // Slice the *pathname*, never an index into the full URL.
@@ -43,16 +47,93 @@ function appBase() {
   return known ? known[1] : "";
 }
 
+// Set this to the base URL of a hosted deployment of api/ (e.g.
+// "https://cyberbuddy-api.vercel.app") to run scans with the real
+// Python engine from the GitHub Pages site instead of live relays.
+const API_BASE = "";
+
 function pagePath() {
   return (window.location.pathname || "").replace(/\/index\.html$/, "/") || "/";
 }
 
 function apiUrl(path) {
-  return appBase() + path;
+  return (API_BASE || appBase()) + path;
 }
 
 function apiHeadersInit() {
   return { cache: "no-store", headers: { "X-Requested-With": "CyberBuddy" } };
+}
+
+/* ---------- Theme (dark / light) ---------------------------------------- */
+
+const THEME_KEY = "cb-theme";
+
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme, persist) {
+  const root = document.documentElement;
+  if (theme === "light") root.setAttribute("data-theme", "light");
+  else root.removeAttribute("data-theme");
+  if (persist !== false) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* private mode */ }
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "light" ? "#eef2f7" : "#07090d");
+  const btn = document.getElementById("themeToggle");
+  if (btn) {
+    const next = theme === "light" ? "dark" : "light";
+    btn.innerHTML = ICONS[next === "dark" ? "moon" : "sun"];
+    btn.setAttribute("aria-label", "Switch to " + next + " mode");
+    btn.title = "Switch to " + next + " mode";
+    btn.classList.toggle("is-light", theme === "light");
+  }
+}
+
+function initThemeToggle() {
+  const btn = document.getElementById("themeToggle");
+  applyTheme(currentTheme(), false);
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const next = currentTheme() === "light" ? "dark" : "light";
+    applyTheme(next, true);
+    // spin the icon as feedback (respect reduced motion via CSS)
+    btn.classList.remove("spin");
+    void btn.offsetWidth;
+    btn.classList.add("spin");
+  });
+}
+
+/* ---------- Scroll chrome (header state + back-to-top) ------------------ */
+
+function initScrollChrome() {
+  const header = document.querySelector(".site-header");
+  const toTop = document.getElementById("toTop");
+  const progress = document.getElementById("scrollProgress");
+  if (!header && !toTop && !progress) return;
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY || 0;
+      if (header) header.classList.toggle("scrolled", y > 24);
+      if (toTop) toTop.classList.toggle("show", y > 640);
+      if (progress) {
+        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        progress.style.width = Math.min(100, (y / max) * 100) + "%";
+      }
+      ticking = false;
+    });
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  if (toTop) {
+    toTop.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: prefersReduced() ? "auto" : "smooth" });
+    });
+  }
+  onScroll();
 }
 
 /* ---------- Shell ------------------------------------------------------- */
@@ -60,6 +141,9 @@ function apiHeadersInit() {
 function renderHeader(current) {
   const base = appBase();
   const html =
+    '<div class="page-load-bar" aria-hidden="true"></div>' +
+    '<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>' +
+    '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>' +
     '<div class="ambient" aria-hidden="true"></div>' +
     '<a class="skip-link" href="#main">Skip to content</a>' +
     '<header class="site-header"><div class="container header-inner">' +
@@ -69,13 +153,19 @@ function renderHeader(current) {
     navLink(base, "/", "Hub", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
+    '<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch theme" title="Switch theme">' +
+    ICONS.sun + "</button>" +
     '<span class="engine-chip" id="engineChip" title="Checking scan engine…">' +
     '<span class="engine-dot" id="engineDot"></span>' +
     '<span id="engineText">engine · …</span></span>' +
-    "</div></header>";
+    "</div></header>" +
+    '<button type="button" id="toTop" class="to-top" aria-label="Back to top" title="Back to top">' +
+    ICONS.arrowUp + "</button>";
   document.body.insertAdjacentHTML("afterbegin", html);
   detectEngine();
   initAmbient();
+  initThemeToggle();
+  initScrollChrome();
 
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {
@@ -96,7 +186,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "frame",
     desc: "Load a target in a live frame. If the real UI appears, the page can be clickjacked — screenshot the result as proof.",
-    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"]
+    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC", "WSTG-CLNT-09"]
   },
   {
     href: "/tools/headers/",
@@ -104,7 +194,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "shield",
     desc: "Grade CSP, X-Frame-Options, HSTS, cookie flags and the COOP/COEP family into an A–F score with the raw header behind every finding.",
-    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"]
+    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F", "WSTG-CONF-07/12"]
   },
   {
     href: "/tools/cors/",
@@ -112,7 +202,7 @@ const TOOLS_MENU = [
     status: "live",
     icon: "cors",
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
-    tags: ["ACAO", "credentials", "Vary: Origin"]
+    tags: ["ACAO", "credentials", "Vary: Origin", "WSTG-CLNT-07"]
   }
 ];
 const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enumeration"];
@@ -159,12 +249,15 @@ function renderFooter() {
     '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
+    '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
+    ICONS.medium + "Read the blog · Medium</a>" +
     "</div>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
-    "you are responsible for having permission to test them. On GitHub Pages, header values are " +
-    "read through a public lookup so the graders can run without a Python host. Run server.py " +
-    "locally for a same-origin engine that never leaves your machine. © 2026 CyberBuddy." +
+    "you are responsible for having permission to test them. On GitHub Pages, scans run in your " +
+    "browser; configured targets are served from a GitHub Actions-built cache, and a hosted api/ " +
+    "deployment can be enabled for the full Python engine. Run server.py locally for a " +
+    "same-origin engine that never leaves your machine. © 2026 CyberBuddy." +
     "</p>" +
     "</div></footer>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -260,9 +353,11 @@ async function apiCall(path, url) {
 
 function isUsableScan(data, kind) {
   if (!data || data.error && !data.checks && !data.findings) return false;
-  if (kind === "headers") return Array.isArray(data.checks) && data.grade;
-  if (kind === "scan") return Array.isArray(data.findings);
-  if (kind === "cors") return Array.isArray(data.checks);
+  // status_code != null means the engine actually reached the target —
+  // error payloads (unreachable target) fall through to cache/live.
+  if (kind === "headers") return data.status_code != null && Array.isArray(data.checks) && data.grade;
+  if (kind === "scan") return data.status_code != null && Array.isArray(data.findings);
+  if (kind === "cors") return data.status_code != null && Array.isArray(data.checks);
   return false;
 }
 
@@ -271,6 +366,13 @@ async function apiScan(url) {
   if (isUsableScan(local, "scan")) {
     local._source = "python";
     return local;
+  }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.clickjacking && cached.clickjacking.status_code != null &&
+      isUsableScan(cached.clickjacking, "scan")) {
+    cached.clickjacking._source = "cache";
+    cached.clickjacking._cached_at = cached.generated_at || "";
+    return cached.clickjacking;
   }
   return gradeClickjackingLive(url);
 }
@@ -281,6 +383,13 @@ async function apiHeaders(url) {
     local._source = "python";
     return local;
   }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.headers && cached.headers.status_code != null &&
+      isUsableScan(cached.headers, "headers")) {
+    cached.headers._source = "cache";
+    cached.headers._cached_at = cached.generated_at || "";
+    return cached.headers;
+  }
   return gradeHeadersLive(url);
 }
 
@@ -290,7 +399,48 @@ async function apiCors(url) {
     local._source = "python";
     return local;
   }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.cors && cached.cors.status_code != null &&
+      isUsableScan(cached.cors, "cors")) {
+    cached.cors._source = "cache";
+    cached.cors._cached_at = cached.generated_at || "";
+    return cached.cors;
+  }
   return probeCorsLive(url);
+}
+
+/* ---------- Cached reports (pre-scanned reports served by Pages) ------- */
+/* When enabled (see README), tools/build_cache.py pre-scans the URLs in
+   urls.txt with the real Python engines and writes cache/<host>.json into
+   the site. Pages serves those same-origin, so configured targets get
+   full-strength results (two-origin CORS proof, server-side header reads,
+   metadata blocking) with no third-party relays. If the file is absent,
+   scans fall through to the live engines. */
+
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // prefer cache fresher than 24h
+
+async function cachedReportFor(url) {
+  let host = "";
+  try { host = new URL(url).hostname; } catch (_) { return null; }
+  let data = null;
+  try {
+    // Cached reports live on the Pages origin (GitHub Actions commits them
+    // into the site), so always use appBase() — never API_BASE.
+    const res = await fetch(appBase() + "cache/" + host + ".json", { cache: "no-store" });
+    if (!res.ok) return null;
+    data = await res.json();
+  } catch (_) { return null; }
+  const entry = (data && data.urls) ? data.urls[url] : null;
+  if (!entry) return null;
+  // Only accept entries where at least one engine actually reached the
+  // target (a full network failure means the cache job could not scan it),
+  // and skip ancient reports.
+  const reachable = [entry.clickjacking, entry.headers, entry.cors]
+    .some((r) => r && r.status_code != null);
+  if (!reachable) return null;
+  const at = new Date(entry.generated_at || 0).getTime();
+  if (!at || (Date.now() - at) > CACHE_MAX_AGE_MS) return null;
+  return entry;
 }
 
 function isEngineDown(data) {
@@ -307,7 +457,9 @@ function apiErrorMessage(data) {
 function sourceLabel(data) {
   const s = data && data._source;
   if (s === "python") return "python engine";
+  if (s === "cache") return "cached report";
   if (s === "relay") return "live lookup";
+  if (s === "cache-lookup") return "cached lookup";
   if (s === "browser") return "this browser";
   if (s === "none") return "no engine";
   return s || "live";
@@ -404,6 +556,42 @@ function countUp(el, target, suffix) {
   })(t0);
 }
 
+function initStats() {
+  const els = Array.prototype.slice.call(document.querySelectorAll("[data-count]"));
+  if (!els.length) return;
+  const pad = (n, w) => String(n).padStart(w || 0, "0");
+  const run = (el) => {
+    const target = parseInt(el.getAttribute("data-count") || "0", 10);
+    const suffix = el.getAttribute("data-suffix") || "";
+    const width = parseInt(el.getAttribute("data-pad") || "0", 10);
+    if (prefersReduced() || !("requestAnimationFrame" in window)) {
+      el.textContent = pad(target, width) + suffix;
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 900;
+    (function frame(t) {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = pad(Math.round(target * eased), width) + suffix;
+      if (p < 1) requestAnimationFrame(frame);
+    })(t0);
+  };
+  if (!("IntersectionObserver" in window)) {
+    els.forEach(run);
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        run(e.target);
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.4 });
+  els.forEach((el) => io.observe(el));
+}
+
 function initReveal() {
   const els = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
   if (!els.length) return;
@@ -430,6 +618,92 @@ function initReveal() {
 
 function exportReport() {
   window.print();
+}
+
+/* ---------- Copy report as Markdown ------------------------------------ */
+/* Builds a paste-ready Markdown summary of the last scan result — the
+   same evidence the report card shows, formatted for pentest reports.
+   Pure client-side (clipboard API + execCommand fallback); works on
+   GitHub Pages and server.py alike. */
+
+function markdownKind(data) {
+  if (!data) return "generic";
+  if (Array.isArray(data.checks) && data.grade) return "headers";
+  if (Array.isArray(data.checks) && data.origins_tested) return "cors";
+  if (Array.isArray(data.findings)) return "clickjacking";
+  return "generic";
+}
+
+function mdCell(s) {
+  return String(s == null ? "" : s).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+}
+
+function toMarkdown(data) {
+  if (!data) return "No scan data.";
+  const kind = markdownKind(data);
+  const title = kind === "headers" ? "Security Headers"
+    : kind === "cors" ? "CORS Validator"
+    : kind === "clickjacking" ? "Clickjacking Validator"
+    : "CyberBuddy";
+  const risk = (data.risk || "unknown").toUpperCase();
+  const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
+  const lines = [
+    "# CyberBuddy — " + title + " Report",
+    "",
+    "- **Target:** " + mdCell(data.url),
+    "- **Final URL:** " + mdCell(data.final_url || data.url),
+    "- **HTTP status:** " + (data.status_code != null ? data.status_code : "—"),
+    "- **Risk:** " + risk + grade,
+    "- **Source:** " + sourceLabel(data),
+    "- **Generated:** " + fmtStamp()
+  ];
+  if (data.summary) lines.push("", "## Summary", "", data.summary);
+  const rows = kind === "headers" ? (data.checks || [])
+    : kind === "cors" ? (data.checks || [])
+    : (data.findings || []);
+  if (rows.length) {
+    lines.push("", "## Findings", "", "| Check | Status | Assessment | Evidence |", "| --- | --- | --- | --- |");
+    rows.forEach((c) => {
+      lines.push("| " + mdCell(c.name) + " | " + mdCell(c.status) + " | " +
+        mdCell(c.detail) + " | " + mdCell(c.evidence) + " |");
+    });
+  }
+  lines.push("", "---", "Generated with CyberBuddy — authorized testing only.");
+  return lines.join("\n");
+}
+
+async function copyMarkdown(data, btn) {
+  const md = toMarkdown(data);
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(md);
+      ok = true;
+    }
+  } catch (_) { /* fall through */ }
+  if (!ok) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = md;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (_) { ok = false; }
+  }
+  if (btn) {
+    const original = btn.textContent;
+    btn.textContent = ok ? "Copied ✓" : "Copy failed";
+    btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove("flash", "flash-ok", "flash-err");
+    }, 1600);
+  }
+  return ok;
 }
 
 function initAmbient() {
@@ -928,7 +1202,56 @@ async function fetchText(href, ms) {
   }
 }
 
+/* ---------- Header lookup cache (dedupe + TTL) -------------------------- */
+/* Concurrent scans of the same URL (the hub suite runs all three tools at
+   once) share one lookup, and repeat scans reuse a 10-minute local cache —
+   so public relays are hit far less often and rate limits rarely bite. */
+
+const HEADER_CACHE_KEY = "cb-header-lookup-v1";
+const HEADER_CACHE_TTL = 10 * 60 * 1000;
+
+const headerLookupInFlight = new Map();
+
+function headerCacheGet(url) {
+  try {
+    const raw = localStorage.getItem(HEADER_CACHE_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    const entry = map[url];
+    if (!entry || !entry.at || !entry.value) return null;
+    if (Date.now() - entry.at > HEADER_CACHE_TTL) return null;
+    return entry.value;
+  } catch (_) { return null; }
+}
+
+function headerCachePut(url, value) {
+  try {
+    const map = JSON.parse(localStorage.getItem(HEADER_CACHE_KEY) || "{}");
+    const now = Date.now();
+    Object.keys(map).forEach((k) => {
+      if (!map[k].at || now - map[k].at > HEADER_CACHE_TTL) delete map[k];
+    });
+    map[url] = { at: now, value: value };
+    localStorage.setItem(HEADER_CACHE_KEY, JSON.stringify(map));
+  } catch (_) { /* private mode / quota — cache is best-effort */ }
+}
+
 async function lookupHeadersLive(url) {
+  const cached = headerCacheGet(url);
+  if (cached) return Object.assign({}, cached, { source: "cache-lookup" });
+  if (headerLookupInFlight.has(url)) return headerLookupInFlight.get(url);
+  const p = lookupHeadersRemote(url)
+    .then((res) => {
+      if (res) headerCachePut(url, res);
+      return res;
+    })
+    .catch(() => null)
+    .finally(() => { headerLookupInFlight.delete(url); });
+  headerLookupInFlight.set(url, p);
+  return p;
+}
+
+async function lookupHeadersRemote(url) {
   const encoded = encodeURIComponent(url);
   let host = "";
   try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
@@ -938,7 +1261,8 @@ async function lookupHeadersLive(url) {
     host ? ht + encodeURIComponent(host) : "",
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + url),
     host ? "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + host) : "",
-    "https://corsproxy.io/?url=" + encodeURIComponent(ht + url)
+    "https://corsproxy.io/?url=" + encodeURIComponent(ht + url),
+    "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(ht + url)
   ].filter(Boolean);
 
   for (let i = 0; i < probes.length; i++) {

@@ -346,11 +346,14 @@ def assess_permissions_policy(value: str | None) -> Finding:
     extra = []
     if "display-capture" in lower:
         extra.append("display-capture mentioned")
+    evidence = value[:250]
+    if extra:
+        evidence += "; " + ", ".join(extra)
     return Finding(
         name="Permissions-Policy",
         status="info",
         detail="Header present. Useful for feature lockdown, not a clickjacking primary control.",
-        evidence=value[:250] + ((("; " + ", ".join(extra)) if extra else ""),
+        evidence=evidence,
     )
 
 

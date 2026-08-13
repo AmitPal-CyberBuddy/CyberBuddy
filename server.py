@@ -43,8 +43,8 @@ PORT = 8080
 ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
 
-ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js"}
-STATIC_PREFIXES = ("tools/", "css/", "js/")
+ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json"}
+STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/")
 ROOT_STATIC = frozenset({"index.html", "404.html"})
 # GitHub Pages project URL is /CyberBuddy/… — accept the same prefix locally
 # so a hosted-style path does not 404 when someone points server.py at it.
@@ -276,6 +276,7 @@ class Handler(BaseHTTPRequestHandler):
             ".html": "text/html; charset=utf-8",
             ".css": "text/css; charset=utf-8",
             ".js": "text/javascript; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
         }.get(path.suffix, "application/octet-stream")
         # Use streaming for potentially large files
         self._send_file_streaming(200, path, ctype)
@@ -349,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
             self._static(rel)
             return
 
-        if path.startswith("/css/") or path.startswith("/js/"):
+        if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/cache/"):
             self._static(path.lstrip("/"))
             return
 
