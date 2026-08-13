@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CyberBuddy — Browser Security Checks</title>
+  <meta name="description" content="CyberBuddy: a suite of browser security checks — clickjacking validation, security headers, and CORS. One hub, shared tooling." />
+  <link rel="stylesheet" href="/CyberBuddy/css/app.css" />
+  <script src="/CyberBuddy/js/app.js" defer></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      renderHeader("/");
+      renderFooter();
+      detectEngine();
+    });
+  </script>
+</head>
+<body>
+<main id="main" class="container">
+
+  <!-- ================= Hero ================= -->
+  <section style="padding: 72px 0 40px;">
+    <p class="kicker">Browser security · observation deck</p>
+    <h1>One hub for the checks your site<br />should be passing anyway.</h1>
+    <p class="lead" style="margin-top: 14px;">
+      CyberBuddy runs read-only browser security checks against URLs you provide —
+      clickjacking protections, security headers, and CORS posture. Pick a tool below.
+      Scans run locally; nothing leaves your machine.
+    </p>
+
+    <div class="grid-2" style="margin-top: 34px; grid-template-columns: 1.2fr 1fr;">
+      <div class="card corner-card">
+        <h2 class="small" style="font-family: var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);">Sample scan · example.com</h2>
+        <div class="console" aria-hidden="true">
+          <div><span class="c-prompt">$</span> cyberbuddy scan https://example.com</div>
+          <div class="c-dim">─ framing protections ──────────────────────</div>
+          <div><span class="c-ok">[protected]</span> CSP frame-ancestors &nbsp;=&nbsp; 'none'</div>
+          <div><span class="c-ok">[protected]</span> X-Frame-Options &nbsp;&nbsp;&nbsp;=&nbsp; DENY</div>
+          <div><span class="c-red">[missing]</span>&nbsp; Strict-Transport-Security</div>
+          <div><span class="c-amber">[weak]</span>&nbsp;&nbsp; Referrer-Policy &nbsp;&nbsp;=&nbsp; default leaks</div>
+          <div class="c-dim">──────────────────────────────────────────</div>
+          <div>risk: <span class="c-red">MEDIUM</span> &nbsp; grade: <span class="c-amber">C</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="mt-0" style="font-size: 1rem;">Why it exists</h2>
+        <ul style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.9rem; display: grid; gap: 10px;">
+          <li>Clickjacking is still the silent frame-job of the web — one missing header and your login page can be trapped under a decoy.</li>
+          <li>Headers like <code>X-Frame-Options</code>, <code>CSP</code> and <code>HSTS</code> are boring, tiny, and absolutely load-bearing.</li>
+          <li>Tool sprawl is real: CyberBuddy puts the checks you actually run in one place, with one look.</li>
+        </ul>
+        <div class="disclaimer mt-0" style="margin-top: 18px;">
+          <span class="disclaimer-mark">! !</span>
+          <span><strong>Authorized testing only.</strong> Point CyberBuddy at systems you own or have written permission to assess. All checks are read-only GET requests; the iframe test is visual only and can't read cross-origin content.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Tools ================= -->
+  <div class="section-head">
+    <h2>Tools</h2>
+    <span class="count">03 deployed · more on the way</span>
+  </div>
+
+  <section class="tool-grid" aria-label="Available tools">
+    <!-- Clickjacking -->
+    <a class="tool-card card corner-card" href="/CyberBuddy/tools/clickjacking/">
+      <div class="tool-card-top">
+        <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg></span>
+        <span class="status-led">live</span>
+      </div>
+      <div>
+        <h3>Clickjacking Validator</h3>
+        <p class="tool-card-desc">
+          Frame your target in a live iframe and see for yourself whether it renders.
+          With the local engine: header-level scoring of X-Frame-Options and CSP frame-ancestors,
+          plus a shareable PoC overlay.
+        </p>
+      </div>
+      <div class="tool-card-tags">
+        <span class="tool-tag">X-Frame-Options</span>
+        <span class="tool-tag">frame-ancestors</span>
+        <span class="tool-tag">iframe PoC</span>
+      </div>
+      <span class="tool-card-open">Open tool <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:0.8em;height:0.8em;vertical-align:-0.1em;"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+
+    <!-- Headers -->
+    <a class="tool-card card corner-card" href="/CyberBuddy/tools/headers/">
+      <div class="tool-card-top">
+        <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <span class="status-led beta">beta</span>
+      </div>
+      <div>
+        <h3>Security Headers</h3>
+        <p class="tool-card-desc">
+          Pull a URL's response headers and grade the missing and weak ones:
+          CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy,
+          Permissions-Policy and the COOP / COEP / CORP family.
+        </p>
+      </div>
+      <div class="tool-card-tags">
+        <span class="tool-tag">CSP</span>
+        <span class="tool-tag">HSTS</span>
+        <span class="tool-tag">COOP/COEP</span>
+        <span class="tool-tag">grade A–F</span>
+      </div>
+      <span class="tool-card-open">Open tool <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:0.8em;height:0.8em;vertical-align:-0.1em;"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+
+    <!-- CORS -->
+    <a class="tool-card card corner-card" href="/CyberBuddy/tools/cors/">
+      <div class="tool-card-top">
+        <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg></span>
+        <span class="status-led beta">beta</span>
+      </div>
+      <div>
+        <h3>CORS Validator</h3>
+        <p class="tool-card-desc">
+          Evaluate a site's CORS posture: reflect on <code>Access-Control-Allow-Origin</code>,
+          credential handling, and <code>Vary: Origin</code>. Basic checks run now;
+          a full preflight explorer lands next.
+        </p>
+      </div>
+      <div class="tool-card-tags">
+        <span class="tool-tag">ACAO</span>
+        <span class="tool-tag">credentials</span>
+        <span class="tool-tag">Vary: Origin</span>
+      </div>
+      <span class="tool-card-open">Open tool <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:0.8em;height:0.8em;vertical-align:-0.1em;"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+
+    <!-- Placeholder -->
+    <div class="tool-card card tool-card--ghost" aria-hidden="true">
+      <div class="tool-card-top">
+        <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></span>
+        <span class="status-led soon">soon</span>
+      </div>
+      <div>
+        <h3 style="color: var(--faint);">Your tool here</h3>
+        <p class="tool-card-desc">
+          The structure is ready: drop a page in <code>tools/&lt;name&gt;/index.html</code>,
+          reuse <code>css/app.css</code> and <code>js/app.js</code>, and it appears in the nav.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= How it works ================= -->
+  <div class="section-head">
+    <h2>How it works</h2>
+  </div>
+  <div class="roadmap" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+    <div class="roadmap-item">
+      <div class="rm-title">01 · pick a target</div>
+      <p>Enter any <code>http(s)</code> URL. If the local scan engine is running, checks run server-side; otherwise pages fall back to static mode.</p>
+    </div>
+    <div class="roadmap-item">
+      <div class="rm-title">02 · scan locally</div>
+      <p>Header checks run through <code>server.py</code> on your machine. Nothing is uploaded, logged remotely, or shared — the API is localhost-only by design.</p>
+    </div>
+    <div class="roadmap-item">
+      <div class="rm-title">03 · see the evidence</div>
+      <p>Every finding shows the actual header value it was based on. Clickjacking additionally shows a live iframe test and a shareable PoC overlay.</p>
+    </div>
+  </div>
+
+  <!-- ================= Disclaimer (page-level) ================= -->
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized-testing disclaimer.</strong> CyberBuddy is a security-testing aid.
+      You may only scan systems you own or are explicitly authorized to test.
+      The clickjacking tool loads target pages in an iframe — some sites block that by design,
+      which is itself a finding. Results are advisory and never a guarantee of safety.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

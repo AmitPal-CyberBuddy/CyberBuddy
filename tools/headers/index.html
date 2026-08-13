@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Security Headers — CyberBuddy</title>
+  <meta name="description" content="Grade a URL's security headers: CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP." />
+  <link rel="stylesheet" href="/CyberBuddy/css/app.css" />
+  <script src="/CyberBuddy/js/app.js" defer></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      renderHeader("/tools/headers/");
+      renderFooter();
+      detectEngine();
+      initHeaders();
+    });
+  </script>
+</head>
+<body>
+<main id="main" class="container" style="padding-top: 48px;">
+
+  <p class="kicker">Tool 02 · response hardening</p>
+  <h1>Security Headers</h1>
+  <p class="lead">
+    Pull the response headers of a URL and grade the missing and weak ones:
+    CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy,
+    Permissions-Policy and the COOP / COEP / CORP family.
+    Every finding shows the raw header value it was based on.
+  </p>
+
+  <div class="bar">
+    <div class="field">
+      <label for="url">Target URL</label>
+      <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
+    </div>
+    <button id="go" type="button" class="btn btn-primary" data-label="Scan">Scan</button>
+  </div>
+  <p class="form-hint">
+    Header reads are done server-side by <code>server.py</code> — browsers can't read
+    cross-origin response headers on their own. Scan only systems you own or are authorized to assess.
+  </p>
+
+  <section id="results" class="hidden">
+    <div class="results-head" style="margin-top: 24px;">
+      <h2>Header report</h2>
+      <span id="grade" class="grade f">—</span>
+      <span id="risk" class="risk unknown">—</span>
+      <span id="score" class="text-muted small" style="font-family: var(--font-mono);">0/100</span>
+    </div>
+    <p id="summary" class="summary"></p>
+
+    <div class="grid-2">
+      <article class="card corner-card">
+        <h2 style="font-size: 1rem;">Findings</h2>
+        <table id="checks" class="findings" aria-label="Header checks"></table>
+      </article>
+      <article class="card corner-card">
+        <h2 style="font-size: 1rem;">Raw headers</h2>
+        <pre id="headers" class="raw-headers">{}</pre>
+        <p class="note" style="margin-top: 12px;">
+          Only the headers this tool inspects are shown. Non-standard or duplicated
+          headers can hide issues — check with <code>curl -I</code> for the full picture.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <div id="staticNotice" class="notice hidden">
+    <h3>Header checks need the local engine</h3>
+    <p>
+      The scan API isn't reachable, so this page can't fetch the target's headers —
+      browsers block cross-origin header reads by design. Two ways to get full reports:
+    </p>
+    <code class="cmd">python3 server.py</code>
+    <p>then open <code>http://127.0.0.1:8080/tools/headers/</code>, or use the engine directly:</p>
+    <code class="cmd">python3 security_headers.py https://example.com</code>
+  </div>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> You may only scan systems you own or have
+      explicit permission to assess. Headers are fetched with a plain GET — no exploits,
+      no payloads — but a request to a system you don't control is still a request you
+      are accountable for. Results are advisory: headers are necessary, not sufficient,
+      for security.
+    </span>
+  </div>
+
+</main>
+
+<script>
+  "use strict";
+
+  async function initHeaders() {
+    const $ = (id) => document.getElementById(id);
+
+    function render(data) {
+      $("results").classList.remove("hidden");
+      const grade = (data.grade || "F").toUpperCase();
+      $("grade").textContent = grade;
+      $("grade").className = "grade " + gradeFor(data.score ?? 0);
+      $("risk").textContent = (data.risk || "unknown").toUpperCase();
+      $("risk").className = "risk " + (data.risk || "unknown");
+      $("score").textContent = (data.score ?? 0) + "/100";
+      $("summary").textContent = data.summary || "";
+      $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
+
+      $("checks").innerHTML = (data.checks || []).map((c) => {
+        const ev = c.evidence
+          ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>"
+          : "";
+        return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
+          "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
+          "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
+      }).join("");
+    }
+
+    async function scan(url) {
+      const data = await apiHeaders(url);
+      if (!data) {
+        $("staticNotice").classList.remove("hidden");
+        $("results").classList.add("hidden");
+        return;
+      }
+      $("staticNotice").classList.add("hidden");
+      render(data);
+    }
+
+    $("go").addEventListener("click", () => {
+      const url = normalizeUrl($("url").value);
+      if (!url || !validUrl(url)) { $("url").focus(); return; }
+      $("url").value = url;
+      pushUrlParam(url);
+      scan(url);
+    });
+
+    $("url").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("go").click();
+    });
+
+    const initial = new URLSearchParams(location.search).get("url");
+    if (initial) {
+      $("url").value = normalizeUrl(initial);
+      scan(normalizeUrl(initial));
+    }
+  }
+</script>
+</body>
+</html>
