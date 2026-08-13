@@ -1,0 +1,4 @@
+Contact: mailto:amitpal.secure@gmail.com
+Expires: 2027-08-14T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://amitpal-cyberbuddy.github.io/CyberBuddy/.well-known/security.txt

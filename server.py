@@ -43,9 +43,13 @@ PORT = 8080
 ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
 
-ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json"}
-STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/")
-ROOT_STATIC = frozenset({"index.html", "404.html"})
+ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json", ".png", ".xml", ".webmanifest", ".txt"}
+STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/")
+ROOT_STATIC = frozenset({
+    "index.html", "404.html",
+    "robots.txt", "sitemap.xml", "manifest.webmanifest",
+    "og-cyberbuddy.png", "icon-192.png", "icon-512.png",
+})
 # GitHub Pages project URL is /CyberBuddy/… — accept the same prefix locally
 # so a hosted-style path does not 404 when someone points server.py at it.
 MOUNT_PREFIXES = ("/CyberBuddy",)
@@ -277,6 +281,10 @@ class Handler(BaseHTTPRequestHandler):
             ".css": "text/css; charset=utf-8",
             ".js": "text/javascript; charset=utf-8",
             ".json": "application/json; charset=utf-8",
+            ".png": "image/png",
+            ".xml": "application/xml; charset=utf-8",
+            ".webmanifest": "application/manifest+json; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
         }.get(path.suffix, "application/octet-stream")
         # Use streaming for potentially large files
         self._send_file_streaming(200, path, ctype)
@@ -352,6 +360,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/cache/"):
             self._static(path.lstrip("/"))
+            return
+
+        if path.startswith("/.well-known/"):
+            self._static(path.lstrip("/"))
+            return
+
+        # Root-level static assets (robots.txt, sitemap.xml, manifest, icons, OG image)
+        rel = path.lstrip("/")
+        if rel in ROOT_STATIC:
+            self._static(rel)
             return
 
         self._not_found()

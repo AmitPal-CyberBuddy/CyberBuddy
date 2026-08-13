@@ -18,5 +18,28 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Clickjacking Validator",
+      "short_name": "Clickjacking",
+      "description": "Live iframe frame-test and framing-header score",
+      "url": "/CyberBuddy/tools/clickjacking/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Security Headers",
+      "short_name": "Headers",
+      "description": "Grade CSP, HSTS, COOP/COEP and cookie flags — A–F",
+      "url": "/CyberBuddy/tools/headers/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "CORS Validator",
+      "short_name": "CORS",
+      "description": "Origin reflection, credentials, and Vary: Origin",
+      "url": "/CyberBuddy/tools/cors/",
+      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+    }
   ]
 }

@@ -6,12 +6,16 @@
   <title>Page not found — CyberBuddy</title>
   <meta name="robots" content="noindex" />
   <meta name="theme-color" content="#07090d" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <script>
     (function () {
       try {
-        if (localStorage.getItem("cb-theme") === "light") {
-          document.documentElement.setAttribute("data-theme", "light");
-        }
+        var s = localStorage.getItem("cb-theme");
+        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
+        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
       } catch (_) {}
       var path = location.pathname || "/";
       var next = path.replace(/\/js\/app\.js(?=\/)/, "");

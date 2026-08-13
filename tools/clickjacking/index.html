@@ -6,6 +6,7 @@
   <title>Clickjacking Validator — CyberBuddy</title>
   <meta name="description" content="Live clickjacking proof: frame a target and screenshot the result." />
   <meta name="theme-color" content="#07090d" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/" />
   <meta property="og:title" content="Clickjacking Validator — CyberBuddy" />
   <meta property="og:description" content="Live clickjacking proof: frame a target and screenshot the result." />
   <meta property="og:type" content="website" />
@@ -13,6 +14,7 @@
   <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Clickjacking Validator — CyberBuddy" />
   <meta name="twitter:description" content="Live clickjacking proof: frame a target and screenshot the result." />
@@ -34,8 +36,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260813l" />
-  <script src="../../js/app.js?v=20260813l" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814a" />
+  <script src="../../js/app.js?v=20260814a" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/clickjacking/");
@@ -223,6 +225,7 @@
       if (!url || !validUrl(url)) { $("url").focus(); return; }
       $("url").value = url;
       pushUrlParam(url);
+      addRecentScan(url);
       scan(url);
     });
 
