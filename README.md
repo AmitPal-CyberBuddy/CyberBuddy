@@ -49,7 +49,7 @@ possible (browsers can't read cross-origin response headers on their own).
 ```
 index.html                      # hub (includes #methodology scoring notes)
 404.html                        # hosted 404 + repair for old tool URLs
-methodology/index.html          # full methodology page (local server.py)
+methodology/index.html          # full methodology page (also published to Pages)
 css/app.css                     # shared design system
 js/app.js                       # shared helpers (nav, footer, icons, API)
 tools/
@@ -124,11 +124,13 @@ layers make the hosted site as close to `server.py` as possible:
 
    - **Metadata assets:** the workflow also copies `og-cyberbuddy.png`,
      `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `robots.txt`,
-     `sitemap.xml`, and `.well-known/security.txt` into `_site/`. Use
+     `sitemap.xml`, `humans.txt`, `llms.txt`, the `methodology/` page, and
+     `.well-known/security.txt` into `_site/`. Use
      `test -f "$f" && cp "$f" _site/ || true` for each file so the build
      never fails if an asset is temporarily missing. Also add
      `test -d .well-known && cp -a .well-known _site/ || true` for the
-     security contact file.
+     security contact file and `test -d methodology && cp -a methodology _site/ || true`
+     for the full scoring page.
 
    The UI prefers the cache over the public lookups (fresh within 48h) and
    marks reports `via cached report`. The lookup path is `appBase() + "/cache/"`

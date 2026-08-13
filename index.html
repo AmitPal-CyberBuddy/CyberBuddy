@@ -49,7 +49,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="css/app.css?v=20260814b" />
+  <link rel="stylesheet" href="css/app.css?v=20260814c" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -72,12 +72,13 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260814b" defer></script>
+  <script src="js/app.js?v=20260814c" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/");
       renderFooter();
       renderToolCards();
+      renderBlog();
       initReveal();
       initStats();
       initSuite();
@@ -113,7 +114,7 @@
       <div id="suggestedTargets" class="suggested-targets" aria-label="Demo targets">
         <span class="recent-label">Try:</span>
         <button type="button" class="recent-chip" data-url="https://example.com">example.com <span class="chip-hint">cached</span></button>
-        <button type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site</button>
+        <button id="chipThisSite" type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site</button>
       </div>
       <div id="recentScans" class="recent-scans hidden" aria-label="Recent scans"></div>
       <div id="suiteToolbar" class="suite-toolbar hidden">
@@ -292,9 +293,9 @@
     <div class="blog-feature-body">
       <h3>My security write-ups — web, API, mobile and beyond</h3>
       <p>
-        I write about the vulnerabilities I find, the techniques behind
-        them, and the methodology this suite automates — from request
-        smuggling to client-side crypto, and everything in between.
+        I write about cybersecurity in the broad — the vulnerabilities I find
+        in the wild, the techniques behind them, and hands-on methodology for
+        web, API, and mobile testing. New write-ups land here as they publish.
       </p>
       <div class="blog-profile-meta">
         <span><strong>amitpxl</strong> · writer on Medium</span>
@@ -310,31 +311,7 @@
     </div>
   </div>
 
-  <div class="blog-grid">
-    <a class="blog-post reveal" style="--d: .12s;" href="https://amitpxl.medium.com/http-request-smuggling-vs-http-request-pipelining-why-theyre-often-confused-44ffe6e528eb" target="_blank" rel="noopener noreferrer">
-      <div class="blog-post-tags">
-        <span class="blog-badge">Newest</span>
-        <span class="tool-tag">HTTP</span><span class="tool-tag">Smuggling</span><span class="tool-tag">Burp</span>
-      </div>
-      <h3>HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused</h3>
-      <p class="blog-excerpt">Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.</p>
-      <div class="blog-post-foot">
-        <span class="blog-date">Jun 19, 2026</span>
-        <span class="blog-open">Read on Medium <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-      </div>
-    </a>
-    <a class="blog-post reveal" style="--d: .19s;" href="https://amitpxl.medium.com/how-i-broke-encrypted-requests-by-reading-frontend-javascript-b016c5b9078d" target="_blank" rel="noopener noreferrer">
-      <div class="blog-post-tags">
-        <span class="tool-tag">Client-side</span><span class="tool-tag">Crypto</span><span class="tool-tag">JS analysis</span>
-      </div>
-      <h3>How I Broke Client-Side Encryption By Frontend JavaScript Analysis</h3>
-      <p class="blog-excerpt">A walkthrough of finding hardcoded AES keys in frontend JavaScript and decrypting protected API traffic outside the browser.</p>
-      <div class="blog-post-foot">
-        <span class="blog-date">May 27, 2026</span>
-        <span class="blog-open">Read on Medium <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-      </div>
-    </a>
-  </div>
+  <div class="blog-grid" id="blogGrid"></div>
 
   <div class="blog-more reveal" style="--d: .24s;">
     <a class="btn btn-primary" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">

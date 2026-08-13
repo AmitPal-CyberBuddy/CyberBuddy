@@ -281,6 +281,47 @@ function renderFooter() {
   document.body.insertAdjacentHTML("beforeend", html);
 }
 
+/* ---------- Blog (data-driven) ------------------------------------------ */
+/* Add a post to BLOG_POSTS and it appears in the hub's "From the blog" grid —
+   no HTML edits needed as new write-ups publish. */
+
+const BLOG_POSTS = [
+  {
+    href: "https://amitpxl.medium.com/http-request-smuggling-vs-http-request-pipelining-why-theyre-often-confused-44ffe6e528eb",
+    badge: "Newest",
+    tags: ["HTTP", "Smuggling", "Burp"],
+    title: "HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused",
+    excerpt: "Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.",
+    date: "Jun 19, 2026"
+  },
+  {
+    href: "https://amitpxl.medium.com/how-i-broke-encrypted-requests-by-reading-frontend-javascript-b016c5b9078d",
+    tags: ["Client-side", "Crypto", "JS analysis"],
+    title: "How I Broke Client-Side Encryption By Frontend JavaScript Analysis",
+    excerpt: "A walkthrough of finding hardcoded AES keys in frontend JavaScript and decrypting protected API traffic outside the browser.",
+    date: "May 27, 2026"
+  }
+];
+
+function renderBlog() {
+  const grid = document.getElementById("blogGrid");
+  if (!grid) return;
+  const readIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  grid.innerHTML = BLOG_POSTS.map((p, i) => {
+    const badge = p.badge ? '<span class="blog-badge">' + esc(p.badge) + "</span>" : "";
+    const tags = (p.tags || []).map((t) => '<span class="tool-tag">' + esc(t) + "</span>").join("");
+    return '<a class="blog-post reveal" style="--d: ' + (0.12 + i * 0.07) + 's" href="' + esc(p.href) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      '<div class="blog-post-tags">' + badge + tags + "</div>" +
+      "<h3>" + esc(p.title) + "</h3>" +
+      '<p class="blog-excerpt">' + esc(p.excerpt) + "</p>" +
+      '<div class="blog-post-foot">' +
+      '<span class="blog-date">' + esc(p.date) + "</span>" +
+      '<span class="blog-open">Read on Medium ' + readIcon + "</span>" +
+      "</div></a>";
+  }).join("");
+}
+
 function renderToolCards() {
   const grid = document.getElementById("toolGrid");
   if (!grid) return;
@@ -346,10 +387,10 @@ async function detectEngine() {
   } catch (_) { /* fall through to live */ }
 
   window.__cbEngine = { mode: "live" };
-  chip.title = "Live mode — graders run in this browser (GitHub Pages)";
+  chip.title = "Live mode — graders run in this browser";
   chip.classList.add("is-live");
   dot.classList.add("on", "live");
-  text.textContent = "live · github";
+  text.textContent = "live · browser";
   return { online: false, reason: "live" };
 }
 
@@ -372,11 +413,41 @@ async function apiCall(path, url) {
 function isUsableScan(data, kind) {
   if (!data || data.error && !data.checks && !data.findings) return false;
   // status_code != null means the engine actually reached the target —
-  // error payloads (unreachable target) fall through to cache/live.
+  // error payloads (unreachable target) are handled by isUnreachable below.
   if (kind === "headers") return data.status_code != null && Array.isArray(data.checks) && data.grade;
   if (kind === "scan") return data.status_code != null && Array.isArray(data.findings);
   if (kind === "cors") return data.status_code != null && Array.isArray(data.checks);
   return false;
+}
+
+// A live engine (Python) that answered us but could not reach the *target*
+// returns status_code: null plus a "request" check in status "error"
+// (DNS failure, connection refused, or a timeout). That is a genuinely
+// different outcome from "no engine / relay blocked" — surface it as
+// "target not reachable" instead of silently falling through to a relay
+// that cannot tell the difference either.
+function isUnreachable(data, listKey) {
+  if (!data || data.status_code != null) return false;
+  const list = data[listKey];
+  if (!Array.isArray(list) || !list.length) return false;
+  const err = list.find((c) => c && c.status === "error");
+  if (!err) return false;
+  // A policy refusal ("blocked scan target: …") is a guard, not a dead host.
+  return !/blocked scan target/i.test(err.detail || "");
+}
+
+function markUnreachable(data, source) {
+  data._source = source || data._source || "python";
+  data._unreachable = true;
+  return data;
+}
+
+// Human-readable reason for an unreachable target, from the engine's own
+// error text (e.g. "Request failed: <urlopen error timed out>").
+function unreachableDetail(data) {
+  const list = (data && (data.checks || data.findings)) || [];
+  const err = list.find((c) => c && c.status === "error");
+  return (err && err.detail) || (data && data.summary) || "No response received.";
 }
 
 async function apiScan(url) {
@@ -385,6 +456,7 @@ async function apiScan(url) {
     local._source = "python";
     return local;
   }
+  if (isUnreachable(local, "findings")) return markUnreachable(local, "python");
   const cached = await cachedReportFor(url);
   if (cached && cached.clickjacking && cached.clickjacking.status_code != null &&
       isUsableScan(cached.clickjacking, "scan")) {
@@ -401,6 +473,7 @@ async function apiHeaders(url) {
     local._source = "python";
     return local;
   }
+  if (isUnreachable(local, "checks")) return markUnreachable(local, "python");
   const cached = await cachedReportFor(url);
   if (cached && cached.headers && cached.headers.status_code != null &&
       isUsableScan(cached.headers, "headers")) {
@@ -417,6 +490,7 @@ async function apiCors(url) {
     local._source = "python";
     return local;
   }
+  if (isUnreachable(local, "checks")) return markUnreachable(local, "python");
   const cached = await cachedReportFor(url);
   if (cached && cached.cors && cached.cors.status_code != null &&
       isUsableScan(cached.cors, "cors")) {
@@ -1166,37 +1240,13 @@ function scoreClickjacking(findings) {
 
 function gradeClickjackingFromMap(url, status, finalUrl, headers, source) {
   headers = headers || {};
+  // Clickjacking is specifically about framing — keep the findings to the two
+  // framing controls, mirroring the Python engine. (Transport, cookies and
+  // Permissions-Policy live in the Security Headers tool.)
   const findings = [
-    (function () {
-      try {
-        if (new URL(finalUrl || url).protocol === "https:") {
-          return { name: "Transport", status: "info", detail: "HTTPS in use. Framing headers must still be set on every sensitive response.", evidence: "" };
-        }
-      } catch (_) { /* ignore */ }
-      return { name: "Transport", status: "weak", detail: "HTTP URL. Headers can be stripped or injected on the network. Prefer HTTPS.", evidence: "" };
-    }()),
     assessXfo(headers["x-frame-options"]),
     assessFrameAncestors(headers["content-security-policy"])
   ];
-  if (headers["content-security-policy-report-only"]) {
-    const d = parseCsp(headers["content-security-policy-report-only"]);
-    findings.push({
-      name: d["frame-ancestors"] ? "CSP-Report-Only frame-ancestors" : "CSP-Report-Only",
-      status: "info",
-      detail: d["frame-ancestors"]
-        ? "frame-ancestors exists only on Content-Security-Policy-Report-Only and does not block framing."
-        : "Report-Only CSP is present but does not enforce framing restrictions.",
-      evidence: headers["content-security-policy-report-only"].slice(0, 300)
-    });
-  }
-  findings.push({
-    name: "Permissions-Policy",
-    status: "info",
-    detail: headers["permissions-policy"] || headers["feature-policy"]
-      ? "Header present. Useful for feature lockdown, not a clickjacking primary control."
-      : "No Permissions-Policy header. Optional extra hardening (not a substitute for frame-ancestors).",
-    evidence: (headers["permissions-policy"] || headers["feature-policy"] || "").slice(0, 250)
-  });
   const scored = scoreClickjacking(findings);
   return {
     url: url,
@@ -1353,9 +1403,9 @@ async function gradeHeadersLive(url) {
   if (!looked) {
     return {
       url: url, final_url: url, status_code: null,
-      checks: [check("request", "error", "Could not read response headers from this hosted page. The Python engine is offline and the live lookup did not return headers.", "", 0)],
+      checks: [check("request", "error", "Could not read response headers from this hosted page. The target may be unreachable, or the Python engine is offline and the live lookup returned nothing.", "", 0)],
       score: 0, grade: "F", risk: "unknown",
-      summary: "No header data. Run python3 server.py for a same-origin scan, or retry — the public lookup may be rate-limited.",
+      summary: "No header data. The target may be unreachable, the public lookup may be rate-limited, or its headers are blocked. Run python3 server.py for a same-origin scan, or retry.",
       headers: {}, _source: "none"
     };
   }
@@ -1513,6 +1563,14 @@ function suiteCard(title, data, listKey, href) {
     return '<article class="card suite-card"><p class="card-title">' + esc(title) +
       '</p><span class="risk unknown">UNAVAILABLE</span><p class="verdict-text">No result.</p></article>';
   }
+  if (data._unreachable) {
+    return '<article class="card suite-card">' +
+      '<div class="suite-card-top"><p class="card-title">' + esc(title) + '</p>' +
+      '<span class="risk unreachable">UNREACHABLE</span></div>' +
+      '<p class="verdict-text">Target did not respond — ' + esc(unreachableDetail(data)) + '</p>' +
+      '<p class="suite-src">via ' + esc(sourceLabel(data)) + '</p>' +
+      '<a class="tool-card-open" href="' + href + '">Open full report ' + ICONS.chevron + '</a></article>';
+  }
   const risk = (data.risk || "unknown").toLowerCase();
   const grade = data.grade ? '<span class="grade ' + gradeFor(data.score) + '">' + esc(data.grade) + "</span>" : "";
   const items = (data[listKey] || []).slice(0, 3).map((c) =>
@@ -1619,6 +1677,10 @@ function renderRecentScans() {
 function initSuggestedTargets() {
   const wrap = document.getElementById("suggestedTargets");
   if (!wrap) return;
+  // Point the "this site" chip at wherever CyberBuddy is actually hosted
+  // (GitHub Pages vs. a local server.py), not a hard-coded Pages URL.
+  const selfChip = document.getElementById("chipThisSite");
+  if (selfChip) selfChip.setAttribute("data-url", window.location.origin + appBase() + "/");
   wrap.querySelectorAll("[data-url]").forEach((chip) => {
     chip.addEventListener("click", () => {
       const url = chip.getAttribute("data-url");

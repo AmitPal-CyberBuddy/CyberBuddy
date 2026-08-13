@@ -44,8 +44,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814b" />
-  <script src="../../js/app.js?v=20260814b" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
+  <script src="../../js/app.js?v=20260814c" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/headers/");
@@ -211,12 +211,26 @@
       setLoading($("go"), true);
       const data = await apiHeaders(url);
       setLoading($("go"), false);
-      if (isEngineDown(data) || (data && data._source === "none")) {
+      if (data && data._unreachable) {
         $("staticNotice").classList.remove("hidden");
+        $("staticNotice").innerHTML =
+          "<h3>Target not reachable</h3>" +
+          "<p>CyberBuddy's engine got no response from this target — the host may be " +
+          "down, timing out, or refusing connections. Detail: " +
+          "<code>" + esc(unreachableDetail(data)) + "</code></p>";
+        render(data);
+        return;
+      }
+      if (isEngineDown(data) || (data && data._source === "none")) {
         if (data && data.checks) {
           $("staticNotice").classList.add("hidden");
           render(data);
         } else {
+          $("staticNotice").innerHTML =
+            "<h3>Could not read headers</h3>" +
+            "<p>The live lookup did not return header data for this target. Run " +
+            "<code>python3 server.py</code> locally for a same-origin scan, then retry.</p>";
+          $("staticNotice").classList.remove("hidden");
           $("results").classList.add("hidden");
         }
         return;

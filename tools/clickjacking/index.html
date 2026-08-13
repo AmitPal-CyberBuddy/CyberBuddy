@@ -44,8 +44,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814b" />
-  <script src="../../js/app.js?v=20260814b" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
+  <script src="../../js/app.js?v=20260814c" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/clickjacking/");
@@ -73,7 +73,7 @@
       <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Validate</button>
-    <button id="togglePoc" type="button" class="btn btn-ghost">Hide PoC overlay</button>
+    <button id="togglePoc" type="button" class="btn btn-ghost">Show PoC overlay</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
     <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
     <button id="copyJson" type="button" class="btn btn-ghost" onclick="copyJson()">Copy JSON</button>
@@ -113,15 +113,16 @@
 
       <div id="verdict" role="status" aria-live="polite" class="verdict-banner unknown">
         <div class="verdict-main">
+          <p id="protection" class="protection-line">Run a scan to assess clickjacking protection.</p>
           <p id="summary" class="verdict-text">If the site UI is visible in the frame, treat it as clickjackable.</p>
         </div>
       </div>
 
       <div class="poc-grid">
         <article class="card inset-card poc-frame-card">
-          <h3 class="card-title">Live frame test</h3>
-          <p class="note">A rendered target means the page can be framed. A blank pane usually means it is blocked. The red badge is a decoy overlay (clicks pass through).</p>
-          <div id="stage" class="stage poc">
+          <h3 class="card-title">Live frame test · visual confirmation</h3>
+          <p class="note">A rendered target means the page can be framed. A blank pane usually means it is blocked. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
+          <div id="stage" class="stage">
             <div class="overlay">CLICK HERE — decoy overlay</div>
             <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
           </div>
@@ -129,17 +130,19 @@
         </article>
 
         <article class="card inset-card">
-          <h3 class="card-title">Header findings</h3>
-          <table id="findings" class="findings" aria-label="Header findings">
+          <h3 class="card-title">Framing controls</h3>
+          <p class="note">The two headers that decide whether the page can be framed by a hostile origin.</p>
+          <table id="findings" class="findings" aria-label="Framing control findings">
             <thead><tr><th scope="col">Control</th><th scope="col">Assessment</th></tr></thead>
             <tbody></tbody>
           </table>
-          <details class="raw-toggle">
-            <summary>Raw headers</summary>
-            <pre id="headers" class="raw-headers">{}</pre>
-          </details>
         </article>
       </div>
+
+      <details class="raw-toggle">
+        <summary>Raw headers</summary>
+        <pre id="headers" class="raw-headers">{}</pre>
+      </details>
     </article>
   </section>
 
@@ -164,6 +167,14 @@
   async function initClickjacking() {
     const $ = (id) => document.getElementById(id);
 
+    function protectionLabel(risk) {
+      const r = (risk || "").toLowerCase();
+      if (r === "low") return { text: "Clickjacking protection: ENABLED", cls: "low" };
+      if (r === "medium") return { text: "Clickjacking protection: PARTIAL", cls: "medium" };
+      if (r === "high") return { text: "Clickjacking protection: NOT ENABLED", cls: "high" };
+      return { text: "Clickjacking protection: MANUAL CHECK", cls: "unknown" };
+    }
+
     function setVerdict(risk, text) {
       $("risk").textContent = risk;
       $("risk").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
@@ -171,6 +182,9 @@
       $("summary").textContent = text;
       $("verdict").className = "verdict-banner " +
         (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
+      const p = protectionLabel(risk);
+      $("protection").textContent = p.text;
+      $("protection").className = "protection-line " + p.cls;
     }
 
     function fillMeta(url, data) {
@@ -191,8 +205,9 @@
 
     async function scan(url) {
       $("results").classList.remove("hidden");
-      $("stage").classList.add("poc");
-      $("togglePoc").textContent = "Hide PoC overlay";
+      // Overlay is opt-in: the frame loads plainly by default.
+      $("stage").classList.remove("poc");
+      $("togglePoc").textContent = "Show PoC overlay";
       $("frame").src = url;
       $("frameStatus").textContent = "Loading frame…";
       $("stage").classList.add("scanning");
@@ -214,6 +229,16 @@
           ""
         );
         $("headers").textContent = "{}";
+        return;
+      }
+
+      if (data && data._unreachable) {
+        fillMeta(url, data);
+        setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(data));
+        $("findings").querySelector("tbody").innerHTML = (data.findings || [])
+          .map((f) => row(f.name, f.status, f.detail, f.evidence))
+          .join("");
+        $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
         return;
       }
 
