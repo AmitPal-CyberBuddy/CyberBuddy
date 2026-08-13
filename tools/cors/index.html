@@ -4,83 +4,125 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CORS Validator — CyberBuddy</title>
-  <meta name="description" content="Assess a site's Cross-Origin Resource Sharing (CORS) posture: origin reflection, credential handling, and preflight behavior." />
-  <link rel="stylesheet" href="/CyberBuddy/css/app.css" />
-  <script src="/CyberBuddy/js/app.js" defer></script>
+  <meta name="description" content="Assess a site's Cross-Origin Resource Sharing (CORS) posture: origin reflection, credential handling, and Vary: Origin — report-ready findings." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../../css/app.css" />
+  <script src="../../js/app.js" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/cors/");
       renderFooter();
       detectEngine();
+      initReveal();
       initCors();
     });
   </script>
 </head>
 <body>
-<main id="main" class="container" style="padding-top: 48px;">
+<main id="main" class="container" style="padding-top: 56px;">
 
-  <p class="kicker">Tool 03 · cross-origin policy</p>
-  <h1>CORS Validator</h1>
-  <p class="lead">
+  <p class="kicker reveal">Tool 03 · cross-origin policy</p>
+  <h1 class="reveal" style="--d: .08s;">CORS Validator</h1>
+  <p class="lead reveal" style="--d: .16s;">
     CORS is the browser's permission system for cross-origin reads. The danger isn't
     CORS itself — it's <em>lazy</em> CORS: reflecting any origin, allowing credentials
     from everywhere, or forgetting <code>Vary: Origin</code> so caches poison the policy.
   </p>
 
-  <!-- Static browser-side probe (works without the local engine) -->
-  <div class="bar">
+  <!-- Browser-side probe (works without the local engine) -->
+  <div class="bar reveal" style="--d: .22s;">
     <div class="field">
       <label for="url">Target URL</label>
       <input id="url" type="url" placeholder="https://example.com/api" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary" data-label="Probe">Probe</button>
   </div>
-  <p class="form-hint">
+  <p class="form-hint reveal" style="--d: .28s;">
     The probe runs from <em>this origin</em> (the CyberBuddy page you're on). It asks the
     browser to fetch the target with CORS and reports what the browser allows — the same
     view any website gets. Change where CyberBuddy is hosted and the results change, which
     is exactly how CORS works.
   </p>
 
-  <section id="results" class="grid-2 hidden">
-    <article class="card corner-card">
-      <div class="results-head">
-        <h2>CORS probe</h2>
-        <span id="verdict" class="risk unknown">—</span>
+  <!-- ================= Report ================= -->
+  <section id="results" class="results hidden">
+    <article class="card report-card">
+      <div class="report-head">
+        <div>
+          <p class="report-tag">Assessment report · tool 03</p>
+          <h2>CORS Posture</h2>
+        </div>
+        <button id="exportBtn" type="button" class="btn btn-ghost btn-sm">Export / Print</button>
       </div>
-      <p id="summary" class="summary"></p>
-      <table id="checks" class="findings" aria-label="CORS probe findings"></table>
-    </article>
 
-    <article class="card corner-card">
-      <h2 style="font-size: 1rem;">What this means</h2>
-      <ul style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.88rem; display: grid; gap: 10px;">
-        <li><strong style="color: var(--ink);">Fetch blocked</strong> — no <code>Access-Control-Allow-Origin</code> for this origin. Restrictive and safe.</li>
-        <li><strong style="color: var(--ink);">Origin reflected</strong> — the target echoes <em>any</em> caller's origin. Combine with cookies and a malicious site can read the response as a logged-in user. This is the classic CORS bug.</li>
-        <li><strong style="color: var(--ink);">Allow-origin * + credentials</strong> — invalid per spec: browsers refuse credentialed requests when the wildcard is echoed. Some sites send it anyway; we flag it.</li>
-        <li><strong style="color: var(--ink);">Vary: Origin</strong> — without it, shared caches may serve one origin's CORS headers to everyone. Easy to miss, real-world exploited.</li>
-      </ul>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Target</span>
+          <span id="mTarget" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Origin tested from</span>
+          <span id="mOrigin" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">HTTP status</span>
+          <span id="mStatus" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Generated</span>
+          <span id="mStamp" class="meta-value mono">—</span>
+        </div>
+      </div>
+
+      <div id="verdictBanner" class="verdict-banner unknown">
+        <span id="verdict" class="risk unknown">—</span>
+        <div class="verdict-main">
+          <p id="summary" class="verdict-text">Run a probe to generate the report.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <article class="card inset-card">
+          <h3 class="card-title">Findings</h3>
+          <table id="checks" class="findings" aria-label="CORS probe findings">
+            <thead><tr><th scope="col">Check</th><th scope="col">Assessment</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </article>
+
+        <article class="card inset-card">
+          <h3 class="card-title">How to read this</h3>
+          <ul style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.88rem; display: grid; gap: 11px;">
+            <li><strong style="color: var(--ink-2);">Fetch blocked</strong> — no <code>Access-Control-Allow-Origin</code> for this origin. Restrictive and safe.</li>
+            <li><strong style="color: var(--ink-2);">Origin reflected</strong> — the target echoes <em>any</em> caller's origin. Combine with cookies and a malicious site can read the response as a logged-in user. This is the classic CORS bug.</li>
+            <li><strong style="color: var(--ink-2);">Allow-origin * + credentials</strong> — invalid per spec: browsers refuse credentialed requests when the wildcard is echoed. Some sites send it anyway; we flag it.</li>
+            <li><strong style="color: var(--ink-2);">Vary: Origin</strong> — without it, shared caches may serve one origin's CORS headers to everyone. Easy to miss, real-world exploited.</li>
+          </ul>
+        </article>
+      </div>
     </article>
   </section>
 
-  <!-- Deep-dive roadmap (still looks finished by design) -->
-  <div class="section-head">
+  <!-- Deep-dive roadmap -->
+  <div class="section-head reveal">
     <h2>Coming next in this tool</h2>
   </div>
   <div class="roadmap">
-    <div class="roadmap-item">
+    <div class="roadmap-item reveal" style="--d: .05s;">
       <div class="rm-title">Preflight explorer</div>
       <p>Issue real <code>OPTIONS</code> preflights (server-side via the local engine) and show allowed methods, headers, and max-age.</p>
     </div>
-    <div class="roadmap-item">
+    <div class="roadmap-item reveal" style="--d: .12s;">
       <div class="rm-title">Cache-poisoning check</div>
       <p>Detect missing <code>Vary: Origin</code> on resources served through shared caches / CDNs.</p>
     </div>
-    <div class="roadmap-item">
+    <div class="roadmap-item reveal" style="--d: .19s;">
       <div class="rm-title">Credentials matrix</div>
       <p>Test <code>withCredentials</code> behavior across reflect-vs-wildcard configurations.</p>
     </div>
-    <div class="roadmap-item">
+    <div class="roadmap-item reveal" style="--d: .26s;">
       <div class="rm-title">Allowlist audit</div>
       <p>Flag permissive patterns in explicit origin allowlists (subdomain wildcards, <code>null</code> origins).</p>
     </div>
@@ -105,8 +147,17 @@
   async function initCors() {
     const $ = (id) => document.getElementById(id);
 
+    function setVerdict(risk, text) {
+      $("verdict").textContent = risk;
+      $("verdict").className = "risk " + (risk === "PROBING" ? "unknown" : risk.toLowerCase());
+      bump($("verdict"));
+      $("summary").textContent = text;
+      $("verdictBanner").className = "verdict-banner " +
+        (risk === "PROBING" ? "unknown" : risk.toLowerCase());
+    }
+
     function renderChecks(checks) {
-      $("checks").innerHTML = checks.map((c) => {
+      $("checks").querySelector("tbody").innerHTML = checks.map((c) => {
         const ev = c.evidence
           ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>"
           : "";
@@ -118,9 +169,11 @@
 
     async function probe(url) {
       $("results").classList.remove("hidden");
-      $("verdict").textContent = "PROBING";
-      $("verdict").className = "risk unknown";
-      $("summary").textContent = "Fetching " + url + " with CORS from this origin…";
+      setVerdict("PROBING", "Fetching " + url + " with CORS from this origin…");
+      $("mTarget").textContent = url;
+      $("mOrigin").textContent = window.location.origin || "null";
+      $("mStamp").textContent = fmtStamp();
+      setLoading($("go"), true);
 
       const checks = [];
       const origin = window.location.origin || "null";
@@ -134,6 +187,7 @@
           cache: "no-store"
         });
         a = { ok: true, status: res.status };
+        $("mStatus").textContent = String(res.status);
 
         const acao = res.headers.get("access-control-allow-origin");
         const acac = res.headers.get("access-control-allow-credentials");
@@ -215,26 +269,26 @@
         }
       } catch (err) {
         // Blocked by the browser's CORS machinery (or network error).
+        $("mStatus").textContent = "—";
         checks.unshift({
           name: "Fetch result",
           status: "info",
           detail: "The browser blocked the cross-origin read (or the request failed). CORS restrictions are working — the server sent no usable ACAO for this origin. Note: network-level failures look identical from JavaScript.",
           evidence: "mode: cors · credentials: include"
         });
-        $("summary").textContent =
-          "Blocked or failed: " + err.message;
-        $("verdict").textContent = "BLOCKED";
-        $("verdict").className = "risk low";
+        setVerdict("BLOCKED",
+          "Blocked or failed: " + err.message +
+          " — the target sent no usable CORS headers for this origin.");
+        setLoading($("go"), false);
         renderChecks(checks);
         return;
       }
 
       const isWeak = checks.some((c) => c.status === "weak");
-      $("verdict").textContent = isWeak ? "REVIEW" : "OK";
-      $("verdict").className = "risk " + (isWeak ? "medium" : "low");
-      $("summary").textContent =
+      setVerdict(isWeak ? "REVIEW" : "OK",
         (a.ok ? "HTTP " + a.status + " fetched with CORS." : "Request completed with status " + a.status + ".") +
-        " Findings below describe how this origin (" + origin + ") is treated.";
+        " Findings below describe how this origin (" + origin + ") is treated.");
+      setLoading($("go"), false);
       renderChecks(checks);
     }
 
@@ -249,6 +303,8 @@
     $("url").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("go").click();
     });
+
+    $("exportBtn").addEventListener("click", exportReport);
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
