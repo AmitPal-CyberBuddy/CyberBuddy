@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from clickjacking_validator import scan_url as scan_clickjacking  # noqa: E402
+from concurrent_scanner import scan_urls_concurrent  # noqa: E402
 from cors_validator import scan_cors  # noqa: E402
 from security_headers import scan_headers  # noqa: E402
 
@@ -73,10 +74,20 @@ def host_of(url: str) -> str:
         return "unknown"
 
 
+def scan_all(url: str) -> tuple:
+    """Run all three engines against one URL (used per worker)."""
+    return (
+        scan_clickjacking(url, **SCAN_KWARGS),
+        scan_headers(url, **SCAN_KWARGS),
+        scan_cors(url, **SCAN_KWARGS),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--urls", default=str(ROOT / "urls.txt"), help="target file")
     ap.add_argument("--out", default=str(ROOT / "cache"), help="output dir")
+    ap.add_argument("--workers", type=int, default=4, help="parallel workers (default 4)")
     args = ap.parse_args(argv)
 
     urls = collect_urls(Path(args.urls))
@@ -89,11 +100,14 @@ def main(argv: list[str] | None = None) -> int:
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     by_host: dict[str, dict] = {}
 
-    for url in urls:
-        print(f"[cache] scanning {url}")
-        cj = scan_clickjacking(url, **SCAN_KWARGS)
-        hd = scan_headers(url, **SCAN_KWARGS)
-        cr = scan_cors(url, **SCAN_KWARGS)
+    print(f"[cache] scanning {len(urls)} url(s) with {args.workers} worker(s)…")
+    triples = scan_urls_concurrent(urls, scan_all, max_workers=args.workers, show_progress=True)
+
+    for url, triple in zip(urls, triples):
+        if triple is None:
+            print(f"  ERROR {url}: worker failed")
+            continue
+        cj, hd, cr = triple
         entry = {
             "url": url,
             "generated_at": stamp,

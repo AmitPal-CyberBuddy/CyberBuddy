@@ -114,7 +114,8 @@ body {
   line-height: 1.65;
   color: var(--ink);
   background-color: var(--paper);
-  overflow-x: clip; /* decorative blobs must never cause horizontal scroll */
+  overflow-x: hidden; /* fallback for older browsers */
+  overflow-x: clip;   /* decorative blobs must never cause horizontal scroll */
   background-image:
     radial-gradient(900px 480px at var(--mx, 18%) var(--my, -8%), rgba(62, 224, 194, 0.1), transparent 55%),
     radial-gradient(800px 420px at 110% 0%, rgba(138, 164, 255, 0.1), transparent 50%),
