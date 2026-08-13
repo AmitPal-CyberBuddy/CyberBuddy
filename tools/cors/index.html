@@ -140,6 +140,9 @@
   function copyReport() {
     if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
   }
+  function copyJson() {
+    if (cbLastData) copyJsonReport(cbLastData, document.getElementById("copyJson"));
+  }
 
   async function initCors() {
     const $ = (id) => document.getElementById(id);
