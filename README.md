@@ -59,8 +59,16 @@ Exit code `1` when any target scores high risk (handy in CI), `2` for usage erro
 
 - `clickjacking_validator.py` is imported as-is from the Clickjacking-Validator
   project (same engine, same CLI, same `USER_AGENT`).
+- Every tool renders results as a self-contained **report card** — target, final
+  URL, HTTP status, generated timestamp, verdict, and per-finding evidence —
+  ready to screenshot or export via **Export / Print** (print stylesheet included).
 - Opening `index.html` straight from disk works for the hub and the frame test;
   header scans need the API, so the pages show a clear static-mode notice and
   instructions instead of failing silently.
 - The server binds `0.0.0.0:8080` (LAN reachable) but is stateless and read-only —
   treat it as a local-only tool.
+
+## Contact
+
+Ideas, feedback, or collaboration: **amitpal.secure@gmail.com** ·
+[LinkedIn](https://www.linkedin.com/in/amitpal-wb/)
