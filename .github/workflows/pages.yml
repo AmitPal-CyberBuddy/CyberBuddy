@@ -24,7 +24,9 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir -p _site/css _site/js _site/tools
-          cp index.html 404.html .nojekyll _site/
+          cp index.html _site/
+          touch _site/.nojekyll
+          test -f 404.html && cp 404.html _site/ || true
           cp css/app.css _site/css/
           cp js/app.js _site/js/
           cp -a tools/clickjacking tools/headers tools/cors _site/tools/
