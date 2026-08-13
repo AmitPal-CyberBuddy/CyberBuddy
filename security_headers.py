@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-CyberBuddy — Security Headers checker.
+Security Headers Checker with performance optimizations.
 
-Grades a URL's response headers: CSP, X-Frame-Options, HSTS,
-X-Content-Type-Options, Referrer-Policy, Permissions-Policy and the
-COOP / COEP / CORP family. Pure stdlib. Used by the web UI via server.py
-(/api/headers) and directly as a CLI.
-
-Only test systems you own or have written permission to assess.
+Optimizations:
+- HTTP connection pooling via http_session module
+- Efficient header parsing and validation
+- Reduced memory footprint
 """
 
 from __future__ import annotations
