@@ -19,8 +19,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260813h" />
-  <script src="../../js/app.js?v=20260813h" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260813i" />
+  <script src="../../js/app.js?v=20260813i" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/cors/");
@@ -48,6 +48,7 @@
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
+    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -58,7 +59,7 @@
         </div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
-          <span id="verdict" class="risk unknown">—</span>
+          <span id="verdict" role="status" class="risk unknown">—</span>
         </div>
       </div>
 
@@ -107,6 +108,11 @@
 <script>
   "use strict";
 
+  let cbLastData = null;
+  function copyReport() {
+    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
+  }
+
   async function initCors() {
     const $ = (id) => document.getElementById(id);
 
@@ -138,6 +144,7 @@
       setLoading($("go"), true);
 
       const engine = await apiCors(url);
+      cbLastData = engine || null;
       setSourceChip(engine || { _source: "none" });
       if (!isEngineDown(engine) && engine && (engine.checks || engine.error)) {
         const origins = (engine.origins_tested || []).join(" · ") || "engine";

@@ -110,7 +110,8 @@ function initThemeToggle() {
 function initScrollChrome() {
   const header = document.querySelector(".site-header");
   const toTop = document.getElementById("toTop");
-  if (!header && !toTop) return;
+  const progress = document.getElementById("scrollProgress");
+  if (!header && !toTop && !progress) return;
   let ticking = false;
   const onScroll = () => {
     if (ticking) return;
@@ -119,6 +120,10 @@ function initScrollChrome() {
       const y = window.scrollY || 0;
       if (header) header.classList.toggle("scrolled", y > 24);
       if (toTop) toTop.classList.toggle("show", y > 640);
+      if (progress) {
+        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        progress.style.width = Math.min(100, (y / max) * 100) + "%";
+      }
       ticking = false;
     });
   };
@@ -137,6 +142,7 @@ function renderHeader(current) {
   const base = appBase();
   const html =
     '<div class="page-load-bar" aria-hidden="true"></div>' +
+    '<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>' +
     '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>' +
     '<div class="ambient" aria-hidden="true"></div>' +
     '<a class="skip-link" href="#main">Skip to content</a>' +
@@ -612,6 +618,92 @@ function initReveal() {
 
 function exportReport() {
   window.print();
+}
+
+/* ---------- Copy report as Markdown ------------------------------------ */
+/* Builds a paste-ready Markdown summary of the last scan result — the
+   same evidence the report card shows, formatted for pentest reports.
+   Pure client-side (clipboard API + execCommand fallback); works on
+   GitHub Pages and server.py alike. */
+
+function markdownKind(data) {
+  if (!data) return "generic";
+  if (Array.isArray(data.checks) && data.grade) return "headers";
+  if (Array.isArray(data.checks) && data.origins_tested) return "cors";
+  if (Array.isArray(data.findings)) return "clickjacking";
+  return "generic";
+}
+
+function mdCell(s) {
+  return String(s == null ? "" : s).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+}
+
+function toMarkdown(data) {
+  if (!data) return "No scan data.";
+  const kind = markdownKind(data);
+  const title = kind === "headers" ? "Security Headers"
+    : kind === "cors" ? "CORS Validator"
+    : kind === "clickjacking" ? "Clickjacking Validator"
+    : "CyberBuddy";
+  const risk = (data.risk || "unknown").toUpperCase();
+  const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
+  const lines = [
+    "# CyberBuddy — " + title + " Report",
+    "",
+    "- **Target:** " + mdCell(data.url),
+    "- **Final URL:** " + mdCell(data.final_url || data.url),
+    "- **HTTP status:** " + (data.status_code != null ? data.status_code : "—"),
+    "- **Risk:** " + risk + grade,
+    "- **Source:** " + sourceLabel(data),
+    "- **Generated:** " + fmtStamp()
+  ];
+  if (data.summary) lines.push("", "## Summary", "", data.summary);
+  const rows = kind === "headers" ? (data.checks || [])
+    : kind === "cors" ? (data.checks || [])
+    : (data.findings || []);
+  if (rows.length) {
+    lines.push("", "## Findings", "", "| Check | Status | Assessment | Evidence |", "| --- | --- | --- | --- |");
+    rows.forEach((c) => {
+      lines.push("| " + mdCell(c.name) + " | " + mdCell(c.status) + " | " +
+        mdCell(c.detail) + " | " + mdCell(c.evidence) + " |");
+    });
+  }
+  lines.push("", "---", "Generated with CyberBuddy — authorized testing only.");
+  return lines.join("\n");
+}
+
+async function copyMarkdown(data, btn) {
+  const md = toMarkdown(data);
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(md);
+      ok = true;
+    }
+  } catch (_) { /* fall through */ }
+  if (!ok) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = md;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (_) { ok = false; }
+  }
+  if (btn) {
+    const original = btn.textContent;
+    btn.textContent = ok ? "Copied ✓" : "Copy failed";
+    btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove("flash", "flash-ok", "flash-err");
+    }, 1600);
+  }
+  return ok;
 }
 
 function initAmbient() {

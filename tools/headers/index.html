@@ -19,8 +19,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260813h" />
-  <script src="../../js/app.js?v=20260813h" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260813i" />
+  <script src="../../js/app.js?v=20260813i" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/headers/");
@@ -48,6 +48,7 @@
     </div>
     <button id="go" type="button" class="btn btn-primary">Scan</button>
     <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
+    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -80,7 +81,7 @@
         </div>
       </div>
 
-      <div id="verdict" class="verdict-banner unknown">
+      <div id="verdict" role="status" aria-live="polite" class="verdict-banner unknown">
         <div class="verdict-grade">
           <span id="grade" class="grade f">—</span>
           <div class="score-wrap">
@@ -129,10 +130,16 @@
 <script>
   "use strict";
 
+  let cbLastData = null;
+  function copyReport() {
+    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
+  }
+
   async function initHeaders() {
     const $ = (id) => document.getElementById(id);
 
     function render(data) {
+      cbLastData = data;
       $("results").classList.remove("hidden");
       setSourceChip(data);
 
