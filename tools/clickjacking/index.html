@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Clickjacking Validator — CyberBuddy</title>
-  <meta name="description" content="Validate clickjacking (framing) protections on any URL: live iframe test, PoC overlay, and severity-scored header findings — report-ready." />
+  <meta name="description" content="Live clickjacking proof: frame a target and screenshot the result." />
   <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="../../css/app.css" />
   <script src="../../js/app.js" defer></script>
@@ -12,7 +12,6 @@
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/clickjacking/");
       renderFooter();
-      detectEngine();
       initReveal();
       initClickjacking();
     });
@@ -21,37 +20,28 @@
 <body>
 <main id="main" class="container" style="padding-top: 56px;">
 
-  <p class="kicker reveal">Tool 01 · framing protections</p>
-  <h1 class="reveal" style="--d: .08s;">Clickjacking Validator</h1>
-  <p class="lead reveal" style="--d: .16s;">
-    Load a target in a frame and confirm whether it renders, then review the
-    X-Frame-Options and CSP frame-ancestors findings behind that result.
-    With the local engine (<code>server.py</code>) header scoring is automatic;
-    on static hosting the page runs in frame-only mode.
+  <h1 class="reveal">Clickjacking Validator</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Paste a URL and validate. If the real site appears in the frame, it can be
+    clickjacked — screenshot this page as your proof.
   </p>
 
-  <div class="bar reveal" style="--d: .22s;">
+  <div class="bar reveal" style="--d: .14s;">
     <div class="field">
       <label for="url">Target URL</label>
       <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
     </div>
-    <button id="go" type="button" class="btn btn-primary" data-label="Validate">Validate</button>
-    <button id="togglePoc" type="button" class="btn btn-ghost">Toggle PoC overlay</button>
+    <button id="go" type="button" class="btn btn-primary">Validate</button>
+    <button id="togglePoc" type="button" class="btn btn-ghost">Hide PoC overlay</button>
   </div>
-  <p class="form-hint reveal" style="--d: .28s;">
-    Read-only check. Test only systems you own or are authorized to assess.
-    Share a result by copying the URL — the target travels in the <code>?url=</code> parameter.
-  </p>
 
-  <!-- ================= Report ================= -->
   <section id="results" class="results hidden">
-    <article class="card report-card">
+    <article class="card report-card poc-sheet">
       <div class="report-head">
         <div>
-          <p class="report-tag">Assessment report · tool 01</p>
-          <h2>Clickjacking Validation</h2>
+          <h2>Clickjacking proof</h2>
         </div>
-        <button id="exportBtn" type="button" class="btn btn-ghost btn-sm">Export / Print</button>
+        <span id="risk" class="risk unknown">—</span>
       </div>
 
       <div class="meta-grid">
@@ -68,21 +58,30 @@
           <span id="mStatus" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Generated</span>
+          <span class="meta-label">Checked</span>
           <span id="mStamp" class="meta-value mono">—</span>
         </div>
       </div>
 
       <div id="verdict" class="verdict-banner unknown">
-        <span id="risk" class="risk unknown">—</span>
         <div class="verdict-main">
-          <p id="summary" class="verdict-text">Run a validation to generate the report.</p>
+          <p id="summary" class="verdict-text">If the site UI is visible in the frame, treat it as clickjackable.</p>
         </div>
       </div>
 
-      <div class="grid-2">
+      <div class="poc-grid">
+        <article class="card inset-card poc-frame-card">
+          <h3 class="card-title">Live frame test</h3>
+          <p class="note">A rendered target means the page can be framed. A blank pane usually means it is blocked. The red badge is a decoy overlay (clicks pass through).</p>
+          <div id="stage" class="stage poc">
+            <div class="overlay">CLICK HERE — decoy overlay</div>
+            <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
+          </div>
+          <p id="frameStatus" class="stage-note"></p>
+        </article>
+
         <article class="card inset-card">
-          <h3 class="card-title">Findings</h3>
+          <h3 class="card-title">Header findings</h3>
           <table id="findings" class="findings" aria-label="Header findings">
             <thead><tr><th scope="col">Control</th><th scope="col">Assessment</th></tr></thead>
             <tbody></tbody>
@@ -92,46 +91,13 @@
             <pre id="headers" class="raw-headers">{}</pre>
           </details>
         </article>
-
-        <article class="card inset-card">
-          <h3 class="card-title">Browser frame test</h3>
-          <p class="note">
-            A rendered target means clickjacking is possible in this browser.
-            A blank pane usually means X-Frame-Options or CSP frame-ancestors blocked it.
-            Use the overlay toggle to simulate a decoy UI.
-          </p>
-          <div id="stage" class="stage">
-            <div class="overlay">CLICK HERE — decoy overlay</div>
-            <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
-          </div>
-          <p id="frameStatus" class="stage-note"></p>
-        </article>
       </div>
     </article>
   </section>
 
-  <div id="staticNotice" class="notice hidden">
-    <h3>Static mode — header checks need the local engine</h3>
-    <p>
-      This page is being served without <code>server.py</code>, so the browser can't read
-      another site's response headers (that needs a server-side proxy — browsers block it).
-      The visual iframe test above works anyway. To enable full header scoring, run:
-    </p>
-    <code class="cmd">python3 server.py</code>
-    <p>
-      then open <code>http://127.0.0.1:8080/</code>. The CLI works standalone too:
-      <code>python3 clickjacking_validator.py https://example.com</code>.
-    </p>
-  </div>
-
   <div class="disclaimer">
     <span class="disclaimer-mark">! !</span>
-    <span>
-      <strong>Authorized testing only.</strong> You may only scan systems you own or have
-      explicit permission to assess. The frame test is visual by design: cross-origin
-      documents can't be read by script, so a blank frame vs. a rendered UI is the signal —
-      never treat either as proof of vulnerability without authorization and context.
-    </span>
+    <span><strong>Authorized testing only.</strong> Scan systems you own or have written permission to assess.</span>
   </div>
 
 </main>
@@ -169,8 +135,10 @@
 
     async function scan(url) {
       $("results").classList.remove("hidden");
+      $("stage").classList.add("poc");
+      $("togglePoc").textContent = "Hide PoC overlay";
       $("frame").src = url;
-      $("frameStatus").textContent = "Loading iframe…";
+      $("frameStatus").textContent = "Loading frame…";
       $("stage").classList.add("scanning");
       setLoading($("go"), true);
       fillMeta(url, null);
@@ -178,26 +146,22 @@
       const data = await apiScan(url);
       setLoading($("go"), false);
 
-      if (isEngineDown(data)) {
-        // Static mode: frame test only.
+      if (isEngineDown(data) || (data && data.error && !data.findings)) {
         setVerdict("FRAME ONLY",
-          "Header API not available (serve via server.py). The visual frame test below still runs.");
-        $("findings").querySelector("tbody").innerHTML = "";
-        $("headers").textContent = "{}";
-        $("staticNotice").classList.remove("hidden");
-        return;
-      }
-
-      if (data.error && !data.findings) {
-        setVerdict("UNKNOWN", data.error);
-        $("findings").querySelector("tbody").innerHTML = "";
+          "If you can see the real site in the frame, it is clickjackable in this browser.");
+        $("findings").querySelector("tbody").innerHTML = row(
+          "Frame test",
+          "info",
+          "Visual proof only. Header values are not available from this host.",
+          ""
+        );
         $("headers").textContent = "{}";
         return;
       }
 
-      $("staticNotice").classList.add("hidden");
       fillMeta(url, data);
-      setVerdict((data.risk || "unknown").toUpperCase(), data.summary || "");
+      setVerdict((data.risk || "unknown").toUpperCase(), data.summary ||
+        "If you can see the real site in the frame, it is clickjackable.");
       $("findings").querySelector("tbody").innerHTML = (data.findings || [])
         .map((f) => row(f.name, f.status, f.detail, f.evidence))
         .join("");
@@ -206,15 +170,8 @@
 
     $("frame").addEventListener("load", () => {
       $("stage").classList.remove("scanning");
-      let peek = "cross-origin (cannot read document — expected)";
-      try {
-        if ($("frame").contentDocument) {
-          peek = $("frame").contentDocument.location.href;
-        }
-      } catch (_) { /* cross-origin read is expected to throw */ }
       $("frameStatus").textContent =
-        "load event fired. Peek: " + peek +
-        ". If you see the real site UI, treat it as clickjackable.";
+        "Frame loaded. If the real site UI is visible, treat it as clickjackable.";
     });
 
     $("go").addEventListener("click", () => {
@@ -232,10 +189,8 @@
     $("togglePoc").addEventListener("click", () => {
       $("stage").classList.toggle("poc");
       const on = $("stage").classList.contains("poc");
-      $("togglePoc").textContent = on ? "Hide PoC overlay" : "Toggle PoC overlay";
+      $("togglePoc").textContent = on ? "Hide PoC overlay" : "Show PoC overlay";
     });
-
-    $("exportBtn").addEventListener("click", exportReport);
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
