@@ -42,7 +42,11 @@ jobs:
           # found no targets / network failed)
           test -d cache && cp -a cache _site/ || true
           # Metadata assets: social card, app icons, manifest, robots, sitemap
-          cp og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml _site/
+          for f in og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml; do
+            test -f "$f" && cp "$f" _site/ || true
+          done
+          # Responsible disclosure contact
+          test -d .well-known && cp -a .well-known _site/ || true
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
