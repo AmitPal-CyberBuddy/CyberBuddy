@@ -16,6 +16,8 @@ const ICONS = {
   cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
   linkedin: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>'
 };
 
@@ -55,6 +57,37 @@ function apiHeadersInit() {
   return { cache: "no-store", headers: { "X-Requested-With": "CyberBuddy" } };
 }
 
+/* ---------- Theme (dark / light) ---------------------------------------- */
+
+const THEME_KEY = "cb-theme";
+
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme, persist) {
+  const root = document.documentElement;
+  if (theme === "light") root.setAttribute("data-theme", "light");
+  else root.removeAttribute("data-theme");
+  if (persist !== false) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* private mode */ }
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "light" ? "#eef2f7" : "#07090d");
+  const btn = document.getElementById("themeToggle");
+  if (btn) {
+    const next = theme === "light" ? "dark" : "light";
+    btn.innerHTML = ICONS[next === "dark" ? "moon" : "sun"];
+    btn.setAttribute("aria-label", "Switch to " + next + " mode");
+    btn.title = "Switch to " + next + " mode";
+    btn.classList.toggle("is-light", theme === "light");
+  }
+}
+
+function initThemeToggle() {
+  applyTheme(currentTheme(), false);
+}
+
 /* ---------- Shell ------------------------------------------------------- */
 
 function renderHeader(current) {
@@ -69,6 +102,8 @@ function renderHeader(current) {
     navLink(base, "/", "Hub", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
+    '<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch theme" title="Switch theme">' +
+    ICONS.sun + "</button>" +
     '<span class="engine-chip" id="engineChip" title="Checking scan engine…">' +
     '<span class="engine-dot" id="engineDot"></span>' +
     '<span id="engineText">engine · …</span></span>' +
@@ -76,6 +111,7 @@ function renderHeader(current) {
   document.body.insertAdjacentHTML("afterbegin", html);
   detectEngine();
   initAmbient();
+  initThemeToggle();
 
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {

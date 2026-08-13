@@ -1,7 +1,8 @@
 # CyberBuddy
 
 A single web product that hosts multiple browser security checks under one UI.
-Night-ops console theme — no framework, no build step, no third-party Python
+Night-ops console theme (dark by default, with a sun/moon toggle in the header
+that persists per browser) — no framework, no build step, no third-party Python
 packages. Static HTML/CSS/JS plus Python stdlib. The same graders run in the
 browser on GitHub Pages and on `server.py` when you host it yourself.
 
