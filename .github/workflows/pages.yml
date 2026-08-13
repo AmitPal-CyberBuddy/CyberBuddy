@@ -38,11 +38,15 @@ jobs:
           cp css/app.css _site/css/
           cp js/app.js _site/js/
           cp -a tools/clickjacking tools/headers tools/cors _site/tools/
+          # Full methodology page (the hub links to the #methodology anchor,
+          # but the standalone page has its own canonical URL)
+          test -d methodology && cp -a methodology _site/ || true
           # Cached reports for configured targets (skipped if the build step
           # found no targets / network failed)
           test -d cache && cp -a cache _site/ || true
-          # Metadata assets: social card, app icons, manifest, robots, sitemap
-          for f in og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml; do
+          # Metadata assets: social card, app icons, manifest, robots, sitemap,
+          # humans.txt and llms.txt
+          for f in og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml humans.txt llms.txt; do
             test -f "$f" && cp "$f" _site/ || true
           done
           # Responsible disclosure contact
