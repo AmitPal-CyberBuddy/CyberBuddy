@@ -877,6 +877,81 @@ html.js .tool-card.reveal.in .tool-card-icon svg * {
   100% { transform: scale(1.25); opacity: 0; }
 }
 
+/* Blog / Medium section */
+.blog-feature {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  background:
+    radial-gradient(420px circle at var(--sx, 0%) var(--sy, 0%), rgba(138, 164, 255, 0.1), transparent 46%),
+    var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 22px 24px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.blog-feature:hover { transform: translateY(-2px); border-color: rgba(138, 164, 255, 0.3); box-shadow: var(--shadow-md); }
+.blog-feature::before {
+  content: ""; position: absolute; top: 0; left: 14%; right: 14%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+  opacity: 0.55;
+}
+.blog-monogram {
+  width: 72px; height: 72px; flex: none; border-radius: 20px;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 1.7rem;
+  color: #fff; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--accent-2) 100%);
+  box-shadow: 0 12px 26px -12px rgba(62, 224, 194, 0.55);
+  transition: transform 0.22s ease;
+}
+.blog-feature:hover .blog-monogram { transform: rotate(-4deg) scale(1.04); }
+.blog-feature-body { flex: 1 1 320px; min-width: 0; }
+.blog-feature-body h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.blog-feature-body p { margin: 0; color: var(--muted); font-size: 0.86rem; }
+.blog-profile-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px;
+  font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--faint);
+}
+.blog-profile-meta strong { color: var(--brand); font-weight: 700; }
+.blog-feature-cta { flex: none; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.blog-feature-cta .btn { white-space: nowrap; }
+.blog-handle { font-family: var(--font-mono); font-size: 0.7rem; color: var(--faint); text-align: center; }
+
+.blog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+@media (max-width: 920px) { .blog-grid { grid-template-columns: 1fr; } }
+.blog-post {
+  display: flex; flex-direction: column; gap: 10px;
+  text-decoration: none; color: inherit; padding: 20px 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.blog-post:hover {
+  text-decoration: none; transform: translateY(-3px);
+  border-color: rgba(138, 164, 255, 0.32); box-shadow: var(--shadow-md);
+}
+.blog-post::before {
+  content: ""; position: absolute; top: 0; left: 12%; right: 12%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+  opacity: 0; transition: opacity 0.25s ease, left 0.3s ease, right 0.3s ease;
+}
+.blog-post:hover::before { opacity: 1; left: 6%; right: 6%; }
+.blog-post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.blog-post-tags .tool-tag { color: var(--accent-2); border-color: var(--info-line); background: var(--info-bg); }
+.blog-post h3 { margin: 0; font-size: 0.98rem; line-height: 1.4; color: var(--ink); flex: 1; }
+.blog-post:hover h3 { color: var(--brand); }
+.blog-post-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border-top: 1px solid var(--line); padding-top: 12px;
+  font-family: var(--font-mono); font-size: 0.68rem; color: var(--faint);
+}
+.blog-post-foot .blog-claps { display: inline-flex; align-items: center; gap: 5px; }
+.blog-post-foot .blog-open {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--brand);
+  transition: letter-spacing 0.2s ease;
+}
+.blog-post-foot .blog-open svg { width: 0.85em; height: 0.85em; }
+.blog-post:hover .blog-open { letter-spacing: 0.04em; }
+
 .reveal { opacity: 1; }
 html.js .reveal { opacity: 0; }
 html.js .reveal.in,

@@ -135,4 +135,5 @@ layers make the hosted site as close to `server.py` as possible:
 ## Contact
 
 Ideas, feedback, or collaboration: **amitpal.secure@gmail.com** ·
-[LinkedIn](https://www.linkedin.com/in/amitpal-wb/)
+[LinkedIn](https://www.linkedin.com/in/amitpal-wb/) ·
+[Medium — security write-ups](https://amitpxl.medium.com/)
