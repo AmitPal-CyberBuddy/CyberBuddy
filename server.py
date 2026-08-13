@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 CyberBuddy local server — hosts the hub and tool pages plus JSON scan APIs.
+With performance optimizations: streaming I/O, connection pooling, concurrent scans.
 
 Routes
 ------
@@ -56,6 +57,9 @@ TOOL_ALIASES = {
     "/clickjacking": "/tools/clickjacking/",
     "/clickjacking/": "/tools/clickjacking/",
 }
+
+# Chunk size for streaming file I/O (64KB)
+STREAM_CHUNK_SIZE = 65536
 
 POC_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -157,6 +161,48 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_file_streaming(self, code: int, path: Path, content_type: str) -> None:
+        """Send a file using chunked streaming for memory efficiency."""
+        try:
+            file_size = path.stat().st_size
+        except OSError:
+            self._not_found()
+            return
+        
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(file_size))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "script-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' http: https:; "
+            "frame-src http: https:; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
+        self.end_headers()
+        
+        # Stream file in chunks to avoid loading entire file into memory
+        try:
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(STREAM_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except (IOError, OSError):
+            pass  # Connection closed or file disappeared
+
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload, indent=2).encode("utf-8"), "application/json; charset=utf-8")
 
@@ -231,7 +277,8 @@ class Handler(BaseHTTPRequestHandler):
             ".css": "text/css; charset=utf-8",
             ".js": "text/javascript; charset=utf-8",
         }.get(path.suffix, "application/octet-stream")
-        self._send(200, path.read_bytes(), ctype)
+        # Use streaming for potentially large files
+        self._send_file_streaming(200, path, ctype)
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
