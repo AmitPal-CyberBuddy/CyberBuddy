@@ -82,6 +82,43 @@ Exit code `1` when any target scores high risk (handy in CI), `2` for usage erro
 python3 -m unittest test_engines.py
 ```
 
+## Making the hosted site full-strength
+
+GitHub Pages is static — no Python, no relays needed for most targets. Three
+layers make the hosted site as close to `server.py` as possible:
+
+1. **Cached reports (built-in).** Add your targets to `urls.txt` and build
+   the cache — the UI reads `cache/<host>.json` same-origin whenever it is
+   present. Two ways to produce it:
+
+   - **Locally (zero workflow changes):** `python3 tools/build_cache.py`,
+     then commit the generated `cache/` directory. Your targets get full
+     reports — two-origin CORS proof, server-side header reads,
+     metadata/private-IP blocking — with **no third-party relays**.
+   - **Automatically (one-time workflow edit):** add these two lines to the
+     `build` job of `.github/workflows/pages.yml` so every deploy (and a
+     `schedule` of your choosing) refreshes the cache before publishing:
+
+     ```yaml
+     - name: Build scan cache
+       run: python3 tools/build_cache.py
+     ```
+     and add `test -d cache && cp -a cache _site/ || true` to the
+     *Assemble static site* step. (The workflow files are owned by the
+     repo maintainer — edit them on your branch.)
+
+   The UI prefers the cache over the public lookups (fresh within 24h) and
+   marks reports `via cached report`.
+2. **Optional hosted API (`api/`).** Deploy the `api/` folder (Vercel free
+   tier: `vercel --prod`), then set `API_BASE` in `js/app.js` to the
+   deployment URL. The frontend health check finds it and the same Python
+   engines run server-side for *any* URL — same quality as `server.py`, and
+   the chip shows `python · online`. The endpoint is read-only GET, refuses
+   metadata/private targets, and has a per-IP rate limit.
+3. **Smarter live fallback.** When neither is available, the browser graders
+   run exactly as before — with a dedup + 10-minute lookup cache so repeated
+   or suite-wide scans stop hammering the public relays.
+
 ## Notes
 
 - Every tool renders results as a self-contained **report card** — target, final

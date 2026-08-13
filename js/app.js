@@ -21,7 +21,7 @@ const ICONS = {
   linkedin: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>'
 };
 
-/* ---------- Site root (GitHub project pages + local) -------------------- */
+/* ---------- Site root + optional hosted API ------------------------------ */
 
 function appBase() {
   // Slice the *pathname*, never an index into the full URL.
@@ -45,12 +45,17 @@ function appBase() {
   return known ? known[1] : "";
 }
 
+// Set this to the base URL of a hosted deployment of api/ (e.g.
+// "https://cyberbuddy-api.vercel.app") to run scans with the real
+// Python engine from the GitHub Pages site instead of live relays.
+const API_BASE = "";
+
 function pagePath() {
   return (window.location.pathname || "").replace(/\/index\.html$/, "/") || "/";
 }
 
 function apiUrl(path) {
-  return appBase() + path;
+  return (API_BASE || appBase()) + path;
 }
 
 function apiHeadersInit() {
@@ -198,9 +203,10 @@ function renderFooter() {
     "</div>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
-    "you are responsible for having permission to test them. On GitHub Pages, header values are " +
-    "read through a public lookup so the graders can run without a Python host. Run server.py " +
-    "locally for a same-origin engine that never leaves your machine. © 2026 CyberBuddy." +
+    "you are responsible for having permission to test them. On GitHub Pages, scans run in your " +
+    "browser; configured targets are served from a GitHub Actions-built cache, and a hosted api/ " +
+    "deployment can be enabled for the full Python engine. Run server.py locally for a " +
+    "same-origin engine that never leaves your machine. © 2026 CyberBuddy." +
     "</p>" +
     "</div></footer>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -296,9 +302,11 @@ async function apiCall(path, url) {
 
 function isUsableScan(data, kind) {
   if (!data || data.error && !data.checks && !data.findings) return false;
-  if (kind === "headers") return Array.isArray(data.checks) && data.grade;
-  if (kind === "scan") return Array.isArray(data.findings);
-  if (kind === "cors") return Array.isArray(data.checks);
+  // status_code != null means the engine actually reached the target —
+  // error payloads (unreachable target) fall through to cache/live.
+  if (kind === "headers") return data.status_code != null && Array.isArray(data.checks) && data.grade;
+  if (kind === "scan") return data.status_code != null && Array.isArray(data.findings);
+  if (kind === "cors") return data.status_code != null && Array.isArray(data.checks);
   return false;
 }
 
@@ -307,6 +315,13 @@ async function apiScan(url) {
   if (isUsableScan(local, "scan")) {
     local._source = "python";
     return local;
+  }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.clickjacking && cached.clickjacking.status_code != null &&
+      isUsableScan(cached.clickjacking, "scan")) {
+    cached.clickjacking._source = "cache";
+    cached.clickjacking._cached_at = cached.generated_at || "";
+    return cached.clickjacking;
   }
   return gradeClickjackingLive(url);
 }
@@ -317,6 +332,13 @@ async function apiHeaders(url) {
     local._source = "python";
     return local;
   }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.headers && cached.headers.status_code != null &&
+      isUsableScan(cached.headers, "headers")) {
+    cached.headers._source = "cache";
+    cached.headers._cached_at = cached.generated_at || "";
+    return cached.headers;
+  }
   return gradeHeadersLive(url);
 }
 
@@ -326,7 +348,48 @@ async function apiCors(url) {
     local._source = "python";
     return local;
   }
+  const cached = await cachedReportFor(url);
+  if (cached && cached.cors && cached.cors.status_code != null &&
+      isUsableScan(cached.cors, "cors")) {
+    cached.cors._source = "cache";
+    cached.cors._cached_at = cached.generated_at || "";
+    return cached.cors;
+  }
   return probeCorsLive(url);
+}
+
+/* ---------- Cached reports (pre-scanned reports served by Pages) ------- */
+/* When enabled (see README), tools/build_cache.py pre-scans the URLs in
+   urls.txt with the real Python engines and writes cache/<host>.json into
+   the site. Pages serves those same-origin, so configured targets get
+   full-strength results (two-origin CORS proof, server-side header reads,
+   metadata blocking) with no third-party relays. If the file is absent,
+   scans fall through to the live engines. */
+
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // prefer cache fresher than 24h
+
+async function cachedReportFor(url) {
+  let host = "";
+  try { host = new URL(url).hostname; } catch (_) { return null; }
+  let data = null;
+  try {
+    // Cached reports live on the Pages origin (GitHub Actions commits them
+    // into the site), so always use appBase() — never API_BASE.
+    const res = await fetch(appBase() + "cache/" + host + ".json", { cache: "no-store" });
+    if (!res.ok) return null;
+    data = await res.json();
+  } catch (_) { return null; }
+  const entry = (data && data.urls) ? data.urls[url] : null;
+  if (!entry) return null;
+  // Only accept entries where at least one engine actually reached the
+  // target (a full network failure means the cache job could not scan it),
+  // and skip ancient reports.
+  const reachable = [entry.clickjacking, entry.headers, entry.cors]
+    .some((r) => r && r.status_code != null);
+  if (!reachable) return null;
+  const at = new Date(entry.generated_at || 0).getTime();
+  if (!at || (Date.now() - at) > CACHE_MAX_AGE_MS) return null;
+  return entry;
 }
 
 function isEngineDown(data) {
@@ -343,7 +406,9 @@ function apiErrorMessage(data) {
 function sourceLabel(data) {
   const s = data && data._source;
   if (s === "python") return "python engine";
+  if (s === "cache") return "cached report";
   if (s === "relay") return "live lookup";
+  if (s === "cache-lookup") return "cached lookup";
   if (s === "browser") return "this browser";
   if (s === "none") return "no engine";
   return s || "live";
@@ -964,7 +1029,56 @@ async function fetchText(href, ms) {
   }
 }
 
+/* ---------- Header lookup cache (dedupe + TTL) -------------------------- */
+/* Concurrent scans of the same URL (the hub suite runs all three tools at
+   once) share one lookup, and repeat scans reuse a 10-minute local cache —
+   so public relays are hit far less often and rate limits rarely bite. */
+
+const HEADER_CACHE_KEY = "cb-header-lookup-v1";
+const HEADER_CACHE_TTL = 10 * 60 * 1000;
+
+const headerLookupInFlight = new Map();
+
+function headerCacheGet(url) {
+  try {
+    const raw = localStorage.getItem(HEADER_CACHE_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    const entry = map[url];
+    if (!entry || !entry.at || !entry.value) return null;
+    if (Date.now() - entry.at > HEADER_CACHE_TTL) return null;
+    return entry.value;
+  } catch (_) { return null; }
+}
+
+function headerCachePut(url, value) {
+  try {
+    const map = JSON.parse(localStorage.getItem(HEADER_CACHE_KEY) || "{}");
+    const now = Date.now();
+    Object.keys(map).forEach((k) => {
+      if (!map[k].at || now - map[k].at > HEADER_CACHE_TTL) delete map[k];
+    });
+    map[url] = { at: now, value: value };
+    localStorage.setItem(HEADER_CACHE_KEY, JSON.stringify(map));
+  } catch (_) { /* private mode / quota — cache is best-effort */ }
+}
+
 async function lookupHeadersLive(url) {
+  const cached = headerCacheGet(url);
+  if (cached) return Object.assign({}, cached, { source: "cache-lookup" });
+  if (headerLookupInFlight.has(url)) return headerLookupInFlight.get(url);
+  const p = lookupHeadersRemote(url)
+    .then((res) => {
+      if (res) headerCachePut(url, res);
+      return res;
+    })
+    .catch(() => null)
+    .finally(() => { headerLookupInFlight.delete(url); });
+  headerLookupInFlight.set(url, p);
+  return p;
+}
+
+async function lookupHeadersRemote(url) {
   const encoded = encodeURIComponent(url);
   let host = "";
   try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
@@ -974,7 +1088,8 @@ async function lookupHeadersLive(url) {
     host ? ht + encodeURIComponent(host) : "",
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + url),
     host ? "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + host) : "",
-    "https://corsproxy.io/?url=" + encodeURIComponent(ht + url)
+    "https://corsproxy.io/?url=" + encodeURIComponent(ht + url),
+    "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(ht + url)
   ].filter(Boolean);
 
   for (let i = 0; i < probes.length; i++) {
