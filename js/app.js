@@ -1086,6 +1086,11 @@ function initSuite() {
 
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+  const initial = new URLSearchParams(location.search).get("url");
+  if (initial) {
+    input.value = normalizeUrl(initial);
+    run();
+  }
 }
 
 function suiteSkeleton(title) {

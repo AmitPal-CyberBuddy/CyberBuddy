@@ -14,9 +14,9 @@ responsible for having permission to test them. All checks are read-only GETs.
 
 | Tool | What it does | Mode |
 | --- | --- | --- |
-| **Clickjacking Validator** | Live iframe frame-test + PoC overlay; header scoring of X-Frame-Options / CSP frame-ancestors | full with `server.py`, frame-only static |
-| **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | needs `server.py` (or CLI) |
-| **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | engine for reflection proof; static fallback is single-origin |
+| **Clickjacking Validator** | Live iframe frame-test + PoC overlay; header scoring of X-Frame-Options / CSP frame-ancestors | iframe always; headers via Python API or live lookup |
+| **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; live lookup on GitHub Pages |
+| **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 
 More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` and it
 appears in the nav, footer, and hub grid.

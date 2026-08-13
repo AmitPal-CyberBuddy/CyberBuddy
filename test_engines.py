@@ -6,8 +6,11 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import shutil
+import subprocess
 import threading
 import unittest
+from urllib.parse import quote
 from email.message import Message
 from http.server import ThreadingHTTPServer
 
@@ -326,6 +329,50 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
 
+    def test_js_graders_match_python_scores(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + r"""
+const hdrs = {
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+  "x-frame-options": "DENY",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin"
+};
+const r = gradeHeadersFromMap("https://example.com", 200, "https://example.com", hdrs, "relay");
+const cj = gradeClickjackingFromMap("https://example.com", 200, "https://example.com", hdrs, "relay");
+const dump = parseRawHeaderDump("HTTP/1.1 200 OK\nX-Frame-Options: DENY\nContent-Type: text/html\n");
+if (r.score < 70) throw new Error("headers score " + r.score);
+if (cj.risk !== "low") throw new Error("clickjacking " + cj.risk);
+if (dump.headers["x-frame-options"] !== "DENY") throw new Error("dump");
+console.log(JSON.stringify({ grade: r.grade, score: r.score, risk: cj.risk }));
+"""
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertGreaterEqual(payload["score"], 70)
+        self.assertEqual(payload["risk"], "low")
+
 
 class ServerRouteTests(unittest.TestCase):
     @classmethod
@@ -419,6 +466,22 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertIn("text/html", headers.get("content-type", ""))
         self.assertIn(b"404", body)
+
+    def test_three_apis_scan_this_server(self):
+        target = quote(f"http://127.0.0.1:{self.port}/", safe="")
+        status, _, body = self._req("/api/headers?url=" + target)
+        self.assertEqual(status, 200)
+        headers_data = json.loads(body)
+        self.assertIn("grade", headers_data)
+        self.assertTrue(headers_data.get("checks"))
+        status, _, body = self._req("/api/scan?url=" + target)
+        self.assertEqual(status, 200)
+        scan_data = json.loads(body)
+        self.assertTrue(scan_data.get("findings"))
+        status, _, body = self._req("/api/cors?url=" + target)
+        self.assertEqual(status, 200)
+        cors_data = json.loads(body)
+        self.assertTrue(cors_data.get("checks"))
 
 
 if __name__ == "__main__":
