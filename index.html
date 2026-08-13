@@ -22,17 +22,14 @@
 <body>
 <main id="main" class="container">
 
-  <!-- ================= Hero ================= -->
   <section class="hero" style="padding: 84px 0 56px;">
-    <p class="kicker reveal">For VAPT analysts · browser security assessment suite</p>
+    <p class="kicker reveal">Browser security checks</p>
     <h1 class="reveal hero-title" style="--d: .08s;">
       Every check your report needs,<br />in one place.
     </h1>
     <p class="lead reveal" style="--d: .16s; margin-top: 16px;">
-      CyberBuddy replaces a browser full of scattered tools. Clickjacking validation,
-      security header grading, and CORS posture — each run produces a clean,
-      evidence-grade result you can screenshot or export straight into your
-      assessment report. All checks are read-only and run locally.
+      Clickjacking, security headers, and CORS — clean results you can
+      screenshot and drop into an assessment. All checks are read-only.
     </p>
 
     <div class="grid-2 reveal" style="margin-top: 36px; grid-template-columns: 1.15fr 1fr; --d: .24s;">
@@ -47,7 +44,7 @@
         <ul style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.9rem; display: grid; gap: 11px;">
           <li><strong style="color: var(--ink-2);">No tab sprawl.</strong> The checks you run on every engagement — framing protections, header posture, CORS — consolidated under one roof.</li>
           <li><strong style="color: var(--ink-2);">Evidence-grade output.</strong> Every finding shows the exact header value it's based on, with severity and a plain-language explanation.</li>
-          <li><strong style="color: var(--ink-2);">Report-ready.</strong> Result cards are self-contained: target, status, verdict, evidence — screenshot them or print to PDF.</li>
+          <li><strong style="color: var(--ink-2);">Screenshot-ready.</strong> Result cards are self-contained: target, verdict, evidence — capture them as proof.</li>
         </ul>
         <div class="disclaimer mt-0" style="margin-top: 18px;">
           <span class="disclaimer-mark">! !</span>
@@ -57,14 +54,12 @@
     </div>
   </section>
 
-  <!-- ================= Tools ================= -->
   <div class="section-head reveal">
     <h2>Assessment tools</h2>
-    <span class="count" id="toolCount">01 live · 02 beta · more in build</span>
+    <span class="count" id="toolCount">03 live</span>
   </div>
 
   <section class="tool-grid" id="toolGrid" aria-label="Available tools">
-    <!-- Clickjacking -->
     <a class="tool-card card corner-card reveal" style="--d: .05s;" href="tools/clickjacking/">
       <div class="tool-card-top">
         <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg></span>
@@ -73,9 +68,8 @@
       <div>
         <h3>Clickjacking Validator</h3>
         <p class="tool-card-desc">
-          Frame a target live and confirm whether it renders. With the local engine,
-          get severity-scored X-Frame-Options and CSP frame-ancestors findings,
-          plus a shareable PoC overlay.
+          Load a target in a live frame. If the real UI appears, the page can be
+          clickjacked — screenshot the result as proof.
         </p>
       </div>
       <div class="tool-card-tags">
@@ -86,11 +80,10 @@
       <span class="tool-card-open">Run check <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </a>
 
-    <!-- Headers -->
     <a class="tool-card card corner-card reveal" style="--d: .12s;" href="tools/headers/">
       <div class="tool-card-top">
         <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
-        <span class="status-led beta">beta</span>
+        <span class="status-led">live</span>
       </div>
       <div>
         <h3>Security Headers</h3>
@@ -109,17 +102,16 @@
       <span class="tool-card-open">Run check <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </a>
 
-    <!-- CORS -->
     <a class="tool-card card corner-card reveal" style="--d: .19s;" href="tools/cors/">
       <div class="tool-card-top">
         <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg></span>
-        <span class="status-led beta">beta</span>
+        <span class="status-led">live</span>
       </div>
       <div>
         <h3>CORS Validator</h3>
         <p class="tool-card-desc">
           Probes origin reflection, credential handling and Vary: Origin from your
-          browser — the same view a malicious site gets. Preflight explorer is in the pipeline.
+          browser — the same view a malicious site gets.
         </p>
       </div>
       <div class="tool-card-tags">
@@ -130,7 +122,6 @@
       <span class="tool-card-open">Run check <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </a>
 
-    <!-- Coming soon -->
     <div class="tool-card card tool-card--ghost reveal" style="--d: .26s;">
       <div class="tool-card-top">
         <span class="tool-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></span>
@@ -151,14 +142,13 @@
     </div>
   </section>
 
-  <!-- ================= How an assessment runs ================= -->
   <div class="section-head reveal">
     <h2>How an assessment runs</h2>
   </div>
   <div class="roadmap">
     <div class="roadmap-item reveal" style="--d: .05s;">
       <div class="rm-title">01 · Target it</div>
-      <p>Paste any <code>http(s)</code> URL. With the local engine, checks run server-side for full results; on static hosting the pages fall back to visual/browser-side checks.</p>
+      <p>Paste any <code>http(s)</code> URL you are authorized to test.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .12s;">
       <div class="rm-title">02 · Collect evidence</div>
@@ -166,11 +156,10 @@
     </div>
     <div class="roadmap-item reveal" style="--d: .19s;">
       <div class="rm-title">03 · Report it</div>
-      <p>Every result is a self-contained report card: target, status, findings, evidence. Screenshot it or use Export / Print to save a PDF for the deliverable.</p>
+      <p>Every result is a self-contained card: target, verdict, findings, evidence. Screenshot it for the deliverable.</p>
     </div>
   </div>
 
-  <!-- ================= Connect ================= -->
   <div class="section-head reveal">
     <h2>Shape what's next</h2>
   </div>
@@ -194,7 +183,6 @@
     </div>
   </div>
 
-  <!-- ================= Disclaimer ================= -->
   <div class="disclaimer reveal" style="--d: .1s;">
     <span class="disclaimer-mark">! !</span>
     <span>
@@ -210,7 +198,6 @@
 <script>
   "use strict";
 
-  // Types the sample scan into the hero console, line by line.
   function typeConsole() {
     const c = document.getElementById("demoConsole");
     if (!c) return;
@@ -218,7 +205,7 @@
     const lines = [
       '<div><span class="c-prompt">$</span> cyberbuddy scan https://example.com</div>',
       '<div class="c-dim">─ framing protections ─────────────────────</div>',
-      '<div><span class="c-ok">[protected]</span> CSP frame-ancestors &nbsp;=&nbsp; \'none\'</div>',
+      '<div><span class="c-ok">[protected]</span> CSP frame-ancestors &nbsp;=&nbsp; \\\'none\\\'</div>',
       '<div><span class="c-ok">[protected]</span> X-Frame-Options &nbsp;&nbsp;&nbsp;=&nbsp; DENY</div>',
       '<div><span class="c-red">[missing]</span>&nbsp; Strict-Transport-Security</div>',
       '<div><span class="c-amber">[weak]</span>&nbsp;&nbsp; Referrer-Policy &nbsp;&nbsp;=&nbsp; default leaks</div>',
