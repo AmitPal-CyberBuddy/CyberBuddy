@@ -983,8 +983,14 @@ html.js .tool-card.reveal.in .tool-card-icon svg * {
   background: linear-gradient(135deg, var(--brand) 0%, var(--accent-2) 100%);
   box-shadow: 0 12px 26px -12px rgba(62, 224, 194, 0.55);
   transition: transform 0.22s ease;
+  animation: monogramFloat 6s ease-in-out infinite;
 }
-.blog-feature:hover .blog-monogram { transform: rotate(-4deg) scale(1.04); }
+@keyframes monogramFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(-2deg); }
+  75% { transform: translateY(3px) rotate(1.5deg); }
+}
+.blog-feature:hover .blog-monogram { animation: none; transform: rotate(-4deg) scale(1.04); }
 .blog-feature-body { flex: 1 1 320px; min-width: 0; }
 .blog-feature-body h3 { margin: 0 0 4px; font-size: 1.05rem; }
 .blog-feature-body p { margin: 0; color: var(--muted); font-size: 0.86rem; }
@@ -1041,6 +1047,42 @@ html.js .tool-card.reveal.in .tool-card-icon svg * {
 .blog-post:hover .blog-open { letter-spacing: 0.04em; }
 .blog-post:hover .blog-open svg { transform: translateX(3px); }
 
+/* Shine sweep on hover for blog/standards/stats cards */
+.blog-post::after,
+.std-card::after,
+.stat::after {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(62, 224, 194, 0.08), transparent);
+  transform: skewX(-18deg); transition: left 0.55s ease; pointer-events: none;
+}
+.blog-post, .std-card, .stat { position: relative; overflow: hidden; }
+.blog-post:hover::after, .std-card:hover::after, .stat:hover::after { left: 120%; }
+html[data-theme="light"] .blog-post::after,
+html[data-theme="light"] .std-card::after,
+html[data-theme="light"] .stat::after {
+  background: linear-gradient(100deg, transparent, rgba(13, 148, 136, 0.06), transparent);
+}
+
+/* Recent scans chips (hub page) */
+.recent-scans {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 0 4px;
+}
+.recent-label {
+  font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+}
+.recent-chip {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 12px; cursor: pointer;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.recent-chip:hover {
+  color: var(--brand); border-color: var(--brand-ring); background: var(--brand-soft);
+}
+
 .blog-more {
   margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 9px;
   text-align: center;
@@ -1072,6 +1114,9 @@ html.js .reveal.in,
   .theme-toggle.spin svg { animation: none; }
   .nav-menu-panel { animation: none; }
   .btn-primary { animation: none; }
+  .blog-monogram { animation: none; }
+  .blog-post::after, .std-card::after, .stat::after { display: none; }
+  .recent-scans { display: none; }
 }
 
 @media print {
@@ -1079,7 +1124,7 @@ html.js .reveal.in,
   body { background: #fff; color: #101828; }
   body::before, .site-header, .site-footer, .bar, .suite-bar, .form-hint, .notice, .btn,
   .ambient, .aurora, .page-load-bar, .scroll-progress, .ticker, .radar, .overlay, .skip-link,
-  .engine-chip, .to-top { display: none !important; }
+  .engine-chip, .to-top, .recent-scans, .blog-monogram { display: none !important; }
   .container { width: 100%; max-width: none; }
   main { padding: 0 !important; }
   .card, .report-card { box-shadow: none; border-color: #d0d5dd; background: #fff; color: #101828; break-inside: avoid; }
@@ -1103,6 +1148,9 @@ html.js .reveal.in,
   .console { padding-right: 0; }
   .radar { display: none; }
   .hero { padding-top: 56px; }
+  /* Reduce aurora on smaller screens for performance */
+  .aurora i { opacity: 0.2; }
+  .aurora i:nth-child(3) { display: none; }
 }
 
 /* Phones — stack the blog feature, tighten stats/ticker/CTAs */

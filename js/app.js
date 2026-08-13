@@ -103,6 +103,17 @@ function initThemeToggle() {
     void btn.offsetWidth;
     btn.classList.add("spin");
   });
+  // Follow OS preference when the user has not explicitly chosen a theme
+  if (window.matchMedia) {
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    mq.addEventListener("change", (e) => {
+      try {
+        if (!localStorage.getItem(THEME_KEY)) {
+          applyTheme(e.matches ? "light" : "dark", false);
+        }
+      } catch (_) { applyTheme(e.matches ? "light" : "dark", false); }
+    });
+  }
 }
 
 /* ---------- Scroll chrome (header state + back-to-top) ------------------ */
@@ -1385,11 +1396,13 @@ function initSuite() {
   const out = document.getElementById("suiteResults");
   if (!input || !go || !out) return;
 
-  async function run() {
-    const url = normalizeUrl(input.value);
-    if (!url || !validUrl(url)) { input.focus(); return; }
-    input.value = url;
-    setLoading(go, true);
+    async function run() {
+      const url = normalizeUrl(input.value);
+      if (!url || !validUrl(url)) { input.focus(); return; }
+      input.value = url;
+      addRecentScan(url);
+      renderRecentScans();
+      setLoading(go, true);
     out.classList.remove("hidden");
     out.innerHTML = '<div class="suite-grid">' +
       suiteSkeleton("Clickjacking") + suiteSkeleton("Headers") + suiteSkeleton("CORS") +
@@ -1449,4 +1462,97 @@ function setSourceChip(data) {
   if (!el) return;
   el.textContent = "via " + sourceLabel(data);
   el.classList.remove("hidden");
+}
+
+/* ---------- Share link (tool pages) ------------------------------------ */
+/* Copies the current tool URL (with ?url= param) to the clipboard so
+   pentesters can drop a shareable link straight into a report. */
+
+function initShareButton() {
+  const btn = document.getElementById("shareLink");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const url = window.location.href;
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch (_) { /* fall through */ }
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (_) { ok = false; }
+    }
+    const original = btn.textContent;
+    btn.textContent = ok ? "Link copied ✓" : "Copy failed";
+    btn.classList.add("flash", ok ? "flash-ok" : "flash-err");
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove("flash", "flash-ok", "flash-err");
+    }, 1600);
+  });
+}
+
+/* ---------- Recent scans (hub page) ----------------------------------- */
+/* Stores the last N scanned URLs in localStorage and renders them as
+   quick-access chips on the hub. Each chip re-runs the suite. */
+
+const RECENT_KEY = "cb-recent-scans";
+const RECENT_MAX = 5;
+
+function getRecentScans() {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+
+function addRecentScan(url) {
+  if (!url) return;
+  try {
+    let items = getRecentScans().filter((u) => u !== url);
+    items.unshift(url);
+    if (items.length > RECENT_MAX) items = items.slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(items));
+  } catch (_) { /* quota / private mode */ }
+}
+
+function renderRecentScans() {
+  const wrap = document.getElementById("recentScans");
+  if (!wrap) return;
+  const items = getRecentScans();
+  if (!items.length) {
+    wrap.classList.add("hidden");
+    return;
+  }
+  wrap.classList.remove("hidden");
+  const base = appBase();
+  const chips = items.map((url) =>
+    '<button type="button" class="recent-chip" data-url="' + esc(url) + '">' +
+    esc(url) + "</button>"
+  ).join("");
+  wrap.innerHTML = '<span class="recent-label">Recent:</span> ' + chips;
+  wrap.querySelectorAll(".recent-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const url = chip.getAttribute("data-url");
+      const input = document.getElementById("suiteUrl");
+      if (input) {
+        input.value = url;
+        const go = document.getElementById("suiteGo");
+        if (go) go.click();
+      }
+    });
+  });
 }

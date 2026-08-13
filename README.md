@@ -113,6 +113,11 @@ layers make the hosted site as close to `server.py` as possible:
      *Assemble static site* step. (The workflow files are owned by the
      repo maintainer — edit them on your branch.)
 
+   - **Metadata assets:** the workflow also copies `og-cyberbuddy.png`,
+     `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `robots.txt`,
+     and `sitemap.xml` into `_site/`. Use `test -f "$f" && cp "$f" _site/ || true`
+     for each file so the build never fails if an asset is temporarily missing.
+
    The UI prefers the cache over the public lookups (fresh within 24h) and
    marks reports `via cached report`.
 2. **Optional hosted API (`api/`).** Deploy the `api/` folder (Vercel free
