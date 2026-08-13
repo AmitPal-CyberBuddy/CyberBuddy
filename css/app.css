@@ -112,6 +112,7 @@ body {
   line-height: 1.65;
   color: var(--ink);
   background-color: var(--paper);
+  overflow-x: clip; /* decorative blobs must never cause horizontal scroll */
   background-image:
     radial-gradient(900px 480px at var(--mx, 18%) var(--my, -8%), rgba(62, 224, 194, 0.1), transparent 55%),
     radial-gradient(800px 420px at 110% 0%, rgba(138, 164, 255, 0.1), transparent 50%),
@@ -940,17 +941,29 @@ html.js .tool-card.reveal.in .tool-card-icon svg * {
 .blog-post h3 { margin: 0; font-size: 0.98rem; line-height: 1.4; color: var(--ink); flex: 1; }
 .blog-post:hover h3 { color: var(--brand); }
 .blog-post-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   border-top: 1px solid var(--line); padding-top: 12px;
   font-family: var(--font-mono); font-size: 0.68rem; color: var(--faint);
 }
-.blog-post-foot .blog-claps { display: inline-flex; align-items: center; gap: 5px; }
+.blog-date { display: inline-flex; align-items: center; gap: 5px; }
+.blog-badge {
+  font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--brand); background: var(--brand-soft); border: 1px solid var(--brand-ring);
+  border-radius: 999px; padding: 2px 8px;
+}
 .blog-post-foot .blog-open {
   display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--brand);
   transition: letter-spacing 0.2s ease;
 }
 .blog-post-foot .blog-open svg { width: 0.85em; height: 0.85em; }
 .blog-post:hover .blog-open { letter-spacing: 0.04em; }
+
+.blog-more {
+  margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 9px;
+  text-align: center;
+}
+.blog-more .form-hint { margin: 0; }
 
 .reveal { opacity: 1; }
 html.js .reveal { opacity: 0; }
@@ -1003,4 +1016,28 @@ html.js .reveal.in,
   .console { padding-right: 0; }
   .radar { display: none; }
   .hero { padding-top: 56px; }
+}
+
+/* Phones — stack the blog feature, tighten stats/ticker/CTAs */
+@media (max-width: 560px) {
+  .hero { padding-top: 40px; }
+  .hero .lead { font-size: 0.98rem; }
+  .section-head { flex-wrap: wrap; row-gap: 4px; }
+  .blog-feature { flex-direction: column; text-align: center; padding: 20px 18px; }
+  .blog-feature-body { text-align: center; }
+  .blog-profile-meta { justify-content: center; }
+  .blog-feature-cta { width: 100%; }
+  .blog-feature-cta .btn { width: 100%; justify-content: center; }
+  .blog-grid { gap: 12px; }
+  .blog-post { padding: 16px; }
+  .stats-row { gap: 10px; }
+  .stat { padding: 14px 10px; }
+  .stat-num { font-size: 1.3rem; }
+  .ticker-track span { font-size: 0.6rem; letter-spacing: 0.1em; }
+  .contact-cta { padding: 20px 18px; }
+  .contact-cta-actions { width: 100%; }
+  .contact-cta-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .bar, .suite-bar { padding: 12px; border-radius: 16px; }
+  .findings td.k { width: 40%; }
+  .blog-more .btn { width: 100%; justify-content: center; }
 }
