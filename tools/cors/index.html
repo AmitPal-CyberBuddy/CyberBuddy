@@ -44,8 +44,8 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814b" />
-  <script src="../../js/app.js?v=20260814b" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
+  <script src="../../js/app.js?v=20260814c" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/cors/");
@@ -112,6 +112,7 @@
 
       <div id="verdictBanner" class="verdict-banner unknown">
         <div class="verdict-main">
+          <p id="protection" class="protection-line">Run a probe to assess CORS posture.</p>
           <p id="summary" class="verdict-text">Run a probe to generate the report.</p>
         </div>
       </div>
@@ -154,6 +155,15 @@
       $("summary").textContent = text;
       $("verdictBanner").className = "verdict-banner " +
         (risk === "PROBING" ? "unknown" : risk.toLowerCase());
+      const r = (risk || "").toLowerCase();
+      let label, cls;
+      if (r === "probing") { label = "CORS policy: checking…"; cls = "unknown"; }
+      else if (r === "low") { label = "CORS policy: RESTRICTIVE — no arbitrary-origin reflection"; cls = "low"; }
+      else if (r === "medium") { label = "CORS policy: PERMISSIVE — review the findings"; cls = "medium"; }
+      else if (r === "high") { label = "CORS policy: PERMISSIVE — reflection + credentials"; cls = "high"; }
+      else { label = "CORS policy: UNABLE TO DETERMINE"; cls = "unknown"; }
+      $("protection").textContent = label;
+      $("protection").className = "protection-line " + cls;
     }
 
     function renderChecks(checks) {
@@ -177,6 +187,14 @@
       const engine = await apiCors(url);
       cbLastData = engine || null;
       setSourceChip(engine || { _source: "none" });
+      if (engine && engine._unreachable) {
+        $("mOrigin").textContent = "engine";
+        $("mStatus").textContent = "—";
+        setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(engine));
+        renderChecks(engine.checks || []);
+        setLoading($("go"), false);
+        return;
+      }
       if (!isEngineDown(engine) && engine && (engine.checks || engine.error)) {
         const origins = (engine.origins_tested || []).join(" · ") || "engine";
         $("mOrigin").textContent = origins;

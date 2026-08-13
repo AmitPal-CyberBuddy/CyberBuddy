@@ -445,16 +445,14 @@ def scan_url(
             summary=f"Request failed: {exc}",
         )
 
+    # Clickjacking is specifically about *framing*. Keep the findings table to
+    # the two framing controls (X-Frame-Options + CSP frame-ancestors) rather
+    # than mixing in Transport / cookies / Permissions-Policy, which belong to
+    # the Security Headers tool.
     findings = [
-        assess_https(final_url),
         assess_xfo(headers.get("x-frame-options")),
         assess_frame_ancestors(headers.get("content-security-policy")),
     ]
-    ro = assess_csp_report_only(headers.get("content-security-policy-report-only"))
-    if ro:
-        findings.append(ro)
-    findings.append(assess_permissions_policy(headers.get("permissions-policy") or headers.get("feature-policy")))
-    findings.append(assess_cookies(headers.get("set-cookie")))
 
     risk, summary = score(findings)
     interesting = {
@@ -463,10 +461,6 @@ def scan_url(
             "x-frame-options",
             "content-security-policy",
             "content-security-policy-report-only",
-            "permissions-policy",
-            "feature-policy",
-            "set-cookie",
-            "strict-transport-security",
         )
         if k in headers
     }
