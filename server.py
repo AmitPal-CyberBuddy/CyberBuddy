@@ -144,9 +144,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
             "script-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
+            "connect-src 'self' http: https:; "
             "frame-src http: https:; "
             "object-src 'none'; "
             "base-uri 'self'; "

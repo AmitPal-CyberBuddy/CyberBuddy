@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CORS Validator — CyberBuddy</title>
   <meta name="description" content="Check how a site shares data with other origins." />
+  <meta name="theme-color" content="#07090d" />
   <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="../../css/app.css" />
-  <script src="../../js/app.js?v=20260813" defer></script>
+  <script src="../../js/app.js?v=20260813b" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/cors/");
@@ -18,8 +19,9 @@
   </script>
 </head>
 <body>
-<main id="main" class="container" style="padding-top: 56px;">
+<main id="main" class="container page-hero">
 
+  <p class="kicker reveal">Tool 03</p>
   <h1 class="reveal">CORS Validator</h1>
   <p class="lead reveal" style="--d: .08s;">
     See whether this page can read the target across origins — and whether
@@ -32,6 +34,7 @@
       <input id="url" type="url" placeholder="https://example.com/api" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>
+    <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -40,7 +43,10 @@
         <div>
           <h2>CORS posture</h2>
         </div>
-        <span id="verdict" class="risk unknown">—</span>
+        <div class="report-actions">
+          <span id="sourceChip" class="source-chip hidden"></span>
+          <span id="verdict" class="risk unknown">—</span>
+        </div>
       </div>
 
       <div class="meta-grid">
@@ -119,6 +125,7 @@
       setLoading($("go"), true);
 
       const engine = await apiCors(url);
+      setSourceChip(engine || { _source: "none" });
       if (!isEngineDown(engine) && engine && (engine.checks || engine.error)) {
         const origins = (engine.origins_tested || []).join(" · ") || "engine";
         $("mOrigin").textContent = origins;
@@ -135,80 +142,7 @@
         return;
       }
 
-      const origin = window.location.origin || "null";
-      $("mOrigin").textContent = origin;
-      const checks = [];
-      try {
-        const res = await fetch(url, {
-          mode: "cors",
-          credentials: "omit",
-          cache: "no-store"
-        });
-        $("mStatus").textContent = String(res.status);
-        const acao = res.headers.get("access-control-allow-origin");
-        const acac = res.headers.get("access-control-allow-credentials");
-        const vary = res.headers.get("vary") || "";
-
-        if (!acao) {
-          checks.push({
-            name: "Access-Control-Allow-Origin",
-            status: "missing",
-            detail: "This origin cannot read the response. Restrictive and safe.",
-            evidence: "ACAO: (absent)"
-          });
-        } else if (acao === "*") {
-          checks.push({
-            name: "Access-Control-Allow-Origin",
-            status: "info",
-            detail: "Any website can read this resource. Fine only for fully public data.",
-            evidence: "ACAO: *"
-          });
-        } else {
-          checks.push({
-            name: "Access-Control-Allow-Origin",
-            status: "info",
-            detail: "This origin is allowed. Confirm it is an intentional allowlist, not a reflection of every caller.",
-            evidence: "ACAO: " + acao
-          });
-        }
-        if (acac && acac.trim().toLowerCase() === "true") {
-          checks.push({
-            name: "Allow-Credentials",
-            status: "info",
-            detail: "The server is willing to allow credentials for CORS reads.",
-            evidence: "ACAC: " + acac
-          });
-        }
-        if (acao && acao !== "*" && !/origin/i.test(vary)) {
-          checks.push({
-            name: "Vary: Origin",
-            status: "weak",
-            detail: "Origin-specific CORS headers without Vary: Origin. Shared caches may reuse one caller’s policy.",
-            evidence: "Vary: " + (vary || "(absent)")
-          });
-        } else if (/origin/i.test(vary)) {
-          checks.push({
-            name: "Vary: Origin",
-            status: "ok",
-            detail: "Cached responses are partitioned by caller origin.",
-            evidence: "Vary: " + vary
-          });
-        }
-        const isWeak = checks.some((c) => c.status === "weak");
-        setVerdict(isWeak ? "REVIEW" : "OK",
-          "HTTP " + res.status + " from this browser origin (" + origin + ").");
-      } catch (err) {
-        $("mStatus").textContent = "—";
-        checks.push({
-          name: "Fetch result",
-          status: "info",
-          detail: "The browser blocked the cross-origin read, or the request failed. That usually means this origin is not allowed.",
-          evidence: String(err && err.message ? err.message : err)
-        });
-        setVerdict("BLOCKED", "This origin cannot read the target.");
-      }
       setLoading($("go"), false);
-      renderChecks(checks);
     }
 
     $("go").addEventListener("click", () => {

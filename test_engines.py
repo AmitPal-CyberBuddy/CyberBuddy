@@ -310,6 +310,9 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("path.endsWith(marker)", src)
         self.assertNotIn("pathname.slice(0, idx)", src)
         self.assertIn("application/json", src)
+        self.assertIn("gradeHeadersFromMap", src)
+        self.assertIn("lookupHeadersLive", src)
+        self.assertIn("probeCorsLive", src)
 
     def test_tool_pages_exist(self):
         for slug in ("clickjacking", "headers", "cors"):

@@ -1,8 +1,9 @@
 # CyberBuddy
 
 A single web product that hosts multiple browser security checks under one UI.
-Light “assessment report” theme — no framework, no build step, no third-party
-Python packages. Static HTML/CSS/JS plus Python stdlib.
+Night-ops console theme — no framework, no build step, no third-party Python
+packages. Static HTML/CSS/JS plus Python stdlib. The same graders run in the
+browser on GitHub Pages and on `server.py` when you host it yourself.
 
 Requires **Python 3.10+** (`python3 --version`).
 
@@ -85,9 +86,10 @@ python3 -m unittest test_engines.py
 - Every tool renders results as a self-contained **report card** — target, final
   URL, HTTP status, generated timestamp, verdict, and per-finding evidence —
   ready to screenshot or export via **Export / Print** (print stylesheet included).
-- Opening `index.html` straight from disk works for the hub and the frame test;
-  header scans need the API, so the pages show a clear static-mode notice and
-  instructions instead of failing silently.
+- On GitHub Pages the Python process is not running (Pages is static). The UI
+  still grades headers and framing by looking up response headers through a
+  public read-only relay, and CORS is probed from the `github.io` origin.
+  `server.py` is preferred whenever it is reachable — same scores, no relay.
 - The scan APIs refuse cross-origin browser requests (Origin / Referer check)
   and never fetch cloud-metadata or link-local addresses. Treat a `0.0.0.0`
   bind as an explicit choice, not the default.

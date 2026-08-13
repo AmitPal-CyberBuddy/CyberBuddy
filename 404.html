@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Page not found — CyberBuddy</title>
   <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#07090d" />
   <script>
-    /* Repair the hosted 404s: old appBase() bug and short tool aliases. */
     (function () {
       var path = location.pathname || "/";
       var next = path.replace(/\/js\/app\.js(?=\/)/, "");
@@ -31,35 +31,35 @@
   </script>
   <style>
     :root {
-      --paper: #f4f6f8; --ink: #101828; --muted: #667085; --faint: #98a2b3;
-      --line: #e4e7ec; --brand: #0d9488; --brand-deep: #0f766e; --brand-soft: #e6f4f2;
-      --font: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+      --paper: #07090d; --ink: #eef3f8; --muted: #8b97a8;
+      --line: rgba(255,255,255,.08); --brand: #3ee0c2;
+      --font: "Sora", ui-sans-serif, system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh; font-family: var(--font); color: var(--ink);
-      background: var(--paper);
-      background-image: radial-gradient(900px 420px at 10% -10%, rgba(13,148,136,.08), transparent 60%);
+      background: radial-gradient(900px 420px at 10% -10%, rgba(62,224,194,.12), transparent 60%), var(--paper);
       display: flex; flex-direction: column;
     }
     .wrap { width: min(720px, 100% - 40px); margin: auto; padding: 48px 0 64px; }
     .kicker {
       font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem;
       font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
-      color: var(--brand-deep); margin: 0 0 12px;
+      color: var(--brand); margin: 0 0 12px;
     }
-    h1 { font-size: clamp(2rem, 5vw, 2.6rem); letter-spacing: -.02em; margin: 0 0 12px; }
+    h1 { font-size: clamp(2rem, 5vw, 2.6rem); letter-spacing: -.03em; margin: 0 0 12px; }
     p { color: var(--muted); line-height: 1.6; margin: 0 0 28px; }
     .grid { display: grid; gap: 12px; }
     a.card {
       display: block; text-decoration: none; color: inherit;
-      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(14,18,26,.8); border: 1px solid var(--line); border-radius: 16px;
       padding: 16px 18px; transition: border-color .15s ease, transform .15s ease;
     }
-    a.card:hover { border-color: rgba(13,148,136,.45); transform: translateY(-2px); }
-    a.card strong { display: block; color: var(--brand-deep); margin-bottom: 4px; }
+    a.card:hover { border-color: rgba(62,224,194,.45); transform: translateY(-2px); }
+    a.card strong { display: block; color: var(--brand); margin-bottom: 4px; }
     a.card span { color: var(--muted); font-size: .9rem; }
-    .home { display: inline-block; margin-top: 22px; color: var(--brand-deep); font-weight: 700; }
+    .home { display: inline-block; margin-top: 22px; color: var(--brand); font-weight: 700; }
+    code { color: var(--brand); }
   </style>
 </head>
 <body>
@@ -67,8 +67,7 @@
     <p class="kicker">404</p>
     <h1>This check isn’t at that address.</h1>
     <p>
-      The page you asked for isn’t on this host. The three live tools live
-      under <code>/tools/…</code> — pick one below.
+      The three live tools live under <code>/tools/…</code> — pick one below.
     </p>
     <div class="grid" id="links">
       <a class="card" data-slug="clickjacking" href="tools/clickjacking/">
