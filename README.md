@@ -25,11 +25,13 @@ appears in the nav, footer, and hub grid.
 ```bash
 python3 server.py
 # open http://127.0.0.1:8080/
+# tools: /tools/clickjacking/  /tools/headers/  /tools/cors/
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
 targets are always rejected. RFC1918 / loopback targets are allowed when the
-server is loopback-bound (the VAPT case).
+server is loopback-bound (the VAPT case). A `PORT` environment variable (typical
+on PaaS) switches the default bind to `0.0.0.0`.
 
 ```bash
 # LAN bind — private-IP scans stay off unless you opt in
@@ -44,6 +46,7 @@ possible (browsers can't read cross-origin response headers on their own).
 
 ```
 index.html                      # hub
+404.html                        # hosted 404 + repair for old tool URLs
 css/app.css                     # shared design system
 js/app.js                       # shared helpers (nav, footer, icons, API)
 tools/

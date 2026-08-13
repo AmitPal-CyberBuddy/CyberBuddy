@@ -8,6 +8,8 @@ GET /                       hub (index.html)
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
+GET /headers /cors /clickjacking
+                            aliases → /tools/<tool>/
 GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
 GET /api/cors?url=…         two-origin CORS reflection probe
@@ -26,11 +28,12 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from clickjacking_validator import USER_AGENT, normalize_url, scan_url, validate_target
+from clickjacking_validator import normalize_url, scan_url, validate_target
 from cors_validator import scan_cors
 from security_headers import scan_headers
 
@@ -41,6 +44,18 @@ ROOT = Path(__file__).resolve().parent
 
 ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js"}
 STATIC_PREFIXES = ("tools/", "css/", "js/")
+ROOT_STATIC = frozenset({"index.html", "404.html"})
+# GitHub Pages project URL is /CyberBuddy/… — accept the same prefix locally
+# so a hosted-style path does not 404 when someone points server.py at it.
+MOUNT_PREFIXES = ("/CyberBuddy",)
+TOOL_ALIASES = {
+    "/headers": "/tools/headers/",
+    "/headers/": "/tools/headers/",
+    "/cors": "/tools/cors/",
+    "/cors/": "/tools/cors/",
+    "/clickjacking": "/tools/clickjacking/",
+    "/clickjacking/": "/tools/clickjacking/",
+}
 
 POC_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -84,6 +99,30 @@ def _under_root(path: Path) -> bool:
         return False
 
 
+def strip_mount(path: str) -> str:
+    """Drop a known public mount prefix (/CyberBuddy) from the request path."""
+    for prefix in MOUNT_PREFIXES:
+        if path == prefix:
+            return "/"
+        if path.startswith(prefix + "/"):
+            return path[len(prefix):] or "/"
+    return path
+
+
+def default_bind() -> tuple[str, int]:
+    """PaaS hosts set PORT; bind on all interfaces when they do."""
+    env_port = (os.environ.get("PORT") or "").strip()
+    env_host = (os.environ.get("HOST") or "").strip()
+    port = int(env_port) if env_port else 8080
+    if env_host:
+        host = env_host
+    elif env_port:
+        host = "0.0.0.0"
+    else:
+        host = "127.0.0.1"
+    return host, port
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "CyberBuddy"
     sys_version = ""
@@ -120,8 +159,34 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(payload, indent=2).encode("utf-8"), "application/json; charset=utf-8")
 
     def _our_origin(self) -> set[str]:
-        host = self.headers.get("Host", f"{HOST}:{PORT}")
-        return {f"http://{host}", f"https://{host}"}
+        hosts: set[str] = set()
+        for key in ("Host", "X-Forwarded-Host"):
+            raw = (self.headers.get(key) or "").strip()
+            if raw:
+                hosts.add(raw.split(",")[0].strip())
+        if not hosts:
+            hosts.add(f"{HOST}:{PORT}")
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        out: set[str] = set()
+        for host in hosts:
+            out.add(f"http://{host}")
+            out.add(f"https://{host}")
+            if proto in {"http", "https"}:
+                out.add(f"{proto}://{host}")
+        return out
+
+    def _redirect(self, dest: str) -> None:
+        self.send_response(301)
+        self.send_header("Location", dest)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _not_found(self) -> None:
+        page = ROOT / "404.html"
+        if page.is_file():
+            self._send(404, page.read_bytes(), "text/html; charset=utf-8")
+            return
+        self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def _api_allowed(self) -> bool:
         """Stop drive-by GETs from other sites (img/fetch CSRF).
@@ -147,17 +212,17 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, rel: str) -> None:
         rel = rel.lstrip("/").replace("\\", "/")
         if ".." in rel.split("/"):
-            self._send(404, b"not found", "text/plain; charset=utf-8")
+            self._not_found()
             return
-        if rel not in {"index.html"} and not rel.startswith(STATIC_PREFIXES):
-            self._send(404, b"not found", "text/plain; charset=utf-8")
+        if rel not in ROOT_STATIC and not rel.startswith(STATIC_PREFIXES):
+            self._not_found()
             return
         path = (ROOT / rel).resolve()
         if not _under_root(path) or not path.is_file():
-            self._send(404, b"not found", "text/plain; charset=utf-8")
+            self._not_found()
             return
         if path.suffix not in ALLOWED_STATIC_SUFFIXES:
-            self._send(404, b"not found", "text/plain; charset=utf-8")
+            self._not_found()
             return
         ctype = {
             ".html": "text/html; charset=utf-8",
@@ -170,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
         url = (qs.get("url") or [""])[0].strip()
-        path = parsed.path
+        path = strip_mount(parsed.path)
 
         if path in ("/health", "/api/health"):
             self._json(200, {"ok": True})
@@ -206,8 +271,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, "text/html; charset=utf-8")
             return
 
+        if path in TOOL_ALIASES:
+            dest = TOOL_ALIASES[path]
+            if parsed.query:
+                dest += "?" + parsed.query
+            self._redirect(dest)
+            return
+
         if path in ("/", "/index.html"):
             self._static("index.html")
+            return
+
+        if path == "/404.html":
+            self._static("404.html")
             return
 
         if path.startswith("/tools/"):
@@ -217,28 +293,26 @@ class Handler(BaseHTTPRequestHandler):
                 dest = path.rstrip("/") + "/"
                 if parsed.query:
                     dest += "?" + parsed.query
-                self.send_response(301)
-                self.send_header("Location", dest)
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
+                self._redirect(dest)
                 return
             if rel.endswith("/"):
                 rel += "index.html"
             self._static(rel)
             return
 
-        if path in ("/css/app.css", "/js/app.js"):
+        if path.startswith("/css/") or path.startswith("/js/"):
             self._static(path.lstrip("/"))
             return
 
-        self._send(404, b"not found", "text/plain; charset=utf-8")
+        self._not_found()
 
 
 def main(argv: list[str] | None = None) -> None:
     global HOST, PORT, ALLOW_PRIVATE
+    bind_host, bind_port = default_bind()
     p = argparse.ArgumentParser(description="CyberBuddy local hub + scan APIs.")
-    p.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1, loopback only)")
-    p.add_argument("--port", type=int, default=8080, help="Bind port (default 8080)")
+    p.add_argument("--host", default=bind_host, help="Bind address (default 127.0.0.1; 0.0.0.0 when PORT is set)")
+    p.add_argument("--port", type=int, default=bind_port, help="Bind port (default 8080, or $PORT)")
     p.add_argument(
         "--allow-private",
         action="store_true",

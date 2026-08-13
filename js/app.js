@@ -20,20 +20,28 @@ const ICONS = {
 /* ---------- Shell rendering ---------------------------------------------- */
 
 function appBase() {
+  // Derive the site root from this script's *pathname* (not the full URL).
+  // Slicing pathname with an index into "https://host/repo/js/app.js" used
+  // to yield "/repo/js/app.js", so hub cards linked to
+  // /repo/js/app.js/tools/headers/ — a 404 on GitHub Pages.
+  const marker = "/js/app.js";
   const scripts = document.getElementsByTagName("script");
   for (let i = 0; i < scripts.length; i++) {
-    const src = scripts[i].src || "";
-    const idx = src.indexOf("/js/app.js");
-    if (idx === -1) continue;
+    const raw = scripts[i].getAttribute("src") || scripts[i].src || "";
+    if (!raw) continue;
     try {
-      let base = new URL(src).pathname.slice(0, idx);
+      const path = new URL(raw, window.location.href).pathname.replace(/\\/g, "/");
+      if (!path.endsWith(marker)) continue;
+      let base = path.slice(0, -marker.length);
       if (base === "/") base = "";
       return base;
     } catch (_) { /* ignore bad src */ }
   }
-  const path = window.location.pathname || "";
-  const m = path.match(/^(\/CyberBuddy)(?=\/|$)/i);
-  return m ? m[1] : "";
+  const path = (window.location.pathname || "").replace(/\\/g, "/");
+  const fromTool = path.match(/^(.*)\/tools\/[^/]+\/?$/);
+  if (fromTool) return fromTool[1];
+  const known = path.match(/^(\/CyberBuddy)(?=\/|$)/i);
+  return known ? known[1] : "";
 }
 
 function pagePath() {
@@ -60,8 +68,12 @@ function renderHeader(current) {
     navLink(base, "/", "Hub", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
+    '<span class="engine-chip" id="engineChip" title="Checking scan engine…">' +
+    '<span class="engine-dot" id="engineDot"></span>' +
+    '<span id="engineText">engine · …</span></span>' +
     "</div></header>";
   document.body.insertAdjacentHTML("afterbegin", html);
+  detectEngine();
 
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {
@@ -221,8 +233,12 @@ async function detectEngine() {
 async function apiCall(path, url) {
   try {
     const res = await fetch(apiUrl(path) + "?" + new URLSearchParams({ url }), apiHeadersInit());
+    const ctype = (res.headers.get("content-type") || "").toLowerCase();
+    // GitHub Pages (and any static host) returns HTML 404 for /api/*.
+    // Treat that as "no engine" so tools fall back instead of rendering junk.
+    if (!ctype.includes("application/json")) return null;
     let data = null;
-    try { data = await res.json(); } catch (_) { data = null; }
+    try { data = await res.json(); } catch (_) { return null; }
     if (!res.ok) {
       return { error: (data && data.error) || ("API " + res.status), status: res.status };
     }
