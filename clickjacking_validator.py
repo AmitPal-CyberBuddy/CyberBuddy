@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Clickjacking Validator
-Checks framing protections on one or more URLs and reports residual risk.
+Clickjacking Validator with performance optimizations.
 
-Shared helpers in this module (normalize_url, validate_target, fetch_headers,
-parse_csp, cookie_flag_notes) are reused by security_headers.py, cors_validator.py
-and server.py.
+Optimizations:
+- DNS caching via http_session module
+- HTTP connection pooling and SSL context reuse
+- Faster URL validation using cached DNS lookups
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Iterable
 from urllib.parse import urlparse
 
+from http_session import dns_resolve, get_session_pool
 
 USER_AGENT = "CyberBuddy/1.2 (+https://github.com/AmitPal-CyberBuddy/CyberBuddy)"
 
@@ -110,25 +111,18 @@ def _ip_block_reason(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, allow_pr
 
 
 def _resolve_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Resolve hostname to IPs using cached DNS lookups."""
     try:
         return [ipaddress.ip_address(host)]
     except ValueError:
         pass
+    
     try:
-        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        ips_str = dns_resolve(host)
     except socket.gaierror as exc:
         raise ValueError(f"cannot resolve host: {host}") from exc
-    seen: set[str] = set()
-    out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
-    for info in infos:
-        addr = info[4][0]
-        if addr in seen:
-            continue
-        seen.add(addr)
-        out.append(ipaddress.ip_address(addr))
-    if not out:
-        raise ValueError(f"cannot resolve host: {host}")
-    return out
+    
+    return [ipaddress.ip_address(ip) for ip in ips_str]
 
 
 def validate_target(url: str, allow_private: bool = True) -> None:
@@ -169,23 +163,6 @@ def headers_from_message(msg) -> dict[str, str]:
     return out
 
 
-def _opener(insecure: bool, allow_private: bool):
-    ctx = ssl.create_default_context()
-    if insecure:
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-
-    class SafeRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            validate_target(newurl, allow_private=allow_private)
-            return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-    return urllib.request.build_opener(
-        SafeRedirect,
-        urllib.request.HTTPSHandler(context=ctx),
-    )
-
-
 def fetch_headers(
     url: str,
     timeout: float,
@@ -193,6 +170,7 @@ def fetch_headers(
     allow_private: bool = True,
     extra_headers: dict[str, str] | None = None,
 ) -> tuple[int, str, dict[str, str]]:
+    """Fetch HTTP headers using the session pool for connection reuse."""
     validate_target(url, allow_private=allow_private)
     headers = {
         "User-Agent": USER_AGENT,
@@ -201,7 +179,11 @@ def fetch_headers(
     if extra_headers:
         headers.update(extra_headers)
     req = urllib.request.Request(url, method="GET", headers=headers)
-    opener = _opener(insecure=insecure, allow_private=allow_private)
+    
+    # Use session pool for opener reuse
+    pool = get_session_pool()
+    opener = pool.get_opener(insecure=insecure, allow_private=allow_private)
+    
     try:
         with opener.open(req, timeout=timeout) as resp:
             return resp.getcode(), resp.geturl(), headers_from_message(resp.headers)
@@ -368,7 +350,7 @@ def assess_permissions_policy(value: str | None) -> Finding:
         name="Permissions-Policy",
         status="info",
         detail="Header present. Useful for feature lockdown, not a clickjacking primary control.",
-        evidence=value[:250] + (("; " + ", ".join(extra)) if extra else ""),
+        evidence=value[:250] + ((("; " + ", ".join(extra)) if extra else ""),
     )
 
 
