@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Security Headers — CyberBuddy</title>
   <meta name="description" content="Grade a URL's security headers into an A–F score." />
+  <meta name="theme-color" content="#07090d" />
   <noscript><style>.reveal{opacity:1!important}</style></noscript>
   <link rel="stylesheet" href="../../css/app.css" />
-  <script src="../../js/app.js" defer></script>
+  <script src="../../js/app.js?v=20260813b" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       renderHeader("/tools/headers/");
@@ -18,8 +19,9 @@
   </script>
 </head>
 <body>
-<main id="main" class="container" style="padding-top: 56px;">
+<main id="main" class="container page-hero">
 
+  <p class="kicker reveal">Tool 02</p>
   <h1 class="reveal">Security Headers</h1>
   <p class="lead reveal" style="--d: .08s;">
     Grade CSP, X-Frame-Options, HSTS, cookie flags and isolation headers
@@ -32,6 +34,7 @@
       <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Scan</button>
+    <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
   </div>
 
   <section id="results" class="results hidden">
@@ -39,6 +42,9 @@
       <div class="report-head">
         <div>
           <h2>Header posture</h2>
+        </div>
+        <div class="report-actions">
+          <span id="sourceChip" class="source-chip hidden"></span>
         </div>
       </div>
 
@@ -93,11 +99,10 @@
   </section>
 
   <div id="staticNotice" class="notice hidden">
-    <h3>Full header grades need the local app</h3>
+    <h3>Could not read headers</h3>
     <p>
-      Browsers cannot read another site’s security headers from this hosted page.
-      Run CyberBuddy locally with <code>python3 server.py</code> and open
-      <code>http://127.0.0.1:8080/tools/headers/</code> for the A–F report.
+      The live lookup did not return header data for this target. Run
+      <code>python3 server.py</code> locally for a same-origin scan, then retry.
     </p>
   </div>
 
@@ -116,6 +121,7 @@
 
     function render(data) {
       $("results").classList.remove("hidden");
+      setSourceChip(data);
 
       const score = data.score ?? 0;
       const grade = (data.grade || "F").toUpperCase();
@@ -154,9 +160,14 @@
       setLoading($("go"), true);
       const data = await apiHeaders(url);
       setLoading($("go"), false);
-      if (isEngineDown(data)) {
+      if (isEngineDown(data) || (data && data._source === "none")) {
         $("staticNotice").classList.remove("hidden");
-        $("results").classList.add("hidden");
+        if (data && data.checks) {
+          $("staticNotice").classList.add("hidden");
+          render(data);
+        } else {
+          $("results").classList.add("hidden");
+        }
         return;
       }
       $("staticNotice").classList.add("hidden");

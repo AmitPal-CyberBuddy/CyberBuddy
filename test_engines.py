@@ -3,8 +3,16 @@
 
 from __future__ import annotations
 
+import http.client
+import json
+import os
+import shutil
+import subprocess
+import threading
 import unittest
+from urllib.parse import quote
 from email.message import Message
+from http.server import ThreadingHTTPServer
 
 from clickjacking_validator import (
     Finding,
@@ -30,7 +38,7 @@ from security_headers import (
     grade_for,
     summarize,
 )
-from server import _under_root, ROOT
+from server import ROOT, TOOL_ALIASES, _under_root, default_bind, strip_mount
 
 
 class NormalizeUrlTests(unittest.TestCase):
@@ -251,6 +259,229 @@ class StaticPathTests(unittest.TestCase):
 
     def test_outside_repo_is_not(self):
         self.assertFalse(_under_root((ROOT / ".." / ".." / "etc" / "passwd").resolve()))
+
+
+class MountAndBindTests(unittest.TestCase):
+    def test_strip_mount_github_pages_prefix(self):
+        self.assertEqual(strip_mount("/CyberBuddy"), "/")
+        self.assertEqual(strip_mount("/CyberBuddy/"), "/")
+        self.assertEqual(strip_mount("/CyberBuddy/tools/headers/"), "/tools/headers/")
+        self.assertEqual(strip_mount("/CyberBuddy/api/headers"), "/api/headers")
+        self.assertEqual(strip_mount("/tools/cors/"), "/tools/cors/")
+
+    def test_tool_aliases_cover_all_three(self):
+        self.assertEqual(TOOL_ALIASES["/headers"], "/tools/headers/")
+        self.assertEqual(TOOL_ALIASES["/cors"], "/tools/cors/")
+        self.assertEqual(TOOL_ALIASES["/clickjacking"], "/tools/clickjacking/")
+
+    def test_default_bind_loopback_without_port_env(self):
+        env = os.environ
+        old_port, old_host = env.get("PORT"), env.get("HOST")
+        env.pop("PORT", None)
+        env.pop("HOST", None)
+        try:
+            host, port = default_bind()
+            self.assertEqual(host, "127.0.0.1")
+            self.assertEqual(port, 8080)
+        finally:
+            if old_port is not None:
+                env["PORT"] = old_port
+            if old_host is not None:
+                env["HOST"] = old_host
+
+    def test_default_bind_paas_port(self):
+        env = os.environ
+        old_port, old_host = env.get("PORT"), env.get("HOST")
+        env["PORT"] = "3000"
+        env.pop("HOST", None)
+        try:
+            host, port = default_bind()
+            self.assertEqual(host, "0.0.0.0")
+            self.assertEqual(port, 3000)
+        finally:
+            if old_port is None:
+                env.pop("PORT", None)
+            else:
+                env["PORT"] = old_port
+            if old_host is not None:
+                env["HOST"] = old_host
+
+
+class AppBaseJsTests(unittest.TestCase):
+    def test_js_uses_pathname_not_full_url_index(self):
+        src = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("path.endsWith(marker)", src)
+        self.assertNotIn("pathname.slice(0, idx)", src)
+        self.assertIn("application/json", src)
+        self.assertIn("gradeHeadersFromMap", src)
+        self.assertIn("lookupHeadersLive", src)
+        self.assertIn("probeCorsLive", src)
+
+    def test_tool_pages_exist(self):
+        for slug in ("clickjacking", "headers", "cors"):
+            page = ROOT / "tools" / slug / "index.html"
+            self.assertTrue(page.is_file(), page)
+            text = page.read_text(encoding="utf-8")
+            self.assertIn("js/app.js", text)
+
+    def test_four_oh_four_repairs_old_hosted_urls(self):
+        text = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn("js\\/app\\.js", text)
+        self.assertIn("/tools/$1/", text)
+
+    def test_js_graders_match_python_scores(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + r"""
+const hdrs = {
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+  "x-frame-options": "DENY",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin"
+};
+const r = gradeHeadersFromMap("https://example.com", 200, "https://example.com", hdrs, "relay");
+const cj = gradeClickjackingFromMap("https://example.com", 200, "https://example.com", hdrs, "relay");
+const dump = parseRawHeaderDump("HTTP/1.1 200 OK\nX-Frame-Options: DENY\nContent-Type: text/html\n");
+if (r.score < 70) throw new Error("headers score " + r.score);
+if (cj.risk !== "low") throw new Error("clickjacking " + cj.risk);
+if (dump.headers["x-frame-options"] !== "DENY") throw new Error("dump");
+console.log(JSON.stringify({ grade: r.grade, score: r.score, risk: cj.risk }));
+"""
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertGreaterEqual(payload["score"], 70)
+        self.assertEqual(payload["risk"], "low")
+
+
+class ServerRouteTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import server as srv
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        cls.port = cls.httpd.server_address[1]
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        cls.thread.join(timeout=5)
+
+    def _req(self, path: str, method: str = "GET"):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request(method, path)
+            resp = conn.getresponse()
+            body = resp.read()
+            headers = {k.lower(): v for k, v in resp.getheaders()}
+            return resp.status, headers, body
+        finally:
+            conn.close()
+
+    def test_hub(self):
+        status, headers, body = self._req("/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CyberBuddy", body)
+        self.assertIn("text/html", headers.get("content-type", ""))
+
+    def test_three_tool_pages(self):
+        expect = {
+            "/tools/clickjacking/": b"Clickjacking Validator",
+            "/tools/headers/": b"Security Headers",
+            "/tools/cors/": b"CORS Validator",
+        }
+        for path, needle in expect.items():
+            status, headers, body = self._req(path)
+            self.assertEqual(status, 200, path)
+            self.assertIn(needle, body, path)
+            self.assertIn("text/html", headers.get("content-type", ""))
+
+    def test_tool_slash_redirect(self):
+        status, headers, _ = self._req("/tools/headers")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/tools/headers/")
+
+    def test_short_aliases_redirect(self):
+        for short, dest in (
+            ("/headers", "/tools/headers/"),
+            ("/cors", "/tools/cors/"),
+            ("/clickjacking", "/tools/clickjacking/"),
+        ):
+            status, headers, _ = self._req(short)
+            self.assertEqual(status, 301, short)
+            self.assertEqual(headers.get("location"), dest, short)
+
+    def test_github_pages_style_prefix(self):
+        status, _, body = self._req("/CyberBuddy/tools/headers/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Security Headers", body)
+        status, _, body = self._req("/CyberBuddy/tools/cors/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CORS Validator", body)
+
+    def test_static_assets(self):
+        status, headers, body = self._req("/css/app.css")
+        self.assertEqual(status, 200)
+        self.assertIn("text/css", headers.get("content-type", ""))
+        self.assertGreater(len(body), 100)
+        status, headers, body = self._req("/js/app.js")
+        self.assertEqual(status, 200)
+        self.assertIn("javascript", headers.get("content-type", ""))
+        self.assertIn(b"function appBase", body)
+
+    def test_health_and_api_validation(self):
+        status, headers, body = self._req("/api/health")
+        self.assertEqual(status, 200)
+        self.assertIn("application/json", headers.get("content-type", ""))
+        self.assertTrue(json.loads(body).get("ok"))
+        for path in ("/api/scan", "/api/headers", "/api/cors"):
+            status, _, body = self._req(path)
+            self.assertEqual(status, 400, path)
+            self.assertIn("url required", json.loads(body).get("error", ""))
+
+    def test_unknown_path_serves_404_page(self):
+        status, headers, body = self._req("/does-not-exist")
+        self.assertEqual(status, 404)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"404", body)
+
+    def test_three_apis_scan_this_server(self):
+        target = quote(f"http://127.0.0.1:{self.port}/", safe="")
+        status, _, body = self._req("/api/headers?url=" + target)
+        self.assertEqual(status, 200)
+        headers_data = json.loads(body)
+        self.assertIn("grade", headers_data)
+        self.assertTrue(headers_data.get("checks"))
+        status, _, body = self._req("/api/scan?url=" + target)
+        self.assertEqual(status, 200)
+        scan_data = json.loads(body)
+        self.assertTrue(scan_data.get("findings"))
+        status, _, body = self._req("/api/cors?url=" + target)
+        self.assertEqual(status, 200)
+        cors_data = json.loads(body)
+        self.assertTrue(cors_data.get("checks"))
 
 
 if __name__ == "__main__":
