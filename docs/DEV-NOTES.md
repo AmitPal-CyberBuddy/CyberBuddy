@@ -72,6 +72,41 @@ repository history instead:
 - LIVE / CACHED tags are an honesty promise: cached = CI-built demo report
   for a `urls.txt` target, never a fresh scan. Keep them on every result.
 
+## Responsiveness: measure elements, not the document
+
+`body { overflow-x: clip }` is deliberate — decorative blobs must never
+cause a scrollbar. The side effect is that **document-level overflow checks
+are close to useless**: `documentElement.scrollWidth - clientWidth` stays 0
+while an individual panel, menu or table is still spilling off the screen.
+`tests/browser/responsive.js` therefore measures every painted element's
+rect against `innerWidth`.
+
+Traps found writing it, all of which produce false positives:
+
+- **Closed `<details>` are laid out but not painted.** A closed Tools menu
+  reports `clientWidth: 63` vs `scrollWidth: 155` and looks catastrophically
+  clipped. Skip anything matching `details:not([open])`, and use
+  `el.checkVisibility({ contentVisibilityAuto: true, ... })`.
+- **`scrollWidth > clientWidth` does not mean text is cut.** Absolutely
+  positioned children (score gauges, chips, the radar) legitimately paint
+  outside their parent box. Compare the *text* extent instead: take a
+  `Range` over the element's contents and check `range.right > rect.right`.
+  On `#grade` the naive check fired while the glyph ended 19px INSIDE.
+- **The skip link lives at `left: -9999px`** and the ticker marquee is
+  intentionally wider than the viewport. Exclude them explicitly.
+- **A mid-animation `.reveal` reads `opacity < 1`.** Poll until it settles.
+
+Genuine issues this found (all fixed): chips and the engine pill at 20-23px
+on touch screens; the demo console's fixed-length `─────` divider bleeding
+~21px past the card at 360px (box-drawing runs cannot wrap — clip them);
+`.method-table` overflowing its card by 3px at 360px; and the evidence
+toggle's `<label>` — the real tap target for a 13px checkbox — at 20px.
+
+Also: **do not make `:has()` load-bearing.** The first fix for the
+methodology table used `.card:has(> .method-table)`; `display: block` on the
+table itself achieves the same scroll container with no support caveat. A
+test asserts `:has(` never appears in the stylesheet's real rules.
+
 ## Real-browser test suites
 
 `test_engines.py` stays stdlib-only so CI can run it anywhere; it can only

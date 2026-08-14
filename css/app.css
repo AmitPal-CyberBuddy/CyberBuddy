@@ -850,6 +850,9 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 0.74rem; color: var(--faint); margin: 10px 2px 0; cursor: pointer;
   user-select: none;
+  /* The <label> is the real tap target for the 13px checkbox inside it, so
+     it carries the 24px touch minimum. */
+  min-height: 24px;
 }
 .evidence-toggle input { accent-color: var(--brand); cursor: pointer; }
 .evidence-toggle:hover { color: var(--muted); }
@@ -983,6 +986,10 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 .console .c-prompt { color: #2dd4bf; }
 .console .c-ok { color: #34d399; }
 .console .c-dim { color: #475569; }
+/* The divider lines are fixed-length box-drawing runs (─────) which cannot
+   wrap, so at 360px they painted ~21px past the console edge. Clip them to
+   the card instead of letting them bleed. */
+.console .c-dim { overflow: hidden; text-overflow: clip; white-space: nowrap; }
 .console .c-red { color: #f87171; }
 .console .c-amber { color: #fbbf24; }
 .console .caret {
@@ -1786,6 +1793,15 @@ kbd {
 .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 920px) { .method-grid { grid-template-columns: 1fr; } }
 .method-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+/* At 360px the three-column scoring tables overflow their card by a few px.
+   Give the table its own horizontal scroll rather than clipping a cell or
+   forcing an unreadable font size. */
+@media (max-width: 420px) {
+  /* display:block makes the table its own scroll container without relying
+     on :has() support in the surrounding card. */
+  .method-table { display: block; overflow-x: auto; font-size: 0.8rem; }
+  .method-table th, .method-table td { padding: 9px 6px; }
+}
 .method-table th, .method-table td {
   text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line);
   vertical-align: top;
@@ -1872,6 +1888,24 @@ html.js .reveal.in,
   .report-provenance { display: flex !important; border-top: 1px solid #d0d5dd; color: #475467; }
   .raw-toggle[open] .raw-headers, .raw-toggle .raw-headers { display: block; }
   details.raw-toggle > summary { color: #475467; }
+}
+
+/* Touch tap targets. Measured at 390px, these chips/buttons rendered 20-23px
+   tall — under the 24px minimum, and they are the controls a phone user is
+   most likely to mis-tap. Scoped to touch-sized screens so desktop density
+   is unchanged. The evidence checkbox is deliberately excluded: its <label>
+   wrapper is already a 39px target. */
+@media (max-width: 860px) {
+  .engine-chip, .recent-chip, .recent-clear, .copy-finding, .nav-status {
+    min-height: 24px;
+  }
+  .engine-chip, .recent-chip, .copy-finding {
+    display: inline-flex; align-items: center;
+  }
+  .recent-clear { display: inline-flex; align-items: center; justify-content: center; }
+  /* The scan-history chips can hold a long URL; keep them tappable without
+     letting one chip run the width of the row. */
+  .recent-chip { max-width: min(260px, calc(100vw - 72px)); }
 }
 
 @media (max-width: 760px) {

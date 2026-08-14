@@ -1326,5 +1326,55 @@ class RelayConsentGateTests(unittest.TestCase):
         self.assertIn("sessionStorage", self.js[start:self.js.index("}", start)])
 
 
+class ResponsiveLayoutTests(unittest.TestCase):
+    """Round 6c: per-element responsiveness fixes, found by measuring painted
+    elements against the viewport at seven widths (2560 down to 360)."""
+
+    def setUp(self) -> None:
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        # Comments discuss the rules (and name :has()); assert on real CSS.
+        self.rules = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+    def test_touch_targets_meet_24px(self):
+        """Measured at 390px these rendered 20-23px tall — under the touch
+        minimum, and the controls a phone user most often mis-taps."""
+        start = self.css.index("/* Touch tap targets.")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("min-height: 24px", block)
+        for sel in (".engine-chip", ".recent-chip", ".recent-clear", ".copy-finding"):
+            self.assertIn(sel, block)
+
+    def test_evidence_toggle_label_is_the_tap_target(self):
+        """The checkbox is 13px; its <label> wrapper carries the minimum."""
+        self.assertIn("min-height: 24px", self._rule(".evidence-toggle {"))
+
+    def test_recent_chip_cannot_span_the_row(self):
+        """A chip holding a long URL must stay tappable without filling the
+        width of a phone screen."""
+        start = self.css.index("/* Touch tap targets.")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("max-width: min(260px, calc(100vw - 72px))", block)
+
+    def test_console_dividers_cannot_bleed_past_the_card(self):
+        """The demo console's divider lines are fixed-length box-drawing runs
+        that cannot wrap; at 360px they painted ~21px past the edge."""
+        rules = [r for r in self.css.split("\n") if ".console .c-dim" in r]
+        self.assertTrue(any("overflow: hidden" in r for r in rules), rules)
+
+    def test_method_tables_scroll_on_tiny_screens(self):
+        """At 360px the scoring tables overflowed their card by a few px."""
+        start = self.rules.index("@media (max-width: 420px)")
+        block = self.rules[start:self.rules.index("}", self.rules.index(".method-table", start))]
+        self.assertIn("overflow-x: auto", block)
+
+    def test_no_has_selector_dependency_for_layout(self):
+        """:has() is progressive enhancement only — never load-bearing."""
+        self.assertNotIn(":has(", self.rules)
+
+
 if __name__ == "__main__":
     unittest.main()

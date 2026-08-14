@@ -1209,3 +1209,75 @@ overlay checks all still pass, plus a new `tests/browser/relay-gate.js` (17
 checks) covering the gate at six viewports in both themes, each of the three
 choices resolving correctly, Escape declining, and the gate correctly *not*
 appearing when the Python engine is online.
+
+---
+
+## 19. Round 6c — per-element responsiveness audit (2026-08-14)
+
+Requested after the Round 6/6b fixes: verify responsiveness across mobile,
+tablet, laptop and monitor for **every** page and component, not just
+document-level overflow — the reporter's example being that a dropdown opened
+on a phone should be sized for that phone.
+
+**Why the earlier passes were not enough**
+
+`body { overflow-x: clip }` deliberately suppresses document overflow so the
+decorative background blobs never cause a scrollbar. That also means the
+document-level check used in sections 16–18 can report zero overflow while an
+individual panel is still spilling. This round measures every *painted*
+element's bounding rect against `innerWidth`, at seven widths (2560, 1920,
+1366, 1024, 768, 390, 360) in both themes, on static pages, on live reports
+for all four tools, and on the hub suite.
+
+**Verified correct, no change needed**
+
+- The Tools dropdown already sizes to the phone: at 390px the panel spans
+  18→372px inside a 390px viewport, and every item is 337px wide and fully
+  in view (the reporter's specific example).
+- No element spills the viewport on any page, at any of the seven widths, in
+  either theme — including the clickjacking stage, its live iframe and the
+  PoC overlay, the relay gate and its three option cards, and all four
+  report layouts.
+- A deliberately hostile target (400-character unbreakable tokens in CSP,
+  `Set-Cookie`, ACAO and `Server` headers) produced no spill and no
+  horizontal panning at any width on any tool.
+
+**Issues found and fixed**
+
+- **Touch targets under 24px.** The engine chip (23px), scan-history chips
+  (23px), Clear button (20px) and copy-finding button all rendered below the
+  touch minimum at 390px. Given a `min-height: 24px` scoped to
+  `max-width: 860px`, so desktop density is unchanged.
+- **The evidence toggle's `<label>` was 20px tall.** The checkbox itself is
+  13px, so the label *is* the tap target; it now carries the 24px minimum.
+- **Scan-history chips could span the row.** Capped at
+  `min(260px, calc(100vw - 72px))` so a long URL stays tappable.
+- **The demo console bled ~21px past its card at 360px.** Its divider lines
+  are fixed-length box-drawing runs (`─────`) which cannot wrap; they are now
+  clipped to the card.
+- **`.method-table` overflowed its card by 3px at 360px.** The table is now
+  its own scroll container below 420px, rather than clipping a cell or
+  shrinking the type to an unreadable size.
+
+**A note on the first attempt at that last fix**
+
+It used `.card:has(> .method-table) { overflow-x: auto }`. `:has()` is not
+available everywhere, and layout that silently degrades is worse than layout
+that is simply plainer, so it was replaced with `display: block` on the table
+itself. A regression test now asserts `:has(` never appears in the
+stylesheet's real rules.
+
+**False positives worth recording** (documented in DEV-NOTES so the next pass
+does not chase them): closed `<details>` are laid out but not painted, so
+their `scrollWidth` is meaningless; and `scrollWidth > clientWidth` does not
+imply clipped text, because absolutely positioned children legitimately paint
+outside their parent — on `#grade` the naive check fired while the glyph
+ended 19px *inside* the box. The suite compares text extents via a `Range`
+instead.
+
+**Verification:** 135/135 stdlib tests (six new; each confirmed to fail
+against a deliberate regression, including one that reintroduces `:has()`),
+`node --check` on all sixteen scripts, the Pages asset guard, and **507
+real-browser checks** — the new `tests/browser/responsive.js` (210) plus the
+existing layout (113), dropdown (119), overlays (48) and relay-gate (17)
+suites, all passing.
