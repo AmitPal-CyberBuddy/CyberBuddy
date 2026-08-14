@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
-  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS — engines, grades, and hosted-site limits." />
+  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, and CSRF PoC generation — engines, grades, and hosted-site limits." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
   <meta property="og:title" content="Methodology — CyberBuddy" />
-  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS." />
+  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, and CSRF PoC generation." />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Methodology — CyberBuddy" />
-  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS." />
+  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, and CSRF PoC generation." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../icon-192.png" />
@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "CyberBuddy methodology",
-      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, and CORS.",
+      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, CORS, and CSRF PoC generation.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
@@ -58,8 +58,9 @@
   <p class="kicker reveal">How it scores</p>
   <h1 class="reveal">Methodology</h1>
   <p class="lead reveal" style="--d: .08s;">
-    Four read-only checks, the same graders in Python and in the browser,
-    and report cards you can paste into an assessment. Authorized testing only.
+    Four read-only scanners and a local CSRF PoC generator, the same graders
+    in Python and in the browser, and report cards you can paste into an
+    assessment. Authorized testing only.
   </p>
 
   <div class="section-head reveal">
@@ -103,11 +104,24 @@
       <p class="std-line">OWASP WSTG-CONF-12 · CWE-79 · CWE-693</p>
     </article>
     <article class="card reveal" style="--d: .3s;">
+      <h3>CSRF PoC Generator</h3>
+      <p>
+        Parses a pasted Burp request and rebuilds it as standalone HTML — forms
+        for GET/POST, <code>fetch()</code> for JSON and non-form methods — each
+        labelled <strong>READY</strong>, <strong>LIMITED</strong>, or
+        <strong>NOT DIRECTLY REPRESENTABLE</strong> by browser mechanics. It
+        runs entirely in your browser, never sends or stores the request, and
+        never executes the PoC.
+      </p>
+      <p class="std-line">OWASP WSTG-SESS-05 · CWE-352</p>
+    </article>
+    <article class="card reveal" style="--d: .36s;">
       <h3>What it does not do</h3>
       <p>
-        No exploits, no authenticated sessions, no POST/PUT/DELETE.
-        Results are advisory. A green grade is not a guarantee of safety
-        and a red grade is not a CVE.
+        No exploits, no authenticated sessions, no POST/PUT/DELETE sent to a
+        target. The CSRF tool only generates PoCs — it never issues them.
+        Results are advisory. A green grade is not a guarantee of safety and a
+        red grade is not a CVE.
       </p>
     </article>
   </div>

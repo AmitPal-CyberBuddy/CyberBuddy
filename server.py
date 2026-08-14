@@ -10,7 +10,7 @@ GET /methodology/           scoring + engine notes
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
-GET /headers /cors /csp /clickjacking
+GET /headers /cors /csp /clickjacking /csrf
                             aliases → /tools/<tool>/
 GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
@@ -66,6 +66,8 @@ TOOL_ALIASES = {
     "/csp/": "/tools/csp/",
     "/clickjacking": "/tools/clickjacking/",
     "/clickjacking/": "/tools/clickjacking/",
+    "/csrf": "/tools/csrf/",
+    "/csrf/": "/tools/csrf/",
 }
 
 # Chunk size for streaming file I/O (64KB)
@@ -411,6 +413,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Headers:      http://127.0.0.1:{PORT}/tools/headers/")
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")
     print(f"CSP:          http://127.0.0.1:{PORT}/tools/csp/")
+    print(f"CSRF:         http://127.0.0.1:{PORT}/tools/csrf/")
     print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/health")
     if not loopback:
         print("WARNING: bound on a non-loopback address. Private-IP scans are "

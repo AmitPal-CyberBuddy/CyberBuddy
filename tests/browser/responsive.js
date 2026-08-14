@@ -45,6 +45,7 @@ const PAGES = [
   ["headers", "/tools/headers/"],
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
+  ["csrf", "/tools/csrf/"],
   ["methodology", "/methodology/"],
   ["404", "/404.html"]
 ];

@@ -310,3 +310,46 @@ should remain shared.
   instead of false-blanking. Top-level navigation stays blocked. Don't
   "harden" this away; it would turn blank renders into false "protected"
   verdicts.
+
+## CSRF PoC Generator traps
+
+- **It must never look like a scanner.** No `/api/` call, no relay gate, no
+  LIVE/CACHED tag, no recent-request history, no share link that carries the
+  request, no `?url=` param, and no numeric score. The provenance strip says
+  "generated locally — nothing transmitted". Do not wire it into the hub
+  `initSuite` (that suite is the four scan tools and stays that way).
+- **Status is about browser mechanics, not exploitability.** READY = simple
+  request (no preflight); LIMITED = preflight- or server-leniency-dependent;
+  NOT DIRECTLY REPRESENTABLE = no browser mechanism carries it (GET-with-body,
+  CONNECT/TRACE/TRACK). Never derive a "vulnerable" verdict or a score from
+  these.
+- **Never pretend a form sends exact JSON.** `application/json` goes through
+  `fetch()` (preflighted) or, only when the body splits into one `name=value`
+  pair and has no newlines, the text/plain trick. `text/plain` bodies are sent
+  via `fetch()` (safelisted content type) or a `name=value`-line form.
+- **File fields cannot be pre-populated.** Multipart file parts become
+  `<input type="file">`; the victim must choose the file. Say so instead of
+  faking a value.
+- **Escape hostile input three ways.** HTML-attribute/text via `escHtml`;
+  JavaScript via `JSON.stringify(...).replace(/</g, "\\u003c")` (never string
+  concatenation); the pasted request itself is never echoed as executable code.
+  `Cookie`/`Authorization`/`Host`/`Content-Length`/`Origin`/`Referer` values are
+  structurally excluded from the generator.
+- **Token detection is detection, not silent removal.** `looksLikeToken()`
+  flags csrf/xsrf/nonce/authenticity/requestverification/anti-forgery and
+  `*token`/`_token*` names. Tokens are included by default; the analyst
+  untick-checks to exclude one. A static token value will not match a real
+  per-session token — that is expected, and the UI says so.
+- **Auto-submit is opt-in and fixed.** OFF = a manual `<button type=submit>`.
+  ON = a constant `<script>document.getElementById("csrf-form").submit()</script>`
+  (or `window.__send()` for fetch variants) with no interpolated values, plus an
+  accidental-state-change warning in the UI. The engine chip (`detectEngine`)
+  still pings `/api/health` at load — that is the site's own chrome, never the
+  pasted request.
+- **Keep the pure engine DOM-free.** `js/tool.csrf.js`'s parser/generator live
+  under `CyberBuddyCsrf` and never touch `document`/`window`, so
+  `test_engines.py` can run them under Node. `initCsrf` (the controller) is the
+  only part that touches the DOM.
+- **`tests/browser/stress_target.py`** is a local-only helper that serves the
+  400-character header tokens the responsive suite needs when `CB_STRESS` is
+  set; it is not shipped to Pages (the workflow only copies `tools/`).

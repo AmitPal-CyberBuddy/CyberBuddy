@@ -402,11 +402,12 @@ class MountAndBindTests(unittest.TestCase):
         self.assertEqual(strip_mount("/tools/cors/"), "/tools/cors/")
         self.assertEqual(strip_mount("/CyberBuddy/tools/csp/"), "/tools/csp/")
 
-    def test_tool_aliases_cover_all_four(self):
+    def test_tool_aliases_cover_all_five(self):
         self.assertEqual(TOOL_ALIASES["/headers"], "/tools/headers/")
         self.assertEqual(TOOL_ALIASES["/cors"], "/tools/cors/")
         self.assertEqual(TOOL_ALIASES["/csp"], "/tools/csp/")
         self.assertEqual(TOOL_ALIASES["/clickjacking"], "/tools/clickjacking/")
+        self.assertEqual(TOOL_ALIASES["/csrf"], "/tools/csrf/")
 
     def test_default_bind_loopback_without_port_env(self):
         env = os.environ
@@ -459,7 +460,7 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("cacheLookupKeys", src)
 
     def test_tool_pages_exist(self):
-        for slug in ("clickjacking", "headers", "cors", "csp"):
+        for slug in ("clickjacking", "headers", "cors", "csp", "csrf"):
             page = ROOT / "tools" / slug / "index.html"
             self.assertTrue(page.is_file(), page)
             text = page.read_text(encoding="utf-8")
@@ -481,7 +482,7 @@ class AppBaseJsTests(unittest.TestCase):
         text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
-        self.assertIn("headers|cors|csp", text)
+        self.assertIn("headers|cors|csp|csrf", text)
 
     def test_js_graders_match_python_scores(self):
         node = shutil.which("node")
@@ -740,12 +741,13 @@ class ServerRouteTests(unittest.TestCase):
         self.assertIn(b"CyberBuddy", body)
         self.assertIn("text/html", headers.get("content-type", ""))
 
-    def test_four_tool_pages(self):
+    def test_five_tool_pages(self):
         expect = {
             "/tools/clickjacking/": b"Clickjacking Validator",
             "/tools/headers/": b"Security Headers",
             "/tools/cors/": b"CORS Validator",
             "/tools/csp/": b"CSP Policy Auditor",
+            "/tools/csrf/": b"CSRF PoC Generator",
         }
         for path, needle in expect.items():
             status, headers, body = self._req(path)
@@ -764,6 +766,7 @@ class ServerRouteTests(unittest.TestCase):
             ("/cors", "/tools/cors/"),
             ("/csp", "/tools/csp/"),
             ("/clickjacking", "/tools/clickjacking/"),
+            ("/csrf", "/tools/csrf/"),
         ):
             status, headers, _ = self._req(short)
             self.assertEqual(status, 301, short)
@@ -779,6 +782,9 @@ class ServerRouteTests(unittest.TestCase):
         status, _, body = self._req("/CyberBuddy/tools/csp/")
         self.assertEqual(status, 200)
         self.assertIn(b"CSP Policy Auditor", body)
+        status, _, body = self._req("/CyberBuddy/tools/csrf/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CSRF PoC Generator", body)
 
     def test_static_assets(self):
         status, headers, body = self._req("/css/app.css")
@@ -860,6 +866,7 @@ class HostedSiteTests(unittest.TestCase):
             ROOT / "tools" / "headers" / "index.html",
             ROOT / "tools" / "cors" / "index.html",
             ROOT / "tools" / "csp" / "index.html",
+            ROOT / "tools" / "csrf" / "index.html",
         ]
         versions = set()
         for page in pages:
@@ -884,11 +891,16 @@ class HostedSiteTests(unittest.TestCase):
         self.assertIn("/tools/clickjacking/", sitemap)
         self.assertIn("/tools/csp/", sitemap)
 
-    def test_upcoming_csrf_generator_is_visible(self):
+    def test_csrf_is_live_and_tls_is_next_up(self):
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("Next on the bench: CSRF PoC Generator", hub)
-        self.assertIn('"CSRF PoC Generator"', app)
+        # CSRF graduated from "soon" to a live tool…
+        self.assertIn('href: "/tools/csrf/"', app)
+        self.assertIn("Next on the bench: TLS / SSL Analyzer", hub)
+        # …so it must no longer be listed as upcoming.
+        soon = app[app.index("const TOOLS_SOON"):app.index("];", app.index("const TOOLS_SOON"))]
+        self.assertNotIn("CSRF PoC Generator", soon)
+        self.assertIn("TLS / SSL Analyzer", soon)
 
 
 class GraderParityTests(unittest.TestCase):
@@ -1226,6 +1238,7 @@ class HostedCspTests(unittest.TestCase):
         "tools/headers/index.html",
         "tools/cors/index.html",
         "tools/csp/index.html",
+        "tools/csrf/index.html",
     ]
 
     def _csp(self, page: str) -> str:
@@ -1629,6 +1642,280 @@ class ResponsiveLayoutTests(unittest.TestCase):
     def test_no_has_selector_dependency_for_layout(self):
         """:has() is progressive enhancement only — never load-bearing."""
         self.assertNotIn(":has(", self.rules)
+
+
+class CsrfParserTests(unittest.TestCase):
+    """CSRF PoC Generator: parser + generator + escaping (pure JS, no DOM).
+
+    Loads js/tool.csrf.js under Node (its pure engine is intentionally free of
+    `document`/`window`) and asserts the browser-mechanics contract: body-type
+    parsing, honest variant generation, HTML/JS escaping, forbidden-header
+    redaction, token include/exclude and auto-submit behaviour.
+    """
+
+    def _run_csrf(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        script = (
+            (ROOT / "js" / "tool.csrf.js").read_text(encoding="utf-8")
+            + "\n" + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_parses_crlf_lf_absolute_and_relative(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const rows = {};
+const crlf = "POST /p?x=1 HTTP/1.1\r\nHost: example.com\r\n\r\na=1";
+const lf = "GET /p HTTP/1.1\nHost: localhost:8080\n\n";
+const abs = "PUT https://api.example.com:8443/v1/a HTTP/1.1\nContent-Type: application/json\n\n{}";
+const rel = "GET /x HTTP/1.1\nHost: example.com\n\n";
+[["crlf", crlf], ["lf", lf], ["abs", abs], ["rel", rel]].forEach(([k, raw]) => {
+  const p = C.parseRequest(raw);
+  rows[k] = { ok: p.ok, method: p.method, host: p.host, port: p.port, scheme: p.scheme, path: p.path, url: p.url };
+});
+console.log(JSON.stringify(rows));
+''')
+        self.assertTrue(out["crlf"]["ok"])
+        self.assertEqual(out["crlf"]["method"], "POST")
+        self.assertEqual(out["crlf"]["host"], "example.com")
+        self.assertEqual(out["crlf"]["url"], "https://example.com/p?x=1")
+        self.assertTrue(out["lf"]["ok"])
+        self.assertEqual(out["lf"]["host"], "localhost")
+        self.assertEqual(out["lf"]["port"], "8080")
+        self.assertEqual(out["lf"]["scheme"], "http")
+        self.assertTrue(out["abs"]["ok"])
+        self.assertEqual(out["abs"]["host"], "api.example.com")
+        self.assertEqual(out["abs"]["port"], "8443")
+        self.assertEqual(out["abs"]["path"], "/v1/a")
+        self.assertTrue(out["rel"]["ok"])
+        self.assertEqual(out["rel"]["url"], "https://example.com/x")
+
+    def test_get_post_forms_and_query_params(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const get = C.generatePoc(C.parseRequest("GET /s?q=1&q=2&blank= HTTP/1.1\r\nHost: e.com\r\n\r\n"), {autoSubmit:false, excluded:{}});
+const post = C.generatePoc(C.parseRequest("POST /login HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nuser=a&pass=p%40ss"), {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify({
+  getStatus: get.status,
+  getHtml: get.variants[0].html,
+  postStatus: post.status,
+  postHtml: post.variants[0].html,
+  postFields: (post.variants[0].html.match(/type="hidden"/g) || []).length
+}));
+''')
+        self.assertEqual(out["getStatus"], "READY")
+        self.assertIn('method="GET"', out["getHtml"])
+        self.assertIn('name="q"', out["getHtml"])
+        self.assertIn('value="p@ss"', out["postHtml"])  # %40 is decoded before building the hidden input
+        self.assertEqual(out["postStatus"], "READY")
+
+    def test_urlencoded_value_is_decoded_for_form(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /l HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nmail=a%40b.com&plain=hello+world");
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify(g.variants[0].html));
+''')
+        self.assertIn('value="a@b.com"', out)
+        self.assertIn('value="hello world"', out)
+
+    def test_multipart_text_and_file_fields(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const raw = "POST /u HTTP/1.1\r\nHost: e.com\r\nContent-Type: multipart/form-data; boundary=----x\r\n\r\n------x\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nhi\r\n------x\r\nContent-Disposition: form-data; name=\"f\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\nDATA\r\n------x--\r\n";
+const p = C.parseRequest(raw);
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const html = g.variants[0].html;
+console.log(JSON.stringify({ status: g.status, hasFileInput: /type="file"/.test(html), hasTitle: /name="title"/.test(html), hasFileField: p.hasFileFields }));
+''')
+        self.assertEqual(out["status"], "LIMITED")
+        self.assertTrue(out["hasFileField"])
+        self.assertTrue(out["hasFileInput"])
+        self.assertTrue(out["hasTitle"])
+
+    def test_text_plain_exact_body_and_form(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /t HTTP/1.1\r\nHost: e.com\r\nContent-Type: text/plain\r\n\r\na=b\nc=d");
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify({
+  status: g.status,
+  ids: g.variants.map(v => v.id),
+  fetchHtml: g.variants.find(v => v.id === "textplain-fetch").html
+}));
+''')
+        self.assertEqual(out["status"], "READY")
+        self.assertIn("textplain-fetch", out["ids"])
+        self.assertIn("textplain-form", out["ids"])
+        self.assertIn("a=b", out["fetchHtml"])
+
+    def test_json_is_fetch_and_never_pretends_to_be_a_form(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /api HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{\"a\":1}");
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify({ status: g.status, ids: g.variants.map(v => v.id), html: g.variants[0].html }));
+''')
+        self.assertEqual(out["status"], "LIMITED")
+        self.assertIn("json-fetch", out["ids"])
+        self.assertIn('method: "POST"', out["html"])
+        self.assertIn('"Content-Type": "application/json"', out["html"])
+
+    def test_duplicate_and_blank_params_preserved(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /f HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\ndup=1&dup=2&blank=&noparam");
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const html = g.variants[0].html;
+console.log(JSON.stringify({ names: (html.match(/type="hidden"/g) || []).length, dup1: html.includes('name="dup" value="1"'), dup2: html.includes('name="dup" value="2"'), blank: html.includes('name="blank" value=""'), noparam: html.includes('name="noparam" value=""') }));
+''')
+        self.assertEqual(out["names"], 4)
+        self.assertTrue(out["dup1"] and out["dup2"] and out["blank"] and out["noparam"])
+
+    def test_malformed_requests_have_clear_errors(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const cases = {
+  empty: "",
+  noRequestLine: "Host: e.com\r\n\r\n",
+  noHost: "POST /x HTTP/1.1\r\n\r\na=1",
+  badScheme: "POST ftp://e.com/x HTTP/1.1\r\n\r\n",
+  badRequestLine: "garbage line here"
+};
+const rows = {};
+Object.keys(cases).forEach(k => { const p = C.parseRequest(cases[k]); rows[k] = { ok: p.ok, errors: p.errors.map(e => e.message) }; });
+console.log(JSON.stringify(rows));
+''')
+        for key in ("empty", "noRequestLine", "noHost", "badScheme", "badRequestLine"):
+            self.assertFalse(out[key]["ok"], key)
+            self.assertTrue(out[key]["errors"], key)
+            self.assertTrue(out[key]["errors"][0], key)
+
+    def test_forbidden_headers_never_reach_generated_html(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const raw = "POST /x HTTP/1.1\r\nHost: victim.example\r\nCookie: session=TOP-SECRET-COOKIE\r\nAuthorization: Bearer TOP-SECRET-AUTH\r\nContent-Length: 123\r\nOrigin: https://attacker.example\r\nReferer: https://attacker.example/ref\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\na=1";
+const p = C.parseRequest(raw);
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const all = g.variants.map(v => v.html).join("\n");
+console.log(JSON.stringify({
+  hasCookie: /TOP-SECRET-COOKIE/.test(all),
+  hasAuth: /TOP-SECRET-AUTH/.test(all) || /Bearer/.test(all),
+  hasAttackerOrigin: /attacker\.example/.test(all),
+  hasVictimHost: /victim\.example/.test(all),
+  headerNames: ["Cookie:", "Authorization:", "Origin:", "Referer:", "Content-Length:", "Host:"].filter(h => all.includes(h))
+}));
+''')
+        self.assertFalse(out["hasCookie"])
+        self.assertFalse(out["hasAuth"])
+        self.assertFalse(out["hasAttackerOrigin"])
+        self.assertTrue(out["hasVictimHost"])  # the target host is the one thing that must survive
+        self.assertEqual(out["headerNames"], [])
+
+    def test_escaping_protects_attributes_and_scripts(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /e HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nx=</script><img src=x onerror=1>&q=\"quoted\"<tag>");
+const g = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const formHtml = g.variants[0].html;
+const jp = C.parseRequest("POST /j HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{\"p\":\"</script><script>alert(1)</script>\"}");
+const jg = C.generatePoc(jp, {autoSubmit:false, excluded:{}});
+const jsonHtml = jg.variants[0].html;
+console.log(JSON.stringify({
+  rawScriptInForm: formHtml.includes("</script><img"),
+  escapedLt: formHtml.includes("&lt;/script&gt;"),
+  rawScriptInJson: jsonHtml.includes("</script><script>"),
+  unicodeEsc: jsonHtml.includes("\\u003c/script")
+}));
+''')
+        self.assertFalse(out["rawScriptInForm"])
+        self.assertTrue(out["escapedLt"])
+        self.assertFalse(out["rawScriptInJson"])
+        self.assertTrue(out["unicodeEsc"])
+
+    def test_token_detection_and_exclusion(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /s HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\ncsrf_token=ABC&name=joe");
+const tokens = p.tokens.map(t => t.name);
+const included = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const excluded = C.generatePoc(p, {autoSubmit:false, excluded:{ "b:0": true }});
+console.log(JSON.stringify({
+  tokens,
+  includedHasToken: /name="csrf_token"/.test(included.variants[0].html),
+  excludedHasToken: /name="csrf_token"/.test(excluded.variants[0].html)
+}));
+''')
+        self.assertEqual(out["tokens"], ["csrf_token"])
+        self.assertTrue(out["includedHasToken"])
+        self.assertFalse(out["excludedHasToken"])
+
+    def test_auto_submit_off_and_on(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const p = C.parseRequest("POST /s HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\na=1");
+const off = C.generatePoc(p, {autoSubmit:false, excluded:{}});
+const on = C.generatePoc(p, {autoSubmit:true, excluded:{}});
+console.log(JSON.stringify({
+  offHtml: off.variants[0].html,
+  onHtml: on.variants[0].html
+}));
+''')
+        self.assertIn("Send request", out["offHtml"])
+        self.assertNotIn("AUTO-SUBMIT ENABLED", out["offHtml"])
+        self.assertIn("AUTO-SUBMIT ENABLED", out["onHtml"])
+        self.assertIn('document.getElementById("csrf-form").submit();', out["onHtml"])
+        # The auto-submit script is fixed text — no request value concatenated in.
+        self.assertNotIn("a=1", out["onHtml"].split("AUTO-SUBMIT ENABLED")[1])
+
+    def test_statuses_read_limited_not_representable(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const urlenc = C.generatePoc(C.parseRequest("POST /a HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\na=1"), {autoSubmit:false, excluded:{}});
+const put = C.generatePoc(C.parseRequest("PUT /b HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{}"), {autoSubmit:false, excluded:{}});
+const getBody = C.generatePoc(C.parseRequest("GET /c HTTP/1.1\r\nHost: e.com\r\n\r\nbody"), {autoSubmit:false, excluded:{}});
+const trace = C.generatePoc(C.parseRequest("TRACE /d HTTP/1.1\r\nHost: e.com\r\n\r\n"), {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify({ urlenc: urlenc.status, put: put.status, getBody: getBody.status, trace: trace.status }));
+''')
+        self.assertEqual(out["urlenc"], "READY")
+        self.assertEqual(out["put"], "LIMITED")
+        self.assertEqual(out["getBody"], "NOT DIRECTLY REPRESENTABLE")
+        self.assertEqual(out["trace"], "NOT DIRECTLY REPRESENTABLE")
+
+    def test_json_as_text_plain_alternative_only_when_applicable(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+const withEq = C.generatePoc(C.parseRequest("POST /j HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{\"a\":\"x=y\"}"), {autoSubmit:false, excluded:{}});
+const noEq = C.generatePoc(C.parseRequest("POST /j HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{\"novalue\"}"), {autoSubmit:false, excluded:{}});
+console.log(JSON.stringify({ withEq: withEq.variants.map(v => v.id), noEq: noEq.variants.map(v => v.id) }));
+''')
+        self.assertIn("json-textplain", out["withEq"])
+        self.assertNotIn("json-textplain", out["noEq"])
+
+    def test_safe_filename_is_hostname_based(self):
+        out = self._run_csrf(r'''
+const C = globalThis.CyberBuddyCsrf;
+console.log(JSON.stringify({
+  a: C.safeFilename({ host: "Victim.Example.com", method: "POST" }),
+  b: C.safeFilename({ host: "a b/c.com", method: "GET" })
+}));
+''')
+        self.assertEqual(out["a"], "csrf-post-victim.example.com.html")
+        self.assertEqual(out["b"], "csrf-get-a-b-c.com.html")
 
 
 if __name__ == "__main__":
