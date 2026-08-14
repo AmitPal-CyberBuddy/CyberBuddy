@@ -201,9 +201,11 @@ When no engine or lookup can supply header values, the frame is still evidence.
 CyberBuddy asks what you see and records your answer as **analyst-attested**
 (`"confirmation": "manual"` in the JSON, called out in the Markdown and on the
 provenance strip) — never as a measured header result. It pre-selects the likely
-answer from the frame's load behaviour. Note the frame is sandboxed without
-`allow-same-origin`, so a few sites render blank for storage reasons unrelated to
-framing headers.
+answer from the frame's load behaviour. The frame runs sandboxed with
+`allow-scripts allow-forms allow-same-origin` — the same privileges a real
+attacker's frame would have — so a few sites may still render blank for
+third-party-storage or frame-busting reasons unrelated to framing headers.
+Top-level navigation remains blocked.
 
 ## Privacy
 

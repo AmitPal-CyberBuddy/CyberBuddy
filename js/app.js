@@ -295,7 +295,7 @@ function renderFooter() {
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
-    ICONS.medium + "Read the blog · Medium</a>" +
+    ICONS.medium + "Read My blog · Medium</a>" +
     "</div>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
@@ -2638,9 +2638,9 @@ function renderConfirmPrompt(hostId, suggestion, onChoose) {
     "Blank / refused → framing blocked</button>" +
     "</div>" +
     '<span class="confirm-hint">Recorded as <strong>analyst-attested</strong>, not as a ' +
-    "measured header value. Note: this frame runs sandboxed without " +
-    "<code>allow-same-origin</code>, so a few sites render blank because they need " +
-    "same-origin storage — not because of framing headers. Confirm manually if unsure." +
+    "measured header value. Note: a few sites render blank because they need " +
+    "third-party cookies or storage, or run frame-busting scripts — not because " +
+    "of framing headers. Confirm manually if unsure." +
     (suggestion
       ? " Highlighted button is CyberBuddy's guess from the frame's load behaviour."
       : "") +

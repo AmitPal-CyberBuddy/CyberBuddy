@@ -121,10 +121,10 @@
       <div class="poc-grid">
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation</h3>
-          <p class="note">A rendered target means the page can be framed. A blank pane usually means it is blocked. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
+          <p class="note">A rendered target means the page can be framed — exactly as it would appear inside an attacker's frame. A blank pane usually means it is blocked (X-Frame-Options / frame-ancestors), though a few sites also blank themselves with frame-busting scripts. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
           <div id="stage" class="stage">
             <div class="overlay">CLICK HERE — decoy overlay</div>
-            <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
+            <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
           </div>
           <p id="frameStatus" class="stage-note"></p>
           <div id="visualConfirm" class="hidden"></div>

@@ -1285,7 +1285,7 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .social-link svg { width: 16px; height: 16px; flex: none; transition: transform 0.2s ease; }
 .social-link:hover { color: var(--ink); text-decoration: none; }
 .social-link:hover svg { transform: scale(1.15); }
-.footer-legal { font-size: 0.74rem; color: var(--faint); width: 100%; border-top: 1px solid var(--line); padding-top: 18px; margin: 0; }
+.footer-legal { font-size: 0.74rem; color: var(--faint); width: 100%; border-top: 1px solid var(--line); padding-top: 18px; margin: 0; grid-column: 1 / -1; }
 
 .hidden { display: none !important; }
 .mt-0 { margin-top: 0; }

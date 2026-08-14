@@ -78,3 +78,21 @@ on Pages than under `server.py`. The Pages workflow runs
 regression must never reach the site. Severity chips / recommendations /
 weight bars in the UI are display-only layers over the check statuses and
 must stay that way.
+
+## Round 5 traps
+
+- **Grid items with `width:100%` do not span grid rows** — `.footer-legal`
+  auto-placed into row 2, column 1 of the footer grid and hugged the left
+  column. Any full-width grid row needs `grid-column: 1 / -1`.
+- **Iframes: `load` vs `error` is not what you expect.** Chromium renders
+  its own error page inside the frame for refused connections and fires
+  `load`; the `error` event fires for policy blocks (mixed content) and
+  some other browsers' connection failures. When the engine verdict says
+  "unreachable", propagate that to the frame status line rather than
+  relying on the events.
+- **Frame sandbox = attack fidelity.** The frame uses
+  `allow-scripts allow-forms allow-same-origin` on purpose — same
+  privileges as a real attacker's iframe, so storage-dependent sites render
+  instead of false-blanking. Top-level navigation stays blocked. Don't
+  "harden" this away; it would turn blank renders into false "protected"
+  verdicts.

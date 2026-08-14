@@ -872,3 +872,53 @@ including the ghost card and the nav dropdown items.
 **Verification:** 89/89 engine tests (Python↔JS parity), node --check on
 all scripts, jsdom boot/smoke, Pages-build asset check, 51-check tool
 validation suite, 27+4-check interaction suite.
+
+---
+
+## 14. Round 5 — original POC parity, footer fixes, label fixes (2026-08-14)
+
+The original standalone `Clickjacking-Validator/Clickjacking.html` was
+fetched and diffed against the current tool, item by item.
+
+**Adopted from the original POC**
+
+- **`allow-same-origin` on the frame sandbox** (now
+  `allow-scripts allow-forms allow-same-origin`). The old tool framed
+  targets with the same privileges a real attacker's frame has; the current
+  tool's stricter sandbox made sites that need their own storage render
+  blank — a false "blocked" verdict on an evidence tool. Top-level
+  navigation remains sandbox-blocked, and the only same-origin case is
+  scanning CyberBuddy itself (the analyst's own trusted code). The stage
+  note, confirm-prompt hint, and README were updated to match.
+- **Frame-load "peek" evidence line.** The old tool reported what reading
+  `contentDocument` proved. Ported: "Frame loaded — peek: cross-origin
+  (document not readable — expected)" or "document readable — <href>" for
+  same-origin targets. Verified both paths in Chromium.
+
+**Added for accuracy while there**
+
+- Frame `error` listener (fires on policy blocks such as mixed content;
+  verified Chromium instead renders its own error page for refused
+  connections and fires `load`).
+- When the engine reports the target unreachable, the frame status now says
+  so explicitly ("the frame may show the browser's own error page; that is
+  not framing evidence") instead of leaving a generic "Frame loaded" line
+  next to an UNREACHABLE verdict.
+
+**Skipped (already better here):** the old page's compact single-viewport
+layout is covered by Evidence mode; normalize / ?url= / Enter-to-scan /
+PoC toggle / auto-scan all exist in stronger form; the header scan the old
+page proxied through `/api/scan` is the current Security Headers tool.
+
+**Footer fixes (user-reported)**
+
+- `.footer-legal` was a grid item auto-placed into row 2, column 1 of the
+  footer grid — the legal text hugged the left-most column. Fixed with
+  `grid-column: 1 / -1`; verified it spans the full footer width and sits
+  below all columns at 1440 / 920 / 560 / 390 px.
+- Connect column label: "Read the blog · Medium" → "Read My blog · Medium".
+
+**Verification:** 89/89 engine tests, node --check, jsdom smoke, Pages-build
+asset check, 51-check tool validation suite, 31-check interaction suite, and
+the new footer/CJ checks (footer spans at four widths, same-origin and
+cross-origin peeks, unreachable-target path, hub regression) — all passing.
