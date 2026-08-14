@@ -629,6 +629,12 @@ class HostedSiteTests(unittest.TestCase):
         self.assertIn("/tools/clickjacking/", sitemap)
         self.assertIn("/tools/csp/", sitemap)
 
+    def test_upcoming_csrf_generator_is_visible(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("Next on the bench: CSRF PoC Generator", hub)
+        self.assertIn('"CSRF PoC Generator"', app)
+
 
 class GraderParityTests(unittest.TestCase):
     """Python and JS graders must agree, check for check.
@@ -1016,6 +1022,13 @@ class HostedCspTests(unittest.TestCase):
         for page in ["index.html", "tools/headers/index.html"]:
             text = (ROOT / page).read_text(encoding="utf-8")
             self.assertIn("fonts.googleapis.com/css2", text)
+
+    def test_reduced_motion_never_leaves_reveals_invisible(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        block = css[css.index("@media (prefers-reduced-motion: reduce)"):]
+        self.assertIn("html.js .reveal, .reveal", block)
+        self.assertIn("opacity: 1 !important", block)
+        self.assertIn("animation-delay: 0s !important", block)
 
     def test_hub_can_offer_relay_consent(self):
         """Without #relayGate the hub silently degrades to 'no header data'

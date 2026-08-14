@@ -59,6 +59,10 @@ repository history instead:
   additions (MutationObserver) plus a 2s re-querying safety net. If you
   move the boot order or add a new dynamically injected `.reveal`, re-check
   computed `opacity` in the browser — DOM presence is NOT visibility.
+- Reduced-motion CSS must override the more-specific `html.js .reveal`, not
+  only `.reveal`. Keep `html.js .reveal, .reveal { opacity: 1 !important;
+  animation: none !important; animation-delay: 0s !important; }` inside the
+  media query so visitors who disable animation never wait on reveal delays.
 - Evidence must stay visible without clicks: never put findings in
   accordions, because a closed `<details>` cannot be force-opened in print
   CSS and breaks the screenshot workflow.

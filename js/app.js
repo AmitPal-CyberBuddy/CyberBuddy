@@ -249,7 +249,7 @@ const TOOLS_MENU = [
     std: ["OWASP WSTG-CONF-12", "CWE-79", "CWE-693"]
   }
 ];
-const TOOLS_SOON = ["TLS / SSL Analyzer", "Subdomain Enumeration"];
+const TOOLS_SOON = ["CSRF PoC Generator", "TLS / SSL Analyzer", "Subdomain Enumeration"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");

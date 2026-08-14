@@ -968,8 +968,10 @@ changed.
   demo targets skip the relay prompt, and older cache files can derive the CSP
   result from their Security Headers entry.
 - Added `/api/csp`, the optional Vercel function, `/csp` aliases, CI cache output,
-  Pages workflow copy, GitHub-project mount routing, 404 repair, sitemap/PWA/LLM
-  metadata, and the CSP page's own strict meta policy.
+  GitHub-project mount routing, 404 repair, sitemap/PWA/LLM metadata, and the
+  CSP page's own strict meta policy. The one-line Pages copy update is prepared
+  in `docs/pages-workflow-patch.md`; Arena's GitHub App cannot push workflow
+  changes, so the maintainer must add `tools/csp` to the existing `cp -a` line.
 - CSP is the fourth hub/suite result. The suite reuses Security Headers' one
   response instead of issuing a duplicate CSP GET and continues to show the
   headers score as its only numeric gauge.
@@ -979,3 +981,53 @@ four API/page routes), `node --check` on all ten scripts, Python compile checks,
 JSON/XML validation, Pages assembly asset guard, controller-to-DOM ID check,
 and live-server checks for `/tools/csp/`, `/CyberBuddy/tools/csp/`, its
 controller, and `/api/csp` — all passing.
+
+---
+
+## 16. Pre-merge responsive + interaction audit (2026-08-14)
+
+A real Chromium 149 build was used for a complete pre-merge pass rather than a
+DOM-only smoke test.
+
+**Responsive/theme matrix: 84 combinations**
+
+- Seven pages: hub, Clickjacking, Security Headers, CORS, CSP, Methodology, and
+  the standalone 404 page.
+- Six viewport classes: 2560×1440 monitor, 1920×1080 desktop, 1366×768 laptop,
+  1024×768 tablet landscape, 768×1024 tablet portrait, and 390×844 phone.
+- Both dark and light mode at every page/viewport combination.
+- Every combination checked document/body horizontal overflow, main/header/
+  footer bounds, clipped visible controls, reveal visibility, theme state,
+  body/text contrast, local resource failures, console exceptions, and page
+  errors. The hub additionally required four visible live tools, the expected
+  responsive grid columns, and visible CSRF roadmap copy.
+
+**Result/report interactions**
+
+- All four tools were scanned at laptop/dark and phone/light sizes. Each report
+  had findings, source provenance, no horizontal overflow, working exports,
+  evidence-mode on/off, share feedback, and copy-finding feedback.
+- Clickjacking's PoC overlay was toggled both ways; the Headers gauge rendered;
+  CSP showed the enforced policy, secure starter, and all directive rows.
+- The four-card hub suite, suite summary/chips, copy/share toolbar, engine
+  popover, keyboard dialog, Tools menu, theme persistence, dynamic cards,
+  blog cards, footer links, and 404 theme control were exercised.
+- Normal reveal animations were verified on desktop and phone in both themes;
+  reduced-motion behavior was verified separately.
+
+**Issues found and fixed**
+
+- Reduced-motion previously set only `.reveal { opacity: 1 }`, which lost the
+  specificity contest against `html.js .reveal { opacity: 0 }`. It now forces
+  JS reveals visible and removes animation/delay, so motion-sensitive visitors
+  never see temporarily hidden sections.
+- The CSP report originally put a long findings table beside two short policy
+  cards, leaving half the desktop report blank. Policy evidence/starter now
+  share the top row and findings span the full report width; mobile still
+  stacks cleanly.
+- The upcoming area now names **CSRF PoC Generator** as the next planned tool,
+  both in the dynamic upcoming card/menu and in static hub copy.
+
+**Verification:** all 84 responsive/theme combinations and the extended
+functional browser suite passed after the fixes. The stdlib suite now contains
+99 tests, including guards for the CSRF roadmap and reduced-motion reveal rule.

@@ -106,29 +106,27 @@
         </div>
       </div>
 
-      <div class="grid-2">
+      <div class="grid-2 csp-evidence-grid">
         <article class="card inset-card">
-          <h3 class="card-title">Directive findings</h3>
-          <table id="checks" class="findings" aria-label="CSP audit findings">
-            <thead><tr><th scope="col">Control</th><th scope="col">Assessment</th></tr></thead>
-            <tbody></tbody>
-          </table>
+          <h3 class="card-title">Enforced policy</h3>
+          <pre id="policy" class="raw-headers">(not present)</pre>
+          <h3 class="card-title csp-subhead">Report-only policy</h3>
+          <pre id="reportOnly" class="raw-headers">(not present)</pre>
         </article>
-
-        <div>
-          <article class="card inset-card">
-            <h3 class="card-title">Enforced policy</h3>
-            <pre id="policy" class="raw-headers">(not present)</pre>
-            <h3 class="card-title csp-subhead">Report-only policy</h3>
-            <pre id="reportOnly" class="raw-headers">(not present)</pre>
-          </article>
-          <article class="notice csp-starter">
-            <h3>Secure starting policy</h3>
-            <p>Tailor this baseline to the application's real sources and test it in Report-Only mode first. Applying it unchanged can break a site.</p>
-            <code id="suggestedPolicy" class="csp-policy-code">Content-Security-Policy: —</code>
-          </article>
-        </div>
+        <article class="notice csp-starter">
+          <h3>Secure starting policy</h3>
+          <p>Tailor this baseline to the application's real sources and test it in Report-Only mode first. Applying it unchanged can break a site.</p>
+          <code id="suggestedPolicy" class="csp-policy-code">Content-Security-Policy: —</code>
+        </article>
       </div>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Directive findings</h3>
+        <table id="checks" class="findings" aria-label="CSP audit findings">
+          <thead><tr><th scope="col">Control</th><th scope="col">Assessment</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </article>
 
       <div id="reportProvenance" class="report-provenance"></div>
     </article>
