@@ -52,6 +52,13 @@ repository history instead:
   (a raw header line, the JSON blob in the raw-headers `<pre>`) expands the
   track and blows the page out horizontally. The `.grid-2 > *` rule in
   `css/app.css` is load-bearing; keep it.
+- **`.reveal` content injected after boot is invisible until `.in` is
+  added** — `html.js .reveal { opacity: 0 }`. The tool cards and blog grid
+  are injected by `renderToolCards` / `renderBlog`, so `initReveal()` must
+  run AFTER the page initialisers (boot.js order) and must watch for late
+  additions (MutationObserver) plus a 2s re-querying safety net. If you
+  move the boot order or add a new dynamically injected `.reveal`, re-check
+  computed `opacity` in the browser — DOM presence is NOT visibility.
 - Evidence must stay visible without clicks: never put findings in
   accordions, because a closed `<details>` cannot be force-opened in print
   CSS and breaks the screenshot workflow.

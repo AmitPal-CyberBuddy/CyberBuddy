@@ -953,27 +953,52 @@ function initStats() {
 }
 
 function initReveal() {
-  const els = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
-  if (!els.length) return;
   const inView = (el) => {
     const r = el.getBoundingClientRect();
     return r.top < window.innerHeight && r.bottom > 0;
   };
-  if (!("IntersectionObserver" in window)) {
-    els.forEach((el) => el.classList.add("in"));
-    return;
+  let io = null;
+  if ("IntersectionObserver" in window) {
+    io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("in");
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.05 });
   }
-  els.forEach((el) => { if (inView(el)) el.classList.add("in"); });
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add("in");
-        io.unobserve(e.target);
+  const track = (root) => {
+    if (!root || root.nodeType !== 1 && root.nodeType !== 9) return;
+    const list = Array.prototype.slice.call(root.querySelectorAll(".reveal"));
+    if (root.classList && root.classList.contains("reveal")) list.push(root);
+    list.forEach((el) => {
+      if (el.classList.contains("in")) return;
+      if (io) {
+        if (inView(el)) el.classList.add("in");
+        else io.observe(el);
+      } else {
+        el.classList.add("in");
       }
     });
-  }, { threshold: 0.05 });
-  els.forEach((el) => io.observe(el));
-  setTimeout(() => { els.forEach((el) => el.classList.add("in")); }, 2000);
+  };
+  track(document);
+  // The hub injects its tool cards and blog grid AFTER boot
+  // (renderToolCards / renderBlog). Without this watch, those .reveal nodes
+  // stay at opacity: 0 forever — present and clickable, but invisible.
+  if (window.MutationObserver) {
+    const mo = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        m.addedNodes.forEach((n) => { if (n.nodeType === 1) track(n); });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  // Safety net: re-query at fire time so anything the observers missed
+  // (including late-injected content) is visible after 2s, guaranteed.
+  setTimeout(() => {
+    document.querySelectorAll(".reveal:not(.in)").forEach((el) => el.classList.add("in"));
+  }, 2000);
 }
 
 function exportReport() {

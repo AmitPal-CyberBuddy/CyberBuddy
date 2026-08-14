@@ -820,3 +820,55 @@ notes. Future notes-to-self go in `docs/DEV-NOTES.md`.
 on all scripts, jsdom boot/smoke of all five pages, Pages-build asset check,
 and a 27-point real-browser interaction suite (popover, shortcuts, suite
 scan, gauge, tags, no-JS fallbacks, mobile overflow) — all passing.
+
+---
+
+## 13. Round 4 — invisible cards fixed, all three tools validated in a real browser (2026-08-14)
+
+**Root cause of the "empty but clickable" cards (finally found):**
+
+The hub's tool cards and blog cards are injected by `renderToolCards` /
+`renderBlog` AFTER `initReveal()` runs. Elements with class `reveal` start
+at `opacity: 0` and only become visible when `.in` is added — the injected
+cards were never observed, and the 2s fallback only covered elements
+captured at init time. Result: cards present in the DOM and clickable, but
+invisible (confirmed in Chromium: `opacity: 0`, no `.in`). The bug predates
+the Round-2 work (present at `b2372d1`); earlier DOM-level checks counted
+elements without checking computed visibility, so it slipped through.
+
+**Fix:** `initReveal()` rewritten to (a) re-query and track every `.reveal`
+at call time, (b) watch for late-injected nodes via MutationObserver, and
+(c) a re-querying 2s safety net (`querySelectorAll(".reveal:not(.in)")`).
+`js/boot.js` now runs `initReveal()` AFTER the page initialisers as
+belt-and-braces. Verified in Chromium: all cards `opacity: 1` with `.in`,
+including the ghost card and the nav dropdown items.
+
+**All three tools validated end-to-end in real Chromium (51 checks):**
+
+- Setup: a loopback-bound `server.py` (the VAPT configuration) so the
+  Python engine path runs for real. Notable: the 0.0.0.0-bound server
+  CORRECTLY refuses loopback targets via the SSRF guard — this is intended
+  behavior, and the tools then fall back to the browser grader (labelled
+  "this browser", as designed).
+- Security Headers: real scan → gauge animated to the real score (offset
+  5px ≈ 95/100, grade A), 10 findings with severity + recommendation (1/1
+  weak rows) + weight bars (9), copy-finding works, raw headers contain
+  real values, engine metadata "python engine", measured duration, UTC
+  stamp, provenance, zero overflow, zero console errors.
+- CORS Validator: probe → RESTRICTIVE verdict, findings + severity +
+  posture, the genuine TWO-ORIGIN python proof
+  (`https://evil.cyberbuddy.test · https://probe.cyberbuddy.test`), HTTP
+  200, engine "python engine", no errors.
+- Clickjacking Validator: live frame renders the target, protection line +
+  risk chip, both framing-control rows with copy buttons, PoC overlay
+  toggles on/off with label updates, no errors.
+- Hub suite: all three results "via python engine", all tagged LIVE,
+  no overflow, no errors.
+- Mobile: headers report fully renders, no overflow, no errors.
+- Regression guards added to the browser test harness: computed-opacity
+  assertions for tool cards, blog posts, ghost card and nav items (DOM
+  presence is not visibility).
+
+**Verification:** 89/89 engine tests (Python↔JS parity), node --check on
+all scripts, jsdom boot/smoke, Pages-build asset check, 51-check tool
+validation suite, 27+4-check interaction suite.
