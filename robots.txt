@@ -1,10 +1,11 @@
+# NOTE: on a GitHub *project* Pages site this file lives at
+# /CyberBuddy/robots.txt, but crawlers only read the DOMAIN ROOT
+# (https://amitpal-cyberbuddy.github.io/robots.txt). It is therefore
+# advisory here — it takes effect only under a custom domain, or if the
+# same rules are published from the amitpal-cyberbuddy.github.io repo.
+# The sitemap URL below is absolute, so it stays correct either way.
+
 User-agent: *
-Allow: /CyberBuddy/
-
-User-agent: GPTBot
-Allow: /CyberBuddy/
-
-User-agent: ChatGPT-User
-Allow: /CyberBuddy/
+Allow: /
 
 Sitemap: https://amitpal-cyberbuddy.github.io/CyberBuddy/sitemap.xml

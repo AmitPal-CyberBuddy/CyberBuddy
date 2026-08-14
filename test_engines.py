@@ -6,10 +6,12 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
 import unittest
+import urllib.request
 from urllib.parse import quote
 from email.message import Message
 from http.server import ThreadingHTTPServer
@@ -330,7 +332,11 @@ class AppBaseJsTests(unittest.TestCase):
             self.assertIn("js/app.js", text)
 
     def test_four_oh_four_repairs_old_hosted_urls(self):
-        text = (ROOT / "404.html").read_text(encoding="utf-8")
+        # The repair logic lives in js/404-boot.js (externalised so the site
+        # can ship a CSP without 'unsafe-inline'); 404.html must load it.
+        page = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn("js/404-boot.js", page)
+        text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
 
@@ -541,6 +547,112 @@ class HostedSiteTests(unittest.TestCase):
         text = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="methodology"', text)
         self.assertIn("/tools/clickjacking/", (ROOT / "sitemap.xml").read_text(encoding="utf-8"))
+
+
+class SessionPoolTests(unittest.TestCase):
+    """The opener cache must not leak one caller's allow_private policy.
+
+    Each opener bakes in a SafeRedirect handler that closes over
+    allow_private. If the cache key ignores it, the first caller in the
+    process decides the redirect policy for everyone — meaning an
+    allow_private=False scan could follow a redirect into RFC1918.
+    """
+
+    def setUp(self):
+        from http_session import get_session_pool
+
+        self.pool = get_session_pool()
+        self.pool.clear()
+
+    def tearDown(self):
+        self.pool.clear()
+
+    def test_same_key_reuses_opener(self):
+        a = self.pool.get_opener(insecure=False, allow_private=True)
+        b = self.pool.get_opener(insecure=False, allow_private=True)
+        self.assertIs(a, b)
+
+    def test_allow_private_is_part_of_the_cache_key(self):
+        public = self.pool.get_opener(insecure=False, allow_private=False)
+        private = self.pool.get_opener(insecure=False, allow_private=True)
+        self.assertIsNot(public, private)
+
+    def test_insecure_is_part_of_the_cache_key(self):
+        secure = self.pool.get_opener(insecure=False, allow_private=False)
+        insecure = self.pool.get_opener(insecure=True, allow_private=False)
+        self.assertIsNot(secure, insecure)
+
+    def test_public_opener_refuses_private_redirect(self):
+        """The allow_private=False opener's redirect guard must reject RFC1918."""
+        opener = self.pool.get_opener(insecure=False, allow_private=False)
+        handler = next(
+            h for h in opener.handlers
+            if type(h).__name__ == "SafeRedirect"
+        )
+        req = urllib.request.Request("https://example.com/")
+        msg = Message()
+        with self.assertRaises(ValueError):
+            handler.redirect_request(
+                req, None, 302, "Found", msg, "http://127.0.0.1:8080/"
+            )
+
+    def test_private_opener_allows_private_redirect(self):
+        opener = self.pool.get_opener(insecure=False, allow_private=True)
+        handler = next(
+            h for h in opener.handlers
+            if type(h).__name__ == "SafeRedirect"
+        )
+        req = urllib.request.Request("http://127.0.0.1:8080/")
+        msg = Message()
+        # Should not raise — loopback is permitted for this policy.
+        handler.redirect_request(
+            req, None, 302, "Found", msg, "http://127.0.0.1:8080/next"
+        )
+
+
+class ClearRecentScansTests(unittest.TestCase):
+    """Clearing scan history must also drop the cached response headers."""
+
+    def test_clear_removes_header_lookup_cache(self):
+        text = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = text.index("function clearRecentScans()")
+        body = text[start:start + 400]
+        self.assertIn("RECENT_KEY", body)
+        self.assertIn("HEADER_CACHE_KEY", body)
+
+
+class PrintStylesheetTests(unittest.TestCase):
+    """The exported PDF must keep the evidence the screen shows."""
+
+    def _print_block(self) -> str:
+        """The @media print body, with /* comments */ stripped."""
+        text = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        start = text.index("@media print")
+        block = text[start:text.index("@media (max-width: 760px)", start)]
+        return re.sub(r"/\*.*?\*/", "", block, flags=re.S)
+
+    def _print_hide_rule(self) -> str:
+        """Just the selector list of the `display: none !important` rule."""
+        block = self._print_block()
+        end = block.index("display: none !important")
+        # Back up to the start of that rule's selector list.
+        return block[block.rindex("}", 0, end) + 1:end]
+
+    def test_poc_overlay_is_not_hidden_in_print(self):
+        # .overlay is the red decoy — it IS the clickjacking evidence.
+        self.assertNotIn(".overlay", self._print_hide_rule())
+
+    def test_notice_is_not_hidden_in_print(self):
+        self.assertNotIn(".notice", self._print_hide_rule())
+
+    def test_chrome_is_still_hidden_in_print(self):
+        rule = self._print_hide_rule()
+        for sel in (".site-header", ".site-footer", ".btn", ".aurora"):
+            self.assertIn(sel, rule)
+
+    def test_print_forces_colour_adjust(self):
+        block = self._print_block()
+        self.assertIn("print-color-adjust: exact", block)
 
 
 if __name__ == "__main__":

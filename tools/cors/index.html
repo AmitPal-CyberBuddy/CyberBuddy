@@ -32,31 +32,16 @@
   <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Cpath d='M10 12h12M10 20h8'/%3E%3C/g%3E%3C/svg%3E" />
-  <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <script>
-    (function () {
-      try {
-        var s = localStorage.getItem("cb-theme");
-        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
-        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
-      } catch (_) {}
-    })();
-  </script>
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
-  <script src="../../js/app.js?v=20260814c" defer></script>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      renderHeader("/tools/cors/");
-      renderFooter();
-      initReveal();
-      initCors();
-      initShareButton();
-    });
-  </script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260814d" />
+  <script src="../../js/app.js?v=20260814d" defer></script>
+  <script src="../../js/tool.cors.js?v=20260814d" defer></script>
+  <script src="../../js/boot.js?v=20260814d" defer></script>
 </head>
-<body>
+<body data-page="/tools/cors/" data-init="initCors initShareButton">
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 03</p>
@@ -73,17 +58,19 @@
       <input id="url" type="url" placeholder="https://example.com/api" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>
-    <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
-    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
-    <button id="copyJson" type="button" class="btn btn-ghost" onclick="copyJson()">Copy JSON</button>
-    <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    <div role="group" aria-label="Export and share">
+      <span id="exportMenu"></span>
+      <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    </div>
   </div>
+  <div id="evidenceToggle"></div>
+  <div id="relayGate" class="hidden"></div>
 
   <section id="results" class="results hidden">
     <article class="card report-card">
       <div class="report-head">
         <div>
-          <h2>CORS posture</h2>
+          <h2>CORS posture<span id="reportTitleFlag"></span></h2>
         </div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
@@ -124,6 +111,8 @@
           <tbody></tbody>
         </table>
       </article>
+
+      <div id="reportProvenance" class="report-provenance"></div>
     </article>
   </section>
 
@@ -134,105 +123,5 @@
 
 </main>
 
-<script>
-  "use strict";
-
-  let cbLastData = null;
-  function copyReport() {
-    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
-  }
-  function copyJson() {
-    if (cbLastData) copyJsonReport(cbLastData, document.getElementById("copyJson"));
-  }
-
-  async function initCors() {
-    const $ = (id) => document.getElementById(id);
-
-    function setVerdict(risk, text) {
-      $("verdict").textContent = risk;
-      $("verdict").className = "risk " + (risk === "PROBING" ? "unknown" : risk.toLowerCase());
-      bump($("verdict"));
-      $("summary").textContent = text;
-      $("verdictBanner").className = "verdict-banner " +
-        (risk === "PROBING" ? "unknown" : risk.toLowerCase());
-      const r = (risk || "").toLowerCase();
-      let label, cls;
-      if (r === "probing") { label = "CORS policy: checking…"; cls = "unknown"; }
-      else if (r === "low") { label = "CORS policy: RESTRICTIVE — no arbitrary-origin reflection"; cls = "low"; }
-      else if (r === "medium") { label = "CORS policy: PERMISSIVE — review the findings"; cls = "medium"; }
-      else if (r === "high") { label = "CORS policy: PERMISSIVE — reflection + credentials"; cls = "high"; }
-      else { label = "CORS policy: UNABLE TO DETERMINE"; cls = "unknown"; }
-      $("protection").textContent = label;
-      $("protection").className = "protection-line " + cls;
-    }
-
-    function renderChecks(checks) {
-      $("checks").querySelector("tbody").innerHTML = checks.map((c) => {
-        const ev = c.evidence
-          ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>"
-          : "";
-        return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
-          "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-          "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
-      }).join("");
-    }
-
-    async function probe(url) {
-      $("results").classList.remove("hidden");
-      setVerdict("PROBING", "Checking " + url + "…");
-      $("mTarget").textContent = url;
-      $("mStamp").textContent = fmtStamp();
-      setLoading($("go"), true);
-
-      const engine = await apiCors(url);
-      cbLastData = engine || null;
-      setSourceChip(engine || { _source: "none" });
-      if (engine && engine._unreachable) {
-        $("mOrigin").textContent = "engine";
-        $("mStatus").textContent = "—";
-        setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(engine));
-        renderChecks(engine.checks || []);
-        setLoading($("go"), false);
-        return;
-      }
-      if (!isEngineDown(engine) && engine && (engine.checks || engine.error)) {
-        const origins = (engine.origins_tested || []).join(" · ") || "engine";
-        $("mOrigin").textContent = origins;
-        $("mStatus").textContent = engine.status_code != null ? String(engine.status_code) : "—";
-        if (engine.error && !engine.checks) {
-          setVerdict("UNKNOWN", engine.error);
-          renderChecks([]);
-          setLoading($("go"), false);
-          return;
-        }
-        setVerdict((engine.risk || "unknown").toUpperCase(), engine.summary || "");
-        renderChecks(engine.checks || []);
-        setLoading($("go"), false);
-        return;
-      }
-
-      setLoading($("go"), false);
-    }
-
-    $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
-      pushUrlParam(url);
-      addRecentScan(url);
-      probe(url);
-    });
-
-    $("url").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("go").click();
-    });
-
-    const initial = new URLSearchParams(location.search).get("url");
-    if (initial) {
-      $("url").value = normalizeUrl(initial);
-      probe(normalizeUrl(initial));
-    }
-  }
-</script>
 </body>
 </html>

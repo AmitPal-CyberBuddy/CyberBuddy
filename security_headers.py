@@ -555,6 +555,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Refuse loopback / RFC1918 / link-local targets (default: allow private, block metadata).",
     )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel workers for multi-URL scans (default: 4, 1 = sequential).",
+    )
     return p.parse_args(argv)
 
 
@@ -579,10 +585,23 @@ def main(argv: list[str] | None = None) -> int:
         print("Provide at least one URL or --file.", file=sys.stderr)
         return 2
     allow_private = not args.public_only
-    results = [
-        scan_headers(u, timeout=args.timeout, insecure=args.insecure, allow_private=allow_private)
-        for u in urls
-    ]
+
+    def scan_one(u: str):
+        return scan_headers(
+            u, timeout=args.timeout, insecure=args.insecure, allow_private=allow_private
+        )
+
+    # Batch scans run in parallel — the engines are I/O bound and the session
+    # pool is thread-safe. A single URL skips the executor entirely.
+    if len(urls) > 1 and args.workers > 1:
+        from concurrent_scanner import scan_urls_concurrent
+
+        results = scan_urls_concurrent(
+            urls, scan_one, max_workers=args.workers, show_progress=not args.json
+        )
+        results = [r for r in results if r is not None]
+    else:
+        results = [scan_one(u) for u in urls]
     if args.json:
         print(json.dumps([r.to_dict() for r in results], indent=2))
     else:

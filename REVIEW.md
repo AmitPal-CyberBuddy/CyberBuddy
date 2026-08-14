@@ -1,5 +1,12 @@
 # CyberBuddy — project review
 
+> **Status: all recommendations in this review have been implemented** (see
+> `git log`). Repo stays **public** under Apache-2.0. This document is kept as
+> the rationale record — each section explains *why* the change was made.
+> Verified after the work: 78 unit tests pass, all five pages render clean in a
+> DOM harness, and CyberBuddy now scores **A (95/100)** against itself, up from
+> C (65/100).
+
 Date: 2026-08-14 · Reviewed at commit `ca13040` · Reviewer notes for Amit
 
 > Note: the screenshot you mentioned did not reach my workspace, so the layout
@@ -525,7 +532,50 @@ Gaps:
 
 ---
 
-## 8. Suggested order of work
+## 8. Work completed
+
+All items below shipped in this branch.
+
+**Privacy**
+- Relay consent gate — nothing reaches a third party until the analyst agrees;
+  hostname-only by default, full URL opt-in, or decline entirely. Verified: with
+  target `https://target.example/secret/path?token=abc123`, only
+  `target.example` left the browser.
+- Relay-sourced findings carry an `unverified` badge in the UI, the provenance
+  strip, the Markdown export and the JSON.
+- A direct CORS read is attempted first (no third party involved).
+- `clearRecentScans()` now also clears `cb-header-lookup-v1`.
+- Recent scans expire after 24h and carry an explicit "stored only in this
+  browser" note.
+- `via cached report` → `via published report`, plus a Privacy section on the
+  hub, the methodology page, the README and `llms.txt`.
+
+**Evidence / layout**
+- `.overlay` and `.notice` no longer hidden in print; `print-color-adjust: exact`
+  keeps risk colours in the PDF; frame height 300px → 420px.
+- Evidence mode collapses page chrome after a scan (toggle, remembered).
+- Provenance strip burned into every report card (tool, target, UTC, source).
+- Export split-menu: Print / PoC image (`getDisplayMedia`) / evidence card
+  (canvas) / Copy MD / Copy JSON — with honest capability labelling.
+- Visual-confirmation flow restored, recorded as analyst-attested with a
+  load-behaviour hint pre-selecting the likely answer.
+
+**Security / quality**
+- `http_session` opener cache keyed on `(insecure, allow_private)` + 5 tests.
+- All inline scripts externalised → `script-src 'self'` with no
+  `'unsafe-inline'`, plus `Permissions-Policy`, CORP/COEP and
+  `frame-ancestors 'self'`. **Self-score C (65) → A (95).**
+- `server.py` CSP/header block deduplicated into `_security_headers()`.
+- LICENSE (Apache-2.0) added.
+- Cache-busting stamped from the commit SHA in CI.
+- `--workers` wires `concurrent_scanner` into the batch CLI.
+- Focus trap + focus restore on the shortcuts dialog; `--faint` contrast
+  4.0:1 → 5.49:1; reduced-motion no longer hides Recent scans.
+- sitemap includes `/methodology/`; manifest paths made relative; robots.txt and
+  security.txt annotated with the domain-root caveat.
+- `PERFORMANCE.md` → `docs/performance.md`, rewritten as reference notes.
+
+## 9. Original suggested order of work
 
 **This week (small, high value)**
 1. Un-hide `.overlay` (and `.notice`) in the print stylesheet. *One line.*
@@ -552,7 +602,7 @@ Gaps:
 
 ---
 
-## 9. On the two repos
+## 10. On the two repos
 
 Keep `Clickjacking-Validator` archived (GitHub's Archive button) with a README
 line pointing at CyberBuddy, rather than deleting it. It's dated 2026-08-13, one

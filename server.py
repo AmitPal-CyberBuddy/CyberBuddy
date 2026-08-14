@@ -140,30 +140,48 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         print("[http] " + fmt % args)
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
+    # CyberBuddy grades these headers on other sites, so it ships them itself.
+    # script-src has NO 'unsafe-inline': every page script lives in js/*.js.
+    # style-src still needs it for the `style="--d: .08s"` animation-delay
+    # attributes; style-src-attr scopes that to attributes only, so inline
+    # <style> blocks stay blocked. frame-src must allow http(s) so the
+    # clickjacking iframe can load a target.
+    CSP = (
+        "default-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; "
+        "style-src-attr 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "script-src 'self'; "
+        "img-src 'self' data:; "
+        "connect-src 'self' http: https:; "
+        "frame-src http: https:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "form-action 'self'"
+    )
+
+    def _security_headers(self) -> None:
+        """Emit the response hardening headers shared by every route."""
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        # Inline scripts/styles are used by the static pages; frame-src must
-        # allow http(s) so the clickjacking iframe can load a target.
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Cross-Origin-Embedder-Policy", "credentialless")
         self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com data:; "
-            "script-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "connect-src 'self' http: https:; "
-            "frame-src http: https:; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'",
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), "
+            "interest-cohort=()",
         )
+        self.send_header("Content-Security-Policy", self.CSP)
+
+    def _send(self, code: int, body: bytes, content_type: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -178,24 +196,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(file_size))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "SAMEORIGIN")
-        self.send_header("Referrer-Policy", "same-origin")
-        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com data:; "
-            "script-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "connect-src 'self' http: https:; "
-            "frame-src http: https:; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'",
-        )
+        self._security_headers()
         self.end_headers()
         
         # Stream file in chunks to avoid loading entire file into memory

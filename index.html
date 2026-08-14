@@ -37,19 +37,11 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <script>
-    (function () {
-      try {
-        var s = localStorage.getItem("cb-theme");
-        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
-        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
-      } catch (_) {}
-    })();
-  </script>
+  <noscript><link rel="stylesheet" href="css/noscript.css" /></noscript>
+  <script src="js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="css/app.css?v=20260814c" />
+  <link rel="stylesheet" href="css/app.css?v=20260814d" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -72,22 +64,11 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260814c" defer></script>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      renderHeader("/");
-      renderFooter();
-      renderToolCards();
-      renderBlog();
-      initReveal();
-      initStats();
-      initSuite();
-      renderRecentScans();
-      typeConsole();
-    });
-  </script>
+  <script src="js/app.js?v=20260814d" defer></script>
+  <script src="js/hub.js?v=20260814d" defer></script>
+  <script src="js/boot.js?v=20260814d" defer></script>
 </head>
-<body>
+<body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
 <main id="main" class="container">
 
   <section class="hero">
@@ -275,7 +256,11 @@
     </article>
     <article class="card reveal" style="--d: .24s;">
       <h3>Hosted scan layers</h3>
-      <p class="std-meta">Python when <code>server.py</code> or <code>api/</code> is up. Otherwise a same-origin cached report from <code>urls.txt</code> (fresh within 48h). Otherwise a live header lookup. The source chip always says which layer ran.</p>
+      <p class="std-meta">Python when <code>server.py</code> or <code>api/</code> is up. Otherwise a same-origin published report for the demo targets in <code>urls.txt</code> (fresh within 48h). Otherwise a direct read, then opt-in relays. The source chip always says which layer ran.</p>
+    </article>
+    <article class="card reveal" style="--d: .3s;">
+      <h3>Privacy</h3>
+      <p class="std-meta">Scan history stays in this browser (localStorage, 24h) — never uploaded, never shared. Published reports cover only the demo targets, never yours. Third-party header relays are <strong>opt-in</strong>, send the hostname only by default, and their output is flagged unverified. <a href="methodology/#privacy">Full detail →</a></p>
     </article>
   </div>
   <p class="form-hint reveal" style="--d: .2s;">
@@ -349,38 +334,5 @@
 
 </main>
 
-<script>
-  "use strict";
-  function typeConsole() {
-    const c = document.getElementById("demoConsole");
-    if (!c) return;
-    const lines = [
-      '<div><span class="c-prompt">$</span> cyberbuddy scan https://example.com</div>',
-      '<div class="c-dim">─ framing protections ─────────────────────</div>',
-      '<div><span class="c-red">[missing]</span>&nbsp; CSP frame-ancestors</div>',
-      '<div><span class="c-red">[missing]</span>&nbsp; X-Frame-Options</div>',
-      '<div><span class="c-red">[missing]</span>&nbsp; Strict-Transport-Security</div>',
-      '<div><span class="c-red">[missing]</span>&nbsp; X-Content-Type-Options</div>',
-      '<div class="c-dim">──────────────────────────────────────────</div>',
-      '<div>risk: <span class="c-red">HIGH</span> &nbsp; grade: <span class="c-red">F</span> &nbsp; <span class="c-dim">via cached report</span></div>'
-    ];
-    if (prefersReduced()) {
-      c.innerHTML = lines.join("") + '<span class="caret"></span>';
-      return;
-    }
-    c.classList.add("scanning");
-    let i = 0;
-    const step = () => {
-      if (i >= lines.length) {
-        c.innerHTML += '<span class="caret"></span>';
-        return;
-      }
-      c.innerHTML += lines[i];
-      i++;
-      setTimeout(step, 220);
-    };
-    setTimeout(step, 280);
-  }
-</script>
 </body>
 </html>

@@ -176,7 +176,10 @@ function renderHeader(current) {
     '<button type="button" id="toTop" class="to-top" aria-label="Back to top" title="Back to top">' +
     ICONS.arrowUp + "</button>";
   document.body.insertAdjacentHTML("afterbegin", html);
-  detectEngine();
+  // Keep the promise: the relay-consent gate must not prompt while engine
+  // detection is still in flight (a local server.py means no relay is ever
+  // reached, so there is nothing to consent to).
+  window.__cbEngineReady = detectEngine();
   initAmbient();
   initThemeToggle();
   initScrollChrome();
@@ -272,10 +275,11 @@ function renderFooter() {
     "</div>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
-    "you are responsible for having permission to test them. On GitHub Pages, scans run in your " +
-    "browser; configured targets are served from a GitHub Actions-built cache, and a hosted api/ " +
-    "deployment can be enabled for the full Python engine. Run server.py locally for a " +
-    "same-origin engine that never leaves your machine. © 2026 CyberBuddy." +
+    "you are responsible for having permission to test them. Scan history stays in your browser " +
+    "and is never uploaded. On GitHub Pages the graders run in your browser; demo targets are " +
+    "served from a published CI-built report, and header reads for other targets are proxied by " +
+    "public relays only with your explicit consent. Run server.py locally for a same-origin " +
+    "engine that never leaves your machine. Apache-2.0 licensed. © 2026 CyberBuddy." +
     "</p>" +
     "</div></footer>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -572,9 +576,11 @@ function apiErrorMessage(data) {
 function sourceLabel(data) {
   const s = data && data._source;
   if (s === "python") return "python engine";
-  if (s === "cache") return "cached report";
-  if (s === "relay") return "live lookup";
-  if (s === "cache-lookup") return "cached lookup";
+  // "published report" — a pre-scanned demo target from urls.txt, built in
+  // CI and served to everyone. NOT another user's scan of your target.
+  if (s === "cache") return "published report";
+  if (s === "relay") return "third-party relay";
+  if (s === "cache-lookup") return "this browser (cached 10 min)";
   if (s === "browser") return "this browser";
   if (s === "none") return "no engine";
   return s || "live";
@@ -627,6 +633,84 @@ function pushUrlParam(url) {
 function fmtStamp(d) {
   d = d || new Date();
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/* Reports get an unambiguous UTC stamp — a screenshot pasted into an
+   assessment should not depend on the reader guessing the tester's zone. */
+function fmtStampUtc(d) {
+  d = d || new Date();
+  return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+}
+
+/* ---------- Report provenance ------------------------------------------
+   Burned into the report card so a cropped screenshot still identifies the
+   tool, target, engine and time. */
+
+function renderProvenance(data, toolName) {
+  const el = document.getElementById("reportProvenance");
+  if (!el) return;
+  const bits = [
+    '<span class="prov-brand">CyberBuddy · ' + esc(toolName) + "</span>",
+    '<span class="prov-sep">|</span>',
+    "<span>" + esc((data && data.url) || "—") + "</span>",
+    '<span class="prov-sep">|</span>',
+    "<span>" + esc(fmtStampUtc()) + "</span>",
+    '<span class="prov-sep">|</span>',
+    "<span>source: " + esc(sourceLabel(data)) + "</span>"
+  ];
+  if (data && data.confirmation === "manual") {
+    bits.push('<span class="prov-sep">|</span>',
+      '<span class="prov-manual">analyst-attested</span>');
+  }
+  if (isUnverified(data)) {
+    bits.push('<span class="prov-sep">|</span>',
+      '<span class="prov-manual">unverified relay data</span>');
+  }
+  el.innerHTML = bits.join(" ");
+}
+
+/* ---------- Evidence mode ----------------------------------------------
+   Collapses the page chrome after a scan so the whole report card fits one
+   viewport and a snipping-tool capture gets everything in one shot. */
+
+const EVIDENCE_KEY = "cb-evidence-mode";
+
+function evidenceEnabled() {
+  try { return localStorage.getItem(EVIDENCE_KEY) !== "0"; } catch (_) { return true; }
+}
+
+function applyEvidenceMode(on) {
+  document.body.classList.toggle("evidence", !!on);
+}
+
+function enterEvidenceMode() {
+  if (!evidenceEnabled()) return;
+  applyEvidenceMode(true);
+  const results = document.getElementById("results");
+  if (results && !prefersReduced() && typeof results.scrollIntoView === "function") {
+    requestAnimationFrame(() => {
+      try {
+        results.scrollIntoView({ block: "start", behavior: "smooth" });
+      } catch (_) { /* older engines: ignore */ }
+    });
+  }
+}
+
+function initEvidenceToggle() {
+  const wrap = document.getElementById("evidenceToggle");
+  if (!wrap) return;
+  wrap.innerHTML =
+    '<label class="evidence-toggle">' +
+    '<input type="checkbox" id="evidenceChk"' + (evidenceEnabled() ? " checked" : "") + " /> " +
+    "Evidence mode — collapse page chrome after a scan so the report fits one screenshot" +
+    "</label>";
+  const chk = document.getElementById("evidenceChk");
+  chk.addEventListener("change", () => {
+    try { localStorage.setItem(EVIDENCE_KEY, chk.checked ? "1" : "0"); } catch (_) { /* ignore */ }
+    const hasResults = document.getElementById("results") &&
+      !document.getElementById("results").classList.contains("hidden");
+    applyEvidenceMode(chk.checked && hasResults);
+  });
 }
 
 function setLoading(btn, loading) {
@@ -735,6 +819,297 @@ function exportReport() {
   window.print();
 }
 
+/* ==========================================================================
+   Export menu — print, PoC image, evidence card, clipboard
+   ========================================================================== */
+
+/* Screen capture is the ONLY way to get the framed target into an image:
+   a cross-origin iframe cannot be rasterised (html2canvas explicitly does
+   not render iframes, and any canvas touching cross-origin pixels is
+   tainted, so toDataURL throws). getDisplayMedia captures real screen
+   pixels, so the frame is included. Desktop Chrome/Edge can share a single
+   tab; Firefox/Safari offer window or screen only; iOS has no support. */
+function canCapturePoc() {
+  return !!(navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getDisplayMedia === "function" &&
+    window.isSecureContext);
+}
+
+function downloadBlob(blob, filename) {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 4000);
+}
+
+function safeSlug(url) {
+  try {
+    return (new URL(url).hostname || "target").replace(/[^a-z0-9.-]/gi, "-");
+  } catch (_) {
+    return "target";
+  }
+}
+
+function stampName(prefix, url, ext) {
+  const t = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+  return prefix + "-" + safeSlug(url) + "-" + t + "." + ext;
+}
+
+async function downloadPocImage(data, btn) {
+  if (!canCapturePoc()) return false;
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: "browser" },
+      audio: false,
+      preferCurrentTab: true,
+      selfBrowserSurface: "include"
+    });
+    const track = stream.getVideoTracks()[0];
+    // Give the compositor a frame to settle before grabbing.
+    await new Promise((r) => setTimeout(r, 350));
+
+    const settings = track.getSettings();
+    const width = settings.width || 1280;
+    const height = settings.height || 720;
+
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play();
+    await new Promise((r) => setTimeout(r, 220));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+    video.pause();
+    video.srcObject = null;
+
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+    if (!blob) throw new Error("encode failed");
+    downloadBlob(blob, stampName("cyberbuddy-poc", (data && data.url) || "", "png"));
+    if (btn) flashBtn(btn, true, "PoC image saved ✓");
+    return true;
+  } catch (err) {
+    if (btn) flashBtn(btn, false, "Capture cancelled");
+    return false;
+  } finally {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+  }
+}
+
+/* Deterministic, dependency-free evidence card drawn from the scan JSON.
+   Same-origin canvas only, so it never taints and always downloads — the
+   trade-off is that it cannot show the live framed site. */
+function buildEvidenceCard(data, toolName) {
+  const W = 1200;
+  const pad = 48;
+  const rows = (data.checks || data.findings || []);
+  const lineH = 21;
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const mono = '13px "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
+
+  // Measure first so the canvas is exactly tall enough.
+  ctx.font = mono;
+  const wrapText = (text, maxW) => {
+    const words = String(text || "").split(/\s+/);
+    const out = [];
+    let line = "";
+    words.forEach((w) => {
+      const t = line ? line + " " + w : w;
+      if (ctx.measureText(t).width > maxW && line) {
+        out.push(line);
+        line = w;
+      } else {
+        line = t;
+      }
+    });
+    if (line) out.push(line);
+    return out;
+  };
+
+  const measured = rows.map((c) => ({
+    row: c,
+    detail: wrapText(c.detail, W - pad * 2 - 200),
+    evidence: c.evidence ? wrapText(c.evidence, W - pad * 2 - 200).slice(0, 3) : []
+  }));
+  const bodyH = measured.reduce(
+    (n, m) => n + lineH * (1 + m.detail.length + m.evidence.length) + 14, 0
+  );
+  const H = 300 + bodyH + 70;
+  canvas.width = W;
+  canvas.height = H;
+
+  const C = {
+    bg: "#07090d", card: "#0e121a", line: "#232a36", ink: "#eef3f8",
+    ink2: "#c5ced8", faint: "#7d8798", brand: "#3ee0c2",
+    high: "#ff6b7a", med: "#ffc857", low: "#3ee0a6", info: "#7aa2ff"
+  };
+  const statusColour = (s) => ({
+    ok: C.low, protected: C.low, missing: C.high, error: C.high,
+    weak: C.med, info: C.info
+  }[s] || C.faint);
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.card;
+  ctx.fillRect(pad - 18, pad - 18, W - (pad - 18) * 2, H - (pad - 18) * 2);
+  ctx.strokeStyle = C.line;
+  ctx.strokeRect(pad - 18, pad - 18, W - (pad - 18) * 2, H - (pad - 18) * 2);
+
+  let y = pad + 12;
+  ctx.fillStyle = C.brand;
+  ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.fillText("CYBERBUDDY · " + toolName.toUpperCase(), pad, y);
+  y += 34;
+
+  ctx.fillStyle = C.ink;
+  ctx.font = '700 26px "Sora", system-ui, sans-serif';
+  const risk = (data.risk || "unknown").toUpperCase();
+  const gradeTxt = data.grade ? "  ·  Grade " + data.grade.toUpperCase() +
+    " (" + (data.score != null ? data.score : "?") + "/100)" : "";
+  ctx.fillText(risk + gradeTxt, pad, y);
+  ctx.fillStyle = risk === "HIGH" ? C.high : risk === "MEDIUM" ? C.med
+    : risk === "LOW" ? C.low : C.info;
+  ctx.fillRect(pad, y + 10, ctx.measureText(risk + gradeTxt).width, 3);
+  y += 40;
+
+  ctx.font = mono;
+  const meta = [
+    ["Target", data.url || "—"],
+    ["Final URL", data.final_url || data.url || "—"],
+    ["HTTP status", data.status_code != null ? String(data.status_code) : "—"],
+    ["Generated", fmtStampUtc()],
+    ["Source", sourceLabel(data)]
+  ];
+  if (data.confirmation === "manual") meta.push(["Confirmation", "analyst-attested (visual)"]);
+  if (isUnverified(data)) meta.push(["Caveat", "relay data — not independently verified"]);
+  meta.forEach(([k, v]) => {
+    ctx.fillStyle = C.faint;
+    ctx.fillText(k, pad, y);
+    ctx.fillStyle = C.ink2;
+    ctx.fillText(String(v).slice(0, 110), pad + 130, y);
+    y += lineH;
+  });
+
+  y += 12;
+  ctx.strokeStyle = C.line;
+  ctx.beginPath();
+  ctx.moveTo(pad, y);
+  ctx.lineTo(W - pad, y);
+  ctx.stroke();
+  y += 26;
+
+  if (data.summary) {
+    ctx.fillStyle = C.ink2;
+    wrapText(data.summary, W - pad * 2).slice(0, 3).forEach((l) => {
+      ctx.fillText(l, pad, y);
+      y += lineH;
+    });
+    y += 14;
+  }
+
+  measured.forEach((m) => {
+    const s = m.row.status || "info";
+    ctx.fillStyle = statusColour(s);
+    ctx.font = '700 11px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.fillText(s.toUpperCase(), pad, y);
+    ctx.fillStyle = C.ink;
+    ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.fillText(String(m.row.name || ""), pad + 96, y);
+    y += lineH;
+    ctx.font = mono;
+    ctx.fillStyle = C.ink2;
+    m.detail.forEach((l) => { ctx.fillText(l, pad + 96, y); y += lineH; });
+    ctx.fillStyle = C.faint;
+    m.evidence.forEach((l) => { ctx.fillText(l, pad + 96, y); y += lineH; });
+    y += 14;
+  });
+
+  ctx.fillStyle = C.faint;
+  ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.fillText("Authorized testing only. Read-only GET. Results are advisory.", pad, H - pad + 6);
+
+  return canvas;
+}
+
+async function downloadEvidenceCard(data, toolName, btn) {
+  if (!data) return false;
+  try {
+    const canvas = buildEvidenceCard(data, toolName);
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+    if (!blob) throw new Error("encode failed");
+    downloadBlob(blob, stampName("cyberbuddy-evidence", data.url || "", "png"));
+    if (btn) flashBtn(btn, true, "Card saved ✓");
+    return true;
+  } catch (_) {
+    if (btn) flashBtn(btn, false, "");
+    return false;
+  }
+}
+
+/* Renders the split Export control into #exportMenu. getData() returns the
+   last scan result so the menu always acts on current data. */
+function initExportMenu(toolName, getData) {
+  const wrap = document.getElementById("exportMenu");
+  if (!wrap) return;
+  const capture = canCapturePoc();
+  wrap.innerHTML =
+    '<details class="export-menu" id="exportDetails">' +
+    '<summary aria-haspopup="menu">Export ' + ICONS.chevron + "</summary>" +
+    '<div class="export-menu-panel" role="menu">' +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="print">' +
+    "Print / Save as PDF<span>Full report card, paper layout</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="poc"' +
+    (capture ? "" : " disabled") + ">" +
+    "Download PoC image (PNG)<span>" +
+    (capture
+      ? "Screen capture — includes the framed target"
+      : "Unavailable in this browser — use your OS snipping tool") +
+    "</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="card">' +
+    "Download evidence card (PNG)<span>Drawn from scan data — no live frame</span></button>" +
+    '<div class="export-menu-divider"></div>' +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="md">' +
+    "Copy report (Markdown)<span>Paste into your report</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="json">' +
+    "Copy JSON<span>Raw result object</span></button>" +
+    "</div></details>";
+
+  const details = document.getElementById("exportDetails");
+  wrap.querySelectorAll("[data-act]").forEach((item) => {
+    item.addEventListener("click", async () => {
+      const act = item.getAttribute("data-act");
+      const data = getData();
+      if (act !== "print" && !data) {
+        flashBtn(item, false, "Run a scan first");
+        return;
+      }
+      if (act === "print") { details.removeAttribute("open"); exportReport(); return; }
+      if (act === "poc") { await downloadPocImage(data, item); return; }
+      if (act === "card") { await downloadEvidenceCard(data, toolName, item); return; }
+      if (act === "md") { await copyMarkdown(data, item); return; }
+      if (act === "json") { await copyJsonReport(data, item); return; }
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (details && details.hasAttribute("open") && !details.contains(e.target)) {
+      details.removeAttribute("open");
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && details) details.removeAttribute("open");
+  });
+}
+
 /* ---------- Copy report as Markdown ------------------------------------ */
 /* Builds a paste-ready Markdown summary of the last scan result — the
    same evidence the report card shows, formatted for pentest reports.
@@ -770,8 +1145,19 @@ function toMarkdown(data) {
     "- **HTTP status:** " + (data.status_code != null ? data.status_code : "—"),
     "- **Risk:** " + risk + grade,
     "- **Source:** " + sourceLabel(data),
-    "- **Generated:** " + fmtStamp()
+    "- **Generated:** " + fmtStampUtc()
   ];
+  if (data.confirmation === "manual") {
+    lines.push(
+      "- **Confirmation:** analyst-attested (visual frame check, not measured from headers)"
+    );
+  }
+  if (isUnverified(data)) {
+    lines.push(
+      "- **Caveat:** header values were proxied by a third-party relay and are " +
+      "not independently verified. Re-run against `server.py` before relying on them."
+    );
+  }
   if (data.summary) lines.push("", "## Summary", "", data.summary);
   const rows = kind === "headers" ? (data.checks || [])
     : kind === "cors" ? (data.checks || [])
@@ -1355,19 +1741,73 @@ async function lookupHeadersLive(url) {
   return p;
 }
 
+/* ---------- Third-party relay disclosure -------------------------------
+   On GitHub Pages with no API_BASE configured, header reads are proxied by
+   public services. That discloses the target URL — and the tester's IP — to
+   operators outside the engagement, which many VAPT NDAs prohibit. So:
+   ask first, send the hostname rather than the full URL by default, and
+   label anything they return as unverified. */
+
+const RELAY_HOSTS = ["hackertarget.com", "allorigins.win", "corsproxy.io", "codetabs.com"];
+const RELAY_CONSENT_KEY = "cb-relay-consent";
+// Session-scoped on purpose: consent should not silently persist across days.
+function relayConsent() {
+  try { return sessionStorage.getItem(RELAY_CONSENT_KEY) || ""; } catch (_) { return ""; }
+}
+function setRelayConsent(mode) {
+  try { sessionStorage.setItem(RELAY_CONSENT_KEY, mode); } catch (_) { /* ignore */ }
+}
+function relayAllowed() {
+  const c = relayConsent();
+  return c === "host" || c === "full";
+}
+// "host" (default) sends only the hostname; "full" sends path + query too.
+function relaySendsFullUrl() {
+  return relayConsent() === "full";
+}
+
+// A direct cross-origin fetch involves no third party — the analyst's own
+// browser talks to the target. Always worth trying first; it only succeeds
+// when the target sends permissive CORS, but when it does the result is
+// first-hand rather than relayed.
+async function lookupHeadersDirect(url) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(url, { mode: "cors", credentials: "omit", cache: "no-store", signal: ctrl.signal });
+    clearTimeout(t);
+    const headers = {};
+    res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+    if (Object.keys(headers).length) {
+      return { status_code: res.status, headers: headers, source: "browser", final_url: res.url || url };
+    }
+  } catch (_) { /* CORS blocked — expected for most targets */ }
+  return null;
+}
+
 async function lookupHeadersRemote(url) {
+  const direct = await lookupHeadersDirect(url);
+  if (direct) return direct;
+  if (!relayAllowed()) return null;
   const encoded = encodeURIComponent(url);
   let host = "";
   try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
   const ht = "https://api.hackertarget.com/httpheaders/?q=";
-  const probes = [
+  // Host-only probes go first: most header checks are origin-level, and the
+  // path/query is the part most likely to carry tokens or tenant IDs.
+  const hostProbes = host ? [
+    ht + encodeURIComponent(host),
+    "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + host),
+    "https://corsproxy.io/?url=" + encodeURIComponent(ht + host),
+    "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(ht + host)
+  ] : [];
+  const fullProbes = relaySendsFullUrl() ? [
     ht + encoded,
-    host ? ht + encodeURIComponent(host) : "",
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + url),
-    host ? "https://api.allorigins.win/raw?url=" + encodeURIComponent(ht + host) : "",
     "https://corsproxy.io/?url=" + encodeURIComponent(ht + url),
     "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(ht + url)
-  ].filter(Boolean);
+  ] : [];
+  const probes = hostProbes.concat(fullProbes).filter(Boolean);
 
   for (let i = 0; i < probes.length; i++) {
     const text = await fetchText(probes[i], 12000);
@@ -1383,18 +1823,6 @@ async function lookupHeadersRemote(url) {
     }
   }
 
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(url, { mode: "cors", credentials: "omit", cache: "no-store", signal: ctrl.signal });
-    clearTimeout(t);
-    const headers = {};
-    res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-    if (Object.keys(headers).length) {
-      return { status_code: res.status, headers: headers, source: "browser", final_url: res.url || url };
-    }
-  } catch (_) { /* CORS blocked — expected for most targets */ }
-
   return null;
 }
 
@@ -1403,9 +1831,9 @@ async function gradeHeadersLive(url) {
   if (!looked) {
     return {
       url: url, final_url: url, status_code: null,
-      checks: [check("request", "error", "Could not read response headers from this hosted page. The target may be unreachable, or the Python engine is offline and the live lookup returned nothing.", "", 0)],
+      checks: [check("request", "error", "Could not read response headers from this hosted page. The target may be unreachable, the lookup may have been declined or rate-limited, or the Python engine is offline.", "", 0)],
       score: 0, grade: "F", risk: "unknown",
-      summary: "No header data. The target may be unreachable, the public lookup may be rate-limited, or its headers are blocked. Run python3 server.py for a same-origin scan, or retry.",
+      summary: "No header data. The target may be unreachable, the lookup may have been declined or rate-limited, or its headers are blocked. Run python3 server.py for a same-origin scan, or retry.",
       headers: {}, _source: "none"
     };
   }
@@ -1595,6 +2023,147 @@ function setSourceChip(data) {
   el.classList.remove("hidden");
 }
 
+/* ---------- Relay consent gate -----------------------------------------
+   Shown before the first scan that would need a public relay. Rendered
+   into #relayGate on each tool page (and the hub). Resolves once the
+   analyst chooses, so the scan can continue or abort. */
+
+async function relayGateNeeded() {
+  // Wait for engine detection to settle before deciding.
+  try { await window.__cbEngineReady; } catch (_) { /* fall through */ }
+  // Python engine present? Then relays are never reached.
+  if (window.__cbEngine && window.__cbEngine.mode === "python") return false;
+  return !relayConsent();
+}
+
+function renderRelayGate() {
+  const wrap = document.getElementById("relayGate");
+  if (!wrap) return Promise.resolve("skip");
+  wrap.classList.remove("hidden");
+  wrap.innerHTML =
+    '<div class="relay-consent" role="alertdialog" aria-labelledby="relayGateTitle">' +
+    '<h3 id="relayGateTitle">No local engine — header reads would use public relays</h3>' +
+    "<p>This hosted page cannot read cross-origin response headers on its own. " +
+    "To grade them it would proxy the request through public services, which " +
+    "discloses what you are testing to operators outside your engagement:</p>" +
+    "<ul>" + RELAY_HOSTS.map((h) => "<li><code>" + esc(h) + "</code></li>").join("") + "</ul>" +
+    "<p>They would see the target and your IP address. Many assessment NDAs " +
+    "prohibit this. For a fully private scan run <code>python3 server.py</code> locally.</p>" +
+    '<div class="relay-consent-actions">' +
+    '<button type="button" class="btn btn-primary btn-sm" data-consent="host">Allow — hostname only</button>' +
+    '<button type="button" class="btn btn-ghost btn-sm" data-consent="full">Allow — full URL (path + query)</button>' +
+    '<button type="button" class="btn btn-ghost btn-sm" data-consent="deny">No — frame test only</button>' +
+    "</div></div>";
+  return new Promise((resolve) => {
+    wrap.querySelectorAll("[data-consent]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-consent");
+        setRelayConsent(mode);
+        wrap.classList.add("hidden");
+        wrap.innerHTML = "";
+        resolve(mode);
+      });
+    });
+  });
+}
+
+/* Call before any scan that may fall through to a relay. */
+async function ensureRelayConsent() {
+  const needed = await relayGateNeeded();
+  if (!needed) return relayConsent() || "skip";
+  return renderRelayGate();
+}
+
+function isUnverified(data) {
+  return !!(data && data._source === "relay");
+}
+
+function unverifiedFlag(data) {
+  return isUnverified(data)
+    ? '<span class="unverified-flag" title="Header values were proxied by a third-party service and are not independently verified">unverified</span>'
+    : "";
+}
+
+/* ==========================================================================
+   Visual confirmation (clickjacking, no header data)
+   --------------------------------------------------------------------------
+   When neither the Python engine nor a relay can supply header values, the
+   frame itself is still real evidence — but the tool must not silently
+   report "FRAME ONLY" while the analyst is looking at a rendered target.
+   Ask them what they see, then record it as ANALYST-ATTESTED (never as a
+   measured header result).
+   ========================================================================== */
+
+/* Heuristic hint. A cross-origin frame that never fires load, or fires with
+   a zero-height document, is usually blocked. Advisory only — it just
+   pre-selects the likely answer. */
+function frameLikelyBlocked(frame, loaded) {
+  if (!loaded) return true;
+  try {
+    const doc = frame.contentDocument;
+    if (doc && doc.body && doc.body.scrollHeight === 0) return true;
+  } catch (_) {
+    // Throwing means a real cross-origin document is present → it rendered.
+    return false;
+  }
+  return false;
+}
+
+function renderConfirmPrompt(hostId, suggestion, onChoose) {
+  const wrap = document.getElementById(hostId);
+  if (!wrap) return;
+  const sug = (v) => (v === suggestion ? " suggested" : "");
+  wrap.classList.remove("hidden");
+  wrap.innerHTML =
+    '<div class="confirm-prompt" role="group" aria-label="Visual confirmation">' +
+    "<p><strong>Header values are unavailable from this host.</strong> " +
+    "The frame above is still valid evidence — tell CyberBuddy what you see " +
+    "and it will record your observation in the report.</p>" +
+    '<div class="confirm-actions">' +
+    '<button type="button" class="btn btn-ghost' + sug("framed") + '" data-verdict="framed">' +
+    "The real site is rendered → framing allowed</button>" +
+    '<button type="button" class="btn btn-ghost' + sug("blocked") + '" data-verdict="blocked">' +
+    "Blank / refused → framing blocked</button>" +
+    "</div>" +
+    '<span class="confirm-hint">Recorded as <strong>analyst-attested</strong>, not as a ' +
+    "measured header value. Note: this frame runs sandboxed without " +
+    "<code>allow-same-origin</code>, so a few sites render blank because they need " +
+    "same-origin storage — not because of framing headers. Confirm manually if unsure." +
+    (suggestion
+      ? " Highlighted button is CyberBuddy's guess from the frame's load behaviour."
+      : "") +
+    "</span></div>";
+  wrap.querySelectorAll("[data-verdict]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      wrap.classList.add("hidden");
+      wrap.innerHTML = "";
+      onChoose(btn.getAttribute("data-verdict"));
+    });
+  });
+}
+
+/* Build the attested result object for a chosen verdict. */
+function attestedClickjacking(base, verdict) {
+  const framed = verdict === "framed";
+  const data = Object.assign({}, base || {});
+  data.confirmation = "manual";
+  data.risk = framed ? "high" : "low";
+  data.summary = framed
+    ? "Analyst confirmed the target rendered inside a cross-origin frame. " +
+      "No effective framing protection — the page can be clickjacked in this browser."
+    : "Analyst confirmed the target refused to render in a cross-origin frame. " +
+      "Framing appears to be blocked, though the specific header could not be read.";
+  data.findings = [{
+    name: "Frame test",
+    status: framed ? "missing" : "protected",
+    detail: framed
+      ? "Analyst-attested: the real site UI rendered inside a cross-origin iframe."
+      : "Analyst-attested: the target did not render inside a cross-origin iframe.",
+    evidence: "Visual confirmation at " + fmtStampUtc()
+  }];
+  return data;
+}
+
 /* ---------- Share link (tool pages) ------------------------------------ */
 /* Copies the current tool URL (with ?url= param) to the clipboard so
    pentesters can drop a shareable link straight into a report. */
@@ -1614,28 +2183,43 @@ function initShareButton() {
 
 const RECENT_KEY = "cb-recent-scans";
 const RECENT_MAX = 5;
+// Client names age out on their own — a laptop left idle should not still
+// be showing last month's engagement in the Recent chips.
+const RECENT_TTL = 24 * 60 * 60 * 1000;
 
 function getRecentScans() {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    const now = Date.now();
+    // Entries are {url, at}; tolerate the older bare-string format.
+    return arr
+      .map((it) => (typeof it === "string" ? { url: it, at: now } : it))
+      .filter((it) => it && it.url && (now - (it.at || 0)) < RECENT_TTL);
   } catch (_) { return []; }
 }
 
 function addRecentScan(url) {
   if (!url) return;
   try {
-    let items = getRecentScans().filter((u) => u !== url);
-    items.unshift(url);
+    let items = getRecentScans().filter((it) => it.url !== url);
+    items.unshift({ url: url, at: Date.now() });
     if (items.length > RECENT_MAX) items = items.slice(0, RECENT_MAX);
     localStorage.setItem(RECENT_KEY, JSON.stringify(items));
   } catch (_) { /* quota / private mode */ }
 }
 
+/* Clearing history must also drop the header-lookup cache — it holds the
+   same target URLs PLUS their full response headers, i.e. strictly more
+   sensitive than the recent list. Clearing only RECENT_KEY left that data
+   readable for another 10 minutes. */
 function clearRecentScans() {
-  try { localStorage.removeItem(RECENT_KEY); } catch (_) { /* private mode */ }
+  try {
+    localStorage.removeItem(RECENT_KEY);
+    localStorage.removeItem(HEADER_CACHE_KEY);
+  } catch (_) { /* private mode */ }
 }
 
 function renderRecentScans() {
@@ -1648,12 +2232,15 @@ function renderRecentScans() {
     return;
   }
   wrap.classList.remove("hidden");
-  const chips = items.map((url) =>
-    '<button type="button" class="recent-chip" data-url="' + esc(url) + '">' +
-    esc(url) + "</button>"
+  const chips = items.map((it) =>
+    '<button type="button" class="recent-chip" data-url="' + esc(it.url) + '">' +
+    esc(it.url) + "</button>"
   ).join("");
   wrap.innerHTML = '<span class="recent-label">Recent:</span> ' + chips +
-    '<button type="button" class="recent-clear" id="clearRecent" title="Clear recent scans">Clear</button>';
+    '<button type="button" class="recent-clear" id="clearRecent" title="Clear recent scans and cached headers">Clear</button>' +
+    '<p class="privacy-note"><strong>Stored only in this browser</strong> (localStorage, cleared after 24h). ' +
+    "Your scan history is never uploaded and is not visible to anyone else. " +
+    "Clear also wipes the cached response headers.</p>";
   wrap.querySelectorAll(".recent-chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       const url = chip.getAttribute("data-url");
@@ -1695,23 +2282,50 @@ function initSuggestedTargets() {
 
 /* ---------- Keyboard shortcuts ---------------------------------------- */
 
+// Element that had focus before the dialog opened, so it can be restored.
+let kbdHelpReturnFocus = null;
+
 function hideHelp() {
   const el = document.getElementById("kbdHelp");
-  if (el) {
-    el.classList.add("hidden");
-    el.setAttribute("aria-hidden", "true");
+  if (!el || el.classList.contains("hidden")) return;
+  el.classList.add("hidden");
+  el.setAttribute("aria-hidden", "true");
+  if (kbdHelpReturnFocus && typeof kbdHelpReturnFocus.focus === "function") {
+    kbdHelpReturnFocus.focus();
   }
+  kbdHelpReturnFocus = null;
 }
 
 function toggleHelp() {
   const el = document.getElementById("kbdHelp");
   if (!el) return;
   const open = el.classList.contains("hidden");
-  el.classList.toggle("hidden", !open);
-  el.setAttribute("aria-hidden", open ? "false" : "true");
-  if (open) {
-    const close = document.getElementById("kbdHelpClose");
-    if (close) close.focus();
+  if (!open) { hideHelp(); return; }
+  kbdHelpReturnFocus = document.activeElement;
+  el.classList.remove("hidden");
+  el.setAttribute("aria-hidden", "false");
+  const close = document.getElementById("kbdHelpClose");
+  if (close) close.focus();
+}
+
+/* Keep Tab inside the dialog while it is open (aria-modal is a promise to
+   assistive tech that the rest of the page is inert — honour it). */
+function trapHelpFocus(e) {
+  if (e.key !== "Tab") return;
+  const el = document.getElementById("kbdHelp");
+  if (!el || el.classList.contains("hidden")) return;
+  const focusable = el.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -1739,6 +2353,7 @@ function initKeyboard() {
       if (e.target === overlay) hideHelp();
     });
   }
+  document.addEventListener("keydown", trapHelpFocus);
   document.addEventListener("keydown", (e) => {
     const tag = ((e.target && e.target.tagName) || "").toLowerCase();
     const typing = tag === "input" || tag === "textarea" || tag === "select" ||
