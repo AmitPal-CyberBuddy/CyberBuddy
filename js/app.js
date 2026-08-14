@@ -3251,10 +3251,12 @@ function pipelineController(root) {
 }
 
 /* ---------- Suite summary ----------------------------------------------
-   One honest headline per run: worst-case risk across the four tools, the
-   headers score as the only numeric gauge, and per-tool chips. There is no
-   invented aggregate score — clickjacking, CORS and CSP have no shared
-   numeric scale, so they are shown as risks, never as a fake /100. */
+   One honest headline per run: worst-case risk across the four scan tools
+   (the CSRF PoC Generator is a generator, not a scanner, so it is not part
+   of this suite), the headers score as the only numeric gauge, and per-tool
+   chips. There is no invented aggregate score — clickjacking, CORS and CSP
+   have no shared numeric scale, so they are shown as risks, never as a fake
+   /100. */
 
 const RISK_ORDER = { high: 3, medium: 2, low: 1, unknown: 0 };
 
