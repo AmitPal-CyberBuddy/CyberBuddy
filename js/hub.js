@@ -14,7 +14,8 @@ window.typeConsole = function typeConsole() {
     '<div><span class="c-red">[missing]</span>&nbsp; Strict-Transport-Security</div>',
     '<div><span class="c-red">[missing]</span>&nbsp; X-Content-Type-Options</div>',
     '<div class="c-dim">──────────────────────────────────────────</div>',
-    '<div>risk: <span class="c-red">HIGH</span> &nbsp; grade: <span class="c-red">F</span> &nbsp; <span class="c-dim">via published report</span></div>'
+    '<div>risk: <span class="c-red">HIGH</span> &nbsp; grade: <span class="c-red">F</span> &nbsp; <span class="c-dim">via published report</span></div>',
+    '<div class="c-dim">─ cached demo · run the suite above for a live scan ─</div>'
   ];
   if (prefersReduced()) {
     c.innerHTML = lines.join("") + '<span class="caret"></span>';

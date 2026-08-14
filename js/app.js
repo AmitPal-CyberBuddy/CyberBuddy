@@ -204,7 +204,8 @@ const TOOLS_MENU = [
     status: "live",
     icon: "frame",
     desc: "Load a target in a live frame. If the real UI appears, the page can be clickjacked — screenshot the result as proof.",
-    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC", "WSTG-CLNT-09"]
+    tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"],
+    std: ["OWASP WSTG-CLNT-09", "CWE-1021"]
   },
   {
     href: "/tools/headers/",
@@ -212,7 +213,8 @@ const TOOLS_MENU = [
     status: "live",
     icon: "shield",
     desc: "Grade CSP, X-Frame-Options, HSTS, cookie flags and the COOP/COEP family into an A–F score with the raw header behind every finding.",
-    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F", "WSTG-CONF-07/12"]
+    tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"],
+    std: ["OWASP WSTG-CONF-07", "WSTG-CONF-12", "CWE-693"]
   },
   {
     href: "/tools/cors/",
@@ -220,7 +222,8 @@ const TOOLS_MENU = [
     status: "live",
     icon: "cors",
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
-    tags: ["ACAO", "credentials", "Vary: Origin", "WSTG-CLNT-07"]
+    tags: ["ACAO", "credentials", "Vary: Origin"],
+    std: ["OWASP WSTG-CLNT-07", "CWE-942"]
   }
 ];
 const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enumeration"];
@@ -256,18 +259,26 @@ function renderFooter() {
   const html =
     '<footer class="site-footer"><div class="container footer-inner">' +
     '<div class="footer-brand"><span class="brand-mark">' + ICONS.logo + "</span>" +
-    "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span></div></div>" +
-    '<nav class="footer-nav" aria-label="Footer">' +
-    '<a href="' + base + '/">Hub</a>' +
-    '<a href="' + base + '/#methodology">Methodology</a>' +
-    toolsMenu(base, "ftr") +
+    "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span>" +
+    '<span class="footer-engine">Engine: in-browser on Pages · <code>python3 server.py</code> locally</span></div></div>' +
+    '<nav class="footer-col" aria-label="Tools">' +
+    "<strong>Tools</strong>" +
+    '<a href="' + base + '/tools/clickjacking/">Clickjacking Validator</a>' +
+    '<a href="' + base + '/tools/headers/">Security Headers</a>' +
+    '<a href="' + base + '/tools/cors/">CORS Validator</a>' +
+    "</nav>" +
+    '<nav class="footer-col" aria-label="Methodology and resources">' +
+    "<strong>Methodology &amp; resources</strong>" +
+    '<a href="' + base + '/#methodology">Scoring methodology</a>' +
+    '<a href="' + base + '/methodology/#privacy">Privacy</a>' +
+    '<a href="' + base + '/.well-known/security.txt">Responsible disclosure</a>' +
+    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">Documentation</a>' +
+    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">Source on GitHub</a>' +
     "</nav>" +
     '<div class="footer-contact">' +
     "<strong>Connect</strong>" +
     "<span>Ideas, feedback, or collaboration on improving CyberBuddy?</span>" +
     '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
-    '<a class="social-link" href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">' +
-    ICONS.github + "Source on GitHub</a>" +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
@@ -336,6 +347,7 @@ function renderToolCards() {
   const cards = TOOLS_MENU.map((t, i) => {
     const icon = ICONS[t.icon] || ICONS.plus;
     const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
+    const std = (t.std || []).map((s) => '<span class="std-id">' + esc(s) + "</span>").join("");
     const led = t.status === "live" ? "status-led" : "status-led " + t.status;
     return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
       base + t.href + '">' +
@@ -343,6 +355,7 @@ function renderToolCards() {
       '</span><span class="' + led + '">' + esc(t.status) + "</span></div>" +
       "<div><h3>" + esc(t.label) + '</h3><p class="tool-card-desc">' + esc(t.desc) + "</p></div>" +
       '<div class="tool-card-tags">' + tags + "</div>" +
+      '<div class="tool-card-std">' + std + "</div>" +
       '<span class="tool-card-open">Run check ' + ICONS.chevron + "</span></a>";
   }).join("");
   const soonTags = TOOLS_SOON.map((s) => '<span class="tool-tag">' + esc(s.split(" ")[0]) + "</span>").join("");
@@ -646,6 +659,62 @@ function fmtStamp(d) {
 function fmtStampUtc(d) {
   d = d || new Date();
   return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+}
+
+/* ---------- Score gauge ------------------------------------------------
+   The 0–100 result rendered as an SVG ring that animates to the real score.
+   The number stays as SVG <text> (not only an arc), so screenshots and
+   assistive tech always read the actual value; the arc is decoration. */
+
+const GAUGE_BANDS = [
+  [90, "excellent"],
+  [75, "good"],
+  [60, "fair"],
+  [45, "weak"],
+  [0, "critical"]
+];
+
+function gaugeBand(score) {
+  score = Number(score) || 0;
+  for (let i = 0; i < GAUGE_BANDS.length; i++) {
+    if (score >= GAUGE_BANDS[i][0]) return GAUGE_BANDS[i][1];
+  }
+  return "critical";
+}
+
+/* `filled` renders the final arc immediately (used where the gauge replaces
+   an already-computed result rather than animating in). */
+function gaugeHtml(score, grade, filled) {
+  const s = Math.max(0, Math.min(100, Math.round(Number(score) || 0)));
+  const g = String(grade || gradeLetter(s)).toLowerCase();
+  const offset = filled ? String(100 - s) : "100";
+  return '<div class="score-gauge gauge-' + g + '" role="img" aria-label="Score ' + s +
+    " out of 100 — " + gaugeBand(s) + '">' +
+    '<svg viewBox="0 0 120 120" aria-hidden="true">' +
+    '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
+    '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" ' +
+    'stroke-dasharray="100" stroke-dashoffset="' + offset + '" transform="rotate(-90 60 60)"/>' +
+    '<text class="gauge-num" x="60" y="57">' + s + "</text>" +
+    '<text class="gauge-den" x="60" y="75">/ 100</text>' +
+    '</svg><span class="gauge-band">' + gaugeBand(s).toUpperCase() + "</span></div>";
+}
+
+function renderGauge(el, score, grade) {
+  if (!el) return;
+  const s = Math.max(0, Math.min(100, Math.round(Number(score) || 0)));
+  el.innerHTML = gaugeHtml(s, grade);
+  const arc = el.querySelector(".gauge-arc");
+  if (!arc) return;
+  if (prefersReduced() || !("requestAnimationFrame" in window)) {
+    arc.style.strokeDashoffset = String(100 - s);
+    return;
+  }
+  // Two frames: insert with a full gap, then animate to the real score.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { arc.style.strokeDashoffset = String(100 - s); });
+    const num = el.querySelector(".gauge-num");
+    if (num) countUp(num, s, "");
+  });
 }
 
 /* ---------- Report provenance ------------------------------------------
@@ -1275,6 +1344,154 @@ const REFERRER_OK = {
   "no-referrer": 1, "same-origin": 1, "strict-origin": 1,
   "strict-origin-when-cross-origin": 1, "origin": 1, "origin-when-cross-origin": 1
 };
+
+/* ---------- Findings presentation (report-style, display-only) ---------
+   The graders above are untouched: severity chips, recommendations and the
+   copy-to-clipboard block are derived from the check name/status the
+   engines already produce — never from new scoring — so the Python/JS
+   parity contract is unaffected. */
+
+const FINDING_FIX = {
+  "Content-Security-Policy": "Serve Content-Security-Policy with a restrictive default-src 'self' (plus explicit script/style sources) and frame-ancestors 'none' or 'self'.",
+  "X-Frame-Options": "Set X-Frame-Options: DENY (or SAMEORIGIN). Prefer adding CSP frame-ancestors — the modern control — alongside it.",
+  "CSP frame-ancestors": "Add frame-ancestors 'none' (or 'self') to the Content-Security-Policy header.",
+  "Strict-Transport-Security": "Send Strict-Transport-Security: max-age=31536000; includeSubDomains on HTTPS responses.",
+  "X-Content-Type-Options": "Send X-Content-Type-Options: nosniff on all responses to stop MIME-sniffing.",
+  "Referrer-Policy": "Set an explicit Referrer-Policy such as strict-origin-when-cross-origin.",
+  "Permissions-Policy": "Ship a Permissions-Policy that restricts powerful features, e.g. camera=(), microphone=(), geolocation=(self).",
+  "Cross-Origin-Opener-Policy": "Set Cross-Origin-Opener-Policy: same-origin to isolate the top-level context from cross-origin popups.",
+  "Cross-Origin-Embedder-Policy": "Set Cross-Origin-Embedder-Policy: require-corp (with CORP/CORS on subresources) to enable cross-origin isolation.",
+  "Cross-Origin-Resource-Policy": "Set Cross-Origin-Resource-Policy: same-origin (or same-site) to restrict which origins may load resources.",
+  "Set-Cookie flags": "Add Secure; HttpOnly; SameSite=Lax (or Strict) to all session cookies.",
+  "Transport": "Serve the application over HTTPS so response headers cannot be stripped or injected on the wire.",
+  "Access-Control-Allow-Origin": "Never reflect arbitrary origins. Echo the caller only when it is on an explicit origin allowlist.",
+  "Allow-Credentials": "Avoid Access-Control-Allow-Credentials: true unless a strict allowlist of trusted origins is enforced.",
+  "Vary: Origin": "When the CORS policy varies by caller origin, send Vary: Origin so shared caches key on it.",
+  "Fetch result": "Re-run the probe with the Python engine (server.py) for a two-origin reflection proof.",
+  "Frame test": "Apply an effective framing control (CSP frame-ancestors or X-Frame-Options) and re-test."
+};
+
+function findingSeverity(c) {
+  const s = c && c.status;
+  if (s === "ok" || s === "protected") return { key: "pass", label: "PASS" };
+  if (s === "info") return { key: "info", label: "INFO" };
+  if (s === "error") return { key: "high", label: "HIGH" };
+  const name = c && c.name ? String(c.name) : "";
+  const framing = /frame/i.test(name);
+  if (s === "missing") {
+    if (framing) return { key: "high", label: "HIGH" };
+    const w = WEIGHTS[name] || 0;
+    if (w >= 15) return { key: "high", label: "HIGH" };
+    if (w >= 10) return { key: "medium", label: "MEDIUM" };
+    return { key: "low", label: "LOW" };
+  }
+  // status "weak"
+  if (framing) {
+    return /frame-ancestors/i.test(name)
+      ? { key: "high", label: "HIGH" }
+      : { key: "medium", label: "MEDIUM" };
+  }
+  const d = c.deduction || 0;
+  if (d >= 15) return { key: "high", label: "HIGH" };
+  if (d >= 10) return { key: "medium", label: "MEDIUM" };
+  return { key: "low", label: "LOW" };
+}
+
+/* One shared findings-row renderer for all three tool pages, so a status
+   chip, severity, recommendation, evidence and (where the check has a
+   weight) an earned-points bar can never drift apart between tools. */
+function findingRowHtml(c, opts) {
+  opts = opts || {};
+  const sev = findingSeverity(c);
+  const ev = c.evidence ? '<code class="f-evidence">' + esc(c.evidence) + "</code>" : "";
+  const needsFix = c.status === "missing" || c.status === "weak" || c.status === "error";
+  const fix = needsFix && FINDING_FIX[c.name]
+    ? '<p class="f-fix"><strong>Recommendation</strong>' + esc(FINDING_FIX[c.name]) + "</p>"
+    : "";
+  const w = WEIGHTS[c.name] || 0;
+  let weight = "";
+  if (w) {
+    const earned = Math.max(0, Math.min(w, w - (c.deduction || 0)));
+    const pct = Math.round(100 * earned / w);
+    weight = '<div class="f-weight"><span class="f-weight-bar"><i style="width:' + pct +
+      '%"></i></span><span class="f-weight-label">' + earned + "/" + w + " pts</span></div>";
+  }
+  const copy = opts.copy
+    ? '<button type="button" class="copy-finding" data-i="' + (opts.index || 0) +
+      '" title="Copy this finding as report text">Copy finding</button>'
+    : "";
+  return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
+    "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
+    '<span class="f-severity sev-' + sev.key + '">' + sev.label + "</span>" +
+    "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + fix + weight + copy + "</td></tr>";
+}
+
+function findingCopyText(c, toolName, target) {
+  const sev = findingSeverity(c);
+  return [
+    "CyberBuddy — " + (toolName || "finding"),
+    "",
+    c.name,
+    "Status: " + String(c.status).toUpperCase() + " · Severity: " + sev.label,
+    c.evidence ? "Evidence: " + c.evidence : "Evidence: " + c.name + " not present",
+    "",
+    "Recommendation:",
+    FINDING_FIX[c.name] || "Review the finding and remediate before re-testing.",
+    "",
+    "Target: " + (target || "—"),
+    "Generated: " + fmtStampUtc(),
+    "Authorized testing only — read-only GET."
+  ].join("\n");
+}
+
+function bindFindingCopy(container, rows, toolName, target) {
+  if (!container) return;
+  container.querySelectorAll(".copy-finding").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const i = parseInt(btn.getAttribute("data-i") || "-1", 10);
+      const row = rows[i];
+      if (!row) return;
+      const ok = await copyText(findingCopyText(row, toolName, target));
+      if (ok) {
+        const label = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = label; btn.classList.remove("copied"); }, 1400);
+      }
+    });
+  });
+}
+
+/* Posture rollup: severity-band counts straight from the check statuses. */
+function postureHtml(checks) {
+  const roll = { missing: 0, weak: 0, error: 0, ok: 0, protected: 0, info: 0 };
+  (checks || []).forEach((c) => {
+    const s = c && c.status;
+    if (roll[s] != null) roll[s]++;
+    else roll.info++;
+  });
+  const chip = (key, label, cls) =>
+    roll[key] ? '<span class="posture-chip ' + cls + '">' + label + " · " + roll[key] + "</span>" : "";
+  const html =
+    chip("missing", "Missing", "high") + chip("weak", "Weak", "medium") +
+    chip("error", "Error", "high") + chip("ok", "OK", "low") +
+    chip("protected", "Protected", "low") + chip("info", "Info", "info");
+  return '<span class="posture-label">Findings</span>' +
+    (html || '<span class="posture-chip info">No checks</span>');
+}
+
+/* Every result carries a LIVE / CACHED tag. The hosted site serves CI-built
+   demo reports for urls.txt targets — a cached result must never be
+   mistaken for a fresh scan, and the tag says which one you are reading. */
+function scanTag(data) {
+  if (!data || !data._source) return "";
+  const cached = data._source === "cache";
+  return '<span class="scan-tag ' + (cached ? "cached" : "live") + '" title="' +
+    (cached
+      ? "Pre-scanned demo result from the CI-built cache — not a fresh scan"
+      : "Result computed during this scan") + '">' +
+    (cached ? "Cached" : "Live") + "</span>";
+}
 
 function parseCsp(csp) {
   const directives = {};
@@ -1938,35 +2155,57 @@ function initSuite() {
     setLoading(go, true);
     out.classList.remove("hidden");
     if (toolbar) toolbar.classList.add("hidden");
+
+    out.innerHTML = pipelineHtml(url);
+    const setStage = pipelineController(out.querySelector(".scan-pipeline"));
+    setStage("normalize", "done");
+
+    // Engine detection ran at page load; surface its verdict as a stage so
+    // the analyst sees WHICH engine will answer before the scan proceeds.
+    let engineNote = "browser engine — hosted Pages mode";
+    try {
+      const eng = await Promise.resolve(window.__cbEngineReady);
+      if (eng && eng.online) engineNote = "python engine online — same-origin scan";
+    } catch (_) { /* keep default */ }
+    setStage("engine", "done", engineNote);
+
     // Ask before anything can reach a third-party relay. Without this the
     // hub silently degraded to "no header data" for every target on the
     // hosted site, with no way for the analyst to opt in.
     const consent = await ensureRelayConsent();
     if (consent === "deny") {
-      out.innerHTML =
+      setStage("consent", "failed", "declined — header grading skipped");
+      out.insertAdjacentHTML("beforeend",
         '<div class="notice"><h3>Relay lookups declined</h3>' +
         "<p>Header grading needs either a local <code>server.py</code> or a " +
         "third-party relay. Run the Clickjacking tool for a frame-based visual " +
         "proof that needs neither, or start <code>python3 server.py</code> for " +
-        "a full scan that never leaves your machine.</p></div>";
+        "a full scan that never leaves your machine.</p></div>");
       setLoading(go, false);
       return;
     }
-    out.innerHTML = '<div class="suite-grid">' +
-      suiteSkeleton("Clickjacking") + suiteSkeleton("Headers") + suiteSkeleton("CORS") +
-      "</div>";
+    setStage("consent", consent === "skip" ? "skipped" : "done",
+      consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
+
+    setStage("collect", "active", "headers · CORS · framing — read-only GETs");
     const [cj, hd, cr] = await Promise.all([
       apiScan(url).catch(() => null),
       apiHeaders(url).catch(() => null),
       apiCors(url).catch(() => null)
     ]);
+    setStage("collect", "done");
+    setStage("evaluate", "done", "OWASP-aligned checks applied");
+
     lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr };
     const base = appBase();
-    out.innerHTML = '<div class="suite-grid">' +
+    out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) +
+      '<div class="suite-grid">' +
       suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) +
       suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) +
       suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) +
       "</div>";
+    addRecentScan(url, recentScanSummary(lastSuite));
+    renderRecentScans();
     if (toolbar) toolbar.classList.remove("hidden");
     setLoading(go, false);
   }
@@ -2001,9 +2240,134 @@ function initSuite() {
   }
 }
 
-function suiteSkeleton(title) {
-  return '<article class="card suite-card is-loading"><p class="card-title">' + esc(title) +
-    '</p><div class="suite-pulse"></div><p class="text-muted">Scanning…</p></article>';
+/* ---------- Scan pipeline ----------------------------------------------
+   The hub renders the real stages a suite run passes through instead of a
+   bare "Scanning…" spinner: normalize → engine → consent → collect →
+   evaluate → report. Progress is stage-based (never a fake byte count). */
+
+const PIPELINE_STAGES = [
+  { id: "normalize", label: "Normalize URL" },
+  { id: "engine", label: "Detect engine" },
+  { id: "consent", label: "Relay consent" },
+  { id: "collect", label: "Collect evidence" },
+  { id: "evaluate", label: "Evaluate & score" },
+  { id: "report", label: "Evidence report" }
+];
+
+function pipelineHtml(target) {
+  return '<div class="scan-pipeline" role="status" aria-live="polite">' +
+    '<div class="sp-head"><span class="sp-target">' + esc(target) + "</span>" +
+    '<span class="sp-stage-num" data-role="count">stage 1 / ' + PIPELINE_STAGES.length + "</span></div>" +
+    '<ol class="sp-stages">' +
+    PIPELINE_STAGES.map((s) =>
+      '<li class="sp-stage pending" data-stage="' + s.id + '">' +
+      '<span class="sp-ico" aria-hidden="true">○</span>' +
+      '<span class="sp-body"><span class="sp-label">' + s.label + '</span>' +
+      '<span class="sp-note" data-role="note"></span></span></li>'
+    ).join("") +
+    "</ol>" +
+    '<div class="sp-progress" aria-hidden="true"><span data-role="fill" style="width: 0%"></span></div>' +
+    "</div>";
+}
+
+function pipelineController(root) {
+  if (!root) return function () {};
+  const order = PIPELINE_STAGES.map((s) => s.id);
+  const state = {};
+  const icons = { pending: "○", active: "●", done: "✓", skipped: "—", failed: "✕" };
+  return function set(id, st, note) {
+    state[id] = st;
+    const li = root.querySelector('.sp-stage[data-stage="' + id + '"]');
+    if (li) {
+      li.classList.remove("pending", "active", "done", "skipped", "failed");
+      li.classList.add(st);
+      const ico = li.querySelector(".sp-ico");
+      if (ico) ico.textContent = icons[st] || "○";
+      const noteEl = li.querySelector(".sp-note");
+      if (noteEl) noteEl.textContent = note ? "· " + note : "";
+    }
+    const done = order.filter((o) => state[o] === "done" || state[o] === "skipped").length;
+    const fill = root.querySelector('[data-role="fill"]');
+    if (fill) fill.style.width = Math.round(100 * done / order.length) + "%";
+    const count = root.querySelector('[data-role="count"]');
+    if (count) count.textContent = "stage " + Math.min(order.length, done + 1) + " / " + order.length;
+  };
+}
+
+/* ---------- Suite summary ----------------------------------------------
+   One honest headline per run: worst-case risk across the three tools, the
+   headers score as the only numeric gauge, and per-tool chips. There is no
+   invented aggregate score — clickjacking and CORS have no numeric scale,
+   so they are shown as risks, never as a fake /100. */
+
+const RISK_ORDER = { high: 3, medium: 2, low: 1, unknown: 0 };
+
+function worstSuiteTool(s) {
+  const ds = [
+    ["Clickjacking", s.clickjacking],
+    ["Security Headers", s.headers],
+    ["CORS", s.cors]
+  ].filter((d) => d[1]);
+  if (!ds.length) return null;
+  return ds.reduce((w, d) =>
+    (RISK_ORDER[d[1].risk] || 0) > (RISK_ORDER[w[1].risk] || 0) ? d : w);
+}
+
+/* Minimal digest stored next to the recent-scan URL (localStorage, 24h TTL,
+   cleared by "Clear history") so chips can show the last grade without
+   persisting full scan JSON. */
+function recentScanSummary(s) {
+  const out = {};
+  ["clickjacking", "cors"].forEach((k) => {
+    if (s[k] && s[k].risk) out[k] = { risk: s[k].risk };
+  });
+  if (s.headers && s.headers.grade) {
+    out.headers = {
+      grade: s.headers.grade,
+      score: s.headers.score != null ? s.headers.score : null
+    };
+  }
+  return out;
+}
+
+function suiteToolChip(label, data, withScore) {
+  if (!data) return '<span class="suite-tool-chip unknown">' + esc(label) + " —</span>";
+  const risk = (data.risk || "unknown").toLowerCase();
+  let text = esc(label) + " · <b>" + esc((data.risk || "unknown").toUpperCase()) + "</b>";
+  if (withScore && data.score != null) text += " · <b>" + esc(String(data.score)) + "/100</b>";
+  if (data.grade) text += " · <b>" + esc(String(data.grade).toUpperCase()) + "</b>";
+  return '<span class="suite-tool-chip ' + esc(risk) + '">' + text + "</span>";
+}
+
+function suiteSummaryHtml(s, engineNote) {
+  const hd = s.headers;
+  const worst = worstSuiteTool(s);
+  const gauge = hd && hd.score != null
+    ? gaugeHtml(hd.score, hd.grade, true)
+    : '<div class="score-gauge gauge-f"><svg viewBox="0 0 120 120" aria-hidden="true">' +
+      '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
+      '<text class="gauge-num" x="60" y="58" style="font-size:15px">no</text>' +
+      '<text class="gauge-num" x="60" y="76" style="font-size:15px">data</text>' +
+      '</svg><span class="gauge-band">headers unavailable</span></div>';
+  const verdict = worst
+    ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
+      esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
+      '<span class="suite-summary-worst">worst-case risk across the three tools — ' +
+      esc(worst[0]) + "</span>"
+    : '<span class="risk unknown">UNKNOWN</span>' +
+      '<span class="suite-summary-worst">no tool returned a result</span>';
+  const chips =
+    suiteToolChip("Clickjacking", s.clickjacking, false) +
+    suiteToolChip("Headers", s.headers, true) +
+    suiteToolChip("CORS", s.cors, false);
+  return '<div class="suite-summary">' +
+    '<div class="suite-summary-gauge">' + gauge + "</div>" +
+    '<div class="suite-summary-body">' +
+    '<p class="card-title">Assessment of ' + esc(s.url) + "</p>" +
+    '<div class="suite-summary-verdict">' + verdict + "</div>" +
+    '<div class="suite-summary-tools">' + chips + "</div>" +
+    '<p class="suite-src">' + esc(engineNote || "") + " · evidence-grade output · read-only GETs</p>" +
+    "</div></div>";
 }
 
 function suiteCard(title, data, listKey, href) {
@@ -2014,7 +2378,8 @@ function suiteCard(title, data, listKey, href) {
   if (data._unreachable) {
     return '<article class="card suite-card">' +
       '<div class="suite-card-top"><p class="card-title">' + esc(title) + '</p>' +
-      '<span class="risk unreachable">UNREACHABLE</span></div>' +
+      '<span class="suite-tags">' + scanTag(data) +
+      '<span class="risk unreachable">UNREACHABLE</span></span></div>' +
       '<p class="verdict-text">Target did not respond — ' + esc(unreachableDetail(data)) + '</p>' +
       '<p class="suite-src">via ' + esc(sourceLabel(data)) + '</p>' +
       '<a class="tool-card-open" href="' + href + '">Open full report ' + ICONS.chevron + '</a></article>';
@@ -2026,7 +2391,8 @@ function suiteCard(title, data, listKey, href) {
   ).join("");
   return '<article class="card suite-card">' +
     '<div class="suite-card-top"><p class="card-title">' + esc(title) + '</p>' +
-    '<span class="risk ' + esc(risk) + '">' + esc((data.risk || "unknown").toUpperCase()) + "</span></div>" +
+    '<span class="suite-tags">' + scanTag(data) +
+    '<span class="risk ' + esc(risk) + '">' + esc((data.risk || "unknown").toUpperCase()) + "</span></span></div>" +
     '<div class="suite-card-body">' + grade +
     '<p class="verdict-text">' + esc(data.summary || "") + "</p></div>" +
     (items ? "<ul class=\"suite-list\">" + items + "</ul>" : "") +
@@ -2221,11 +2587,15 @@ function getRecentScans() {
   } catch (_) { return []; }
 }
 
-function addRecentScan(url) {
+function addRecentScan(url, summary) {
   if (!url) return;
   try {
     let items = getRecentScans().filter((it) => it.url !== url);
-    items.unshift({ url: url, at: Date.now() });
+    const entry = { url: url, at: Date.now() };
+    // summary is a small {headers:{grade,score}, clickjacking:{risk},
+    // cors:{risk}} digest — never full scan JSON.
+    if (summary) entry.summary = summary;
+    items.unshift(entry);
     if (items.length > RECENT_MAX) items = items.slice(0, RECENT_MAX);
     localStorage.setItem(RECENT_KEY, JSON.stringify(items));
   } catch (_) { /* quota / private mode */ }
@@ -2252,10 +2622,17 @@ function renderRecentScans() {
     return;
   }
   wrap.classList.remove("hidden");
-  const chips = items.map((it) =>
-    '<button type="button" class="recent-chip" data-url="' + esc(it.url) + '">' +
-    esc(it.url) + "</button>"
-  ).join("");
+  const chips = items.map((it) => {
+    let badge = "";
+    const s = it.summary;
+    if (s && s.headers && s.headers.grade) {
+      const sc = s.headers.score != null ? " " + s.headers.score : "";
+      badge = '<span class="chip-grade grade-' + esc(String(s.headers.grade).toLowerCase()) + '">' +
+        esc(String(s.headers.grade).toUpperCase()) + esc(String(sc)) + "</span>";
+    }
+    return '<button type="button" class="recent-chip" data-url="' + esc(it.url) + '">' +
+      esc(it.url) + badge + "</button>";
+  }).join("");
   wrap.innerHTML = '<span class="recent-label">Recent:</span> ' + chips +
     '<button type="button" class="recent-clear" id="clearRecent" title="Clear recent scans and cached headers">Clear</button>' +
     '<p class="privacy-note"><strong>Stored only in this browser</strong> (localStorage, cleared after 24h). ' +

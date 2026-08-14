@@ -34,18 +34,17 @@
     $("mFinal").textContent = data && data.final_url ? data.final_url : url;
     $("mStatus").textContent = data && data.status_code != null ? String(data.status_code) : "—";
     $("mStamp").textContent = fmtStampUtc();
+    $("mEngine").textContent = sourceLabel(data || { _source: "browser" });
+    $("mMethod").textContent = "GET · read-only";
+    $("mDuration").textContent = data && data._duration_ms != null ? data._duration_ms + " ms" : "—";
   }
 
-  function row(name, status, detail, evidence) {
-    const ev = evidence ? "<code class='f-evidence'>" + esc(evidence) + "</code>" : "";
-    return "<tr><td class='k'>" + esc(name) + "</td><td>" +
-      "<span class='f-status " + esc(status) + "'>" + esc(status) + "</span>" +
-      "<div class='f-detail'>" + esc(detail) + "</div>" + ev + "</td></tr>";
-  }
-
-  function renderRows(list) {
-    $("findings").querySelector("tbody").innerHTML =
-      (list || []).map((f) => row(f.name, f.status, f.detail, f.evidence)).join("");
+  function renderRows(list, url) {
+    const tbody = $("findings").querySelector("tbody");
+    tbody.innerHTML = (list || []).map((f, i) =>
+      findingRowHtml(f, { copy: true, index: i })
+    ).join("");
+    bindFindingCopy(tbody, list || [], "Clickjacking Validator", url);
   }
 
   function finish(data, toolTitle) {
@@ -69,13 +68,16 @@
     fillMeta(url, null);
 
     // Ask before anything can reach a third-party relay.
+    const t0 = (window.performance && typeof performance.now === "function")
+      ? performance.now() : null;
+
     const consent = await ensureRelayConsent();
     if (consent === "deny") {
       setLoading($("go"), false);
       setSourceChip({ _source: "browser" });
       setVerdict("FRAME ONLY",
         "Relay lookups declined — the frame above is your evidence.");
-      renderRows([row0()]);
+      renderRows([row0()], url);
       $("headers").textContent = "{}";
       askVisualConfirmation(url, { url: url, headers: {}, _source: "browser" });
       finish({ url: url, risk: "unknown", findings: [], headers: {}, _source: "browser" });
@@ -83,6 +85,9 @@
     }
 
     const data = await apiScan(url);
+    if (data && t0 != null) {
+      data._duration_ms = Math.max(1, Math.round(performance.now() - t0));
+    }
     setLoading($("go"), false);
     setSourceChip(data || { _source: "browser" });
 
@@ -94,7 +99,7 @@
         status: "info",
         detail: "Visual proof only. Header values are not available from this host.",
         evidence: ""
-      }]);
+      }], url);
       $("headers").textContent = "{}";
       askVisualConfirmation(url, { url: url, headers: {}, _source: "browser" });
       finish({ url: url, risk: "unknown", findings: [], headers: {}, _source: "browser" });
@@ -104,7 +109,7 @@
     if (data && data._unreachable) {
       fillMeta(url, data);
       setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(data));
-      renderRows(data.findings);
+      renderRows(data.findings, url);
       $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
       finish(data);
       return;
@@ -113,7 +118,7 @@
     fillMeta(url, data);
     setVerdict((data.risk || "unknown").toUpperCase(), data.summary ||
       "If you can see the real site in the frame, it is clickjackable.");
-    renderRows(data.findings);
+    renderRows(data.findings, url);
     $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
     finish(data);
   }
@@ -136,7 +141,7 @@
         const data = attestedClickjacking(Object.assign({ url: url }, base), verdict);
         fillMeta(url, data);
         setVerdict(data.risk.toUpperCase(), data.summary);
-        renderRows(data.findings);
+        renderRows(data.findings, url);
         finish(data);
       });
     }, 1200);
