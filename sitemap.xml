@@ -7,6 +7,12 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/</loc>
     <lastmod>2026-08-14</lastmod>
     <changefreq>monthly</changefreq>

@@ -21,6 +21,7 @@ const {
 
 const PAGES = [
   ["hub", "/"],
+  ["catalog", "/tools/"],
   ["clickjacking", "/tools/clickjacking/"],
   ["headers", "/tools/headers/"],
   ["cors", "/tools/cors/"],
@@ -295,6 +296,35 @@ async function runScan(page, path) {
       m.columns === 1 && m.rawMaxHeight === "none" && m.rawVisible &&
       m.rows > 0 && m.hiddenRows === 0 && m.chromeHidden,
       `print headers report ${JSON.stringify(m)}`
+    );
+    await page.close();
+  }
+
+  /* ---- 7. Hub category layout + scalable footer ------------------------- */
+  {
+    const page = await newPage(browser, { w: 1366, h: 768 });
+    await page.goto(BASE + "/", { waitUntil: "networkidle2" });
+    await settleReveals(page);
+    const m = await page.evaluate(() => {
+      const assess = document.getElementById("assessGrid");
+      const local = document.getElementById("localGrid");
+      const footer = document.querySelector(".site-footer");
+      const footerText = footer ? footer.textContent : "";
+      return {
+        assessCards: assess ? assess.querySelectorAll(".tool-card").length : 0,
+        localCards: local ? local.querySelectorAll(".tool-card").length : 0,
+        csrfInLocal: local ? /CSRF PoC Generator/.test(local.textContent) : false,
+        csrfInAssess: assess ? /CSRF PoC Generator/.test(assess.textContent) : false,
+        footerHasCatalog: /All tools/.test(footerText),
+        footerHasTargets: /Target assessments/.test(footerText),
+        footerHasLocal: /Local utilities/.test(footerText),
+        footerHasToolLink: /tools\/headers\//.test(footer ? footer.innerHTML : "")
+      };
+    });
+    r.check(
+      m.assessCards === 5 && m.localCards === 1 && m.csrfInLocal && !m.csrfInAssess &&
+      m.footerHasCatalog && m.footerHasTargets && m.footerHasLocal && !m.footerHasToolLink,
+      `hub-category-footer ${JSON.stringify(m)}`
     );
     await page.close();
   }

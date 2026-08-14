@@ -212,12 +212,41 @@ function renderHeader(current) {
   });
 }
 
+/* Single registry for every live tool. The header Tools menu, the hub cards,
+   the tools catalog (/tools/) and the footer all render from this one array —
+   add a tool here and it appears everywhere. Metadata fields:
+
+   - category: assess = URL-based target assessment (part of the hub suite);
+               local = generator/analyzer that never scans a target.
+   - input:    what the user hands the tool.
+   - mode:     whether it contacts a target or stays entirely local.
+   - evidence: the artifact the tool produces (never a fake LIVE/CACHED scan
+               result or score for generators). */
+const TOOL_CATEGORIES = {
+  assess: {
+    label: "Assess targets",
+    hubLabel: "Assess a target",
+    blurb: "URL-based checks that read a target you point them at. These four tools run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.",
+    suite: true
+  },
+  local: {
+    label: "Local utilities",
+    hubLabel: "Local security utilities",
+    blurb: "Generators and analyzers that run entirely in your browser. They do not scan a target, do not join the “Run suite”, and produce no LIVE/CACHED result or score.",
+    suite: false
+  }
+};
+
 const TOOLS_MENU = [
   {
     href: "/tools/clickjacking/",
     label: "Clickjacking Validator",
     status: "live",
     icon: "frame",
+    category: "assess",
+    input: "URL",
+    mode: "Contacts the target (read-only GET + live frame)",
+    evidence: "Live frame proof + framing-header report card",
     desc: "Load a target in a live frame. If the real UI appears, the page can be clickjacked — screenshot the result as proof.",
     tags: ["X-Frame-Options", "frame-ancestors", "iframe PoC"],
     std: ["OWASP WSTG-CLNT-09", "CWE-1021"]
@@ -227,6 +256,10 @@ const TOOLS_MENU = [
     label: "Security Headers",
     status: "live",
     icon: "shield",
+    category: "assess",
+    input: "URL",
+    mode: "Contacts the target (read-only GET)",
+    evidence: "0–100 score + A–F grade report card",
     desc: "Grade CSP, X-Frame-Options, HSTS, cookie flags and the COOP/COEP family into an A–F score with the raw header behind every finding.",
     tags: ["CSP", "HSTS", "COOP/COEP", "grade A–F"],
     std: ["OWASP WSTG-CONF-07", "WSTG-CONF-12", "CWE-693"]
@@ -236,6 +269,10 @@ const TOOLS_MENU = [
     label: "CORS Validator",
     status: "live",
     icon: "cors",
+    category: "assess",
+    input: "URL",
+    mode: "Contacts the target (read-only GET)",
+    evidence: "Origin reflection + credentials report card",
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
     tags: ["ACAO", "credentials", "Vary: Origin"],
     std: ["OWASP WSTG-CLNT-07", "CWE-942"]
@@ -245,6 +282,10 @@ const TOOLS_MENU = [
     label: "CSP Policy Auditor",
     status: "live",
     icon: "policy",
+    category: "assess",
+    input: "URL",
+    mode: "Contacts the target (read-only GET)",
+    evidence: "Policy audit + directive-findings report card",
     desc: "Audit the enforced CSP for dangerous script sources, missing navigation controls, duplicate directives, and reporting gaps.",
     tags: ["script-src", "unsafe-inline", "frame-ancestors", "Report-Only"],
     std: ["OWASP WSTG-CONF-12", "CWE-79", "CWE-693"]
@@ -254,6 +295,10 @@ const TOOLS_MENU = [
     label: "CSRF PoC Generator",
     status: "live",
     icon: "csrf",
+    category: "local",
+    input: "Raw HTTP request (Burp)",
+    mode: "Local only — nothing sent, stored or relayed",
+    evidence: "Standalone HTML PoC variants (no score, no LIVE/CACHED tag)",
     desc: "Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — parsed and generated fully in your browser.",
     tags: ["Burp request", "hidden form", "JSON fetch", "auto-submit"],
     std: ["OWASP WSTG-SESS-05", "CWE-352"]
@@ -265,18 +310,37 @@ function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
   const up = uid === "ftr" ? " up" : "";
   const path = pagePath();
-  const items = TOOLS_MENU.map((t) => {
+
+  const item = (t) => {
     const active = (base + t.href) === path;
     return '<a class="nav-menu-item' + (active ? " active" : "") + '" href="' + base + t.href + '">' +
       t.label + '<span class="nav-status ' + t.status + '">' + t.status + "</span></a>";
-  }).join("");
+  };
+
+  // Group live tools by category (assess vs local) so the menu stays small
+  // even as more tools ship — never one top-level link per tool.
+  const groups = [];
+  ["assess", "local"].forEach((category) => {
+    const tools = TOOLS_MENU.filter((t) => t.category === category);
+    if (!tools.length) return;
+    groups.push(
+      '<div class="nav-menu-group">' + esc(TOOL_CATEGORIES[category].label) + "</div>" +
+      tools.map(item).join("")
+    );
+  });
+
+  const catalogActive = (base + "/tools/") === path;
+  const catalog =
+    '<a class="nav-menu-item' + (catalogActive ? " active" : "") + '" href="' + base + '/tools/">' +
+    "All tools" + '<span class="nav-status live">catalog</span></a>';
+
   const soon = TOOLS_SOON.map((s) =>
     '<span class="nav-menu-item disabled" aria-disabled="true">' + s +
     '<span class="nav-status soon">soon</span></span>'
   ).join("");
   return '<details class="nav-menu' + up + '" id="' + id + '">' +
     "<summary>Tools " + ICONS.chevron + "</summary>" +
-    '<div class="nav-menu-panel">' + items +
+    '<div class="nav-menu-panel">' + catalog + groups.join("") +
     '<div class="nav-menu-divider">In development</div>' + soon +
     "</div></details>";
 }
@@ -293,32 +357,34 @@ function renderFooter() {
     '<footer class="site-footer"><div class="container footer-inner">' +
     '<div class="footer-brand"><span class="brand-mark">' + ICONS.logo + "</span>" +
     "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span>" +
-    '<span class="footer-engine">Engine: in-browser on Pages · <code>python3 server.py</code> locally</span></div></div>' +
-    '<nav class="footer-col" aria-label="Tools">' +
-    "<strong>Tools</strong>" +
-    '<a href="' + base + '/tools/clickjacking/">Clickjacking Validator</a>' +
-    '<a href="' + base + '/tools/headers/">Security Headers</a>' +
-    '<a href="' + base + '/tools/cors/">CORS Validator</a>' +
-    '<a href="' + base + '/tools/csp/">CSP Policy Auditor</a>' +
-    '<a href="' + base + '/tools/csrf/">CSRF PoC Generator</a>' +
-    "</nav>" +
-    '<nav class="footer-col" aria-label="Methodology and resources">' +
-    "<strong>Methodology &amp; resources</strong>" +
-    '<a href="' + base + '/#methodology">Scoring methodology</a>' +
-    '<a href="' + base + '/methodology/#privacy">Privacy</a>' +
-    '<a href="' + base + '/.well-known/security.txt">Responsible disclosure</a>' +
-    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">Documentation</a>' +
-    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">Source on GitHub</a>' +
-    "</nav>" +
-    '<div class="footer-contact">' +
-    "<strong>Connect</strong>" +
-    "<span>Ideas, feedback, or collaboration on improving CyberBuddy?</span>" +
+    '<span class="footer-engine">Engine: in-browser on Pages · <code>python3 server.py</code> locally</span>' +
+    '<span class="footer-contact">' +
     '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
     ICONS.medium + "Read My blog · Medium</a>" +
-    "</div>" +
+    "</span></div></div>" +
+    // Scalable footer: category links, not a growing per-tool list. New tools
+    // appear here automatically via the catalog — no footer edit needed.
+    '<nav class="footer-col" aria-label="Tools">' +
+    "<strong>Tools</strong>" +
+    '<a href="' + base + '/tools/">All tools</a>' +
+    '<a href="' + base + '/tools/#assess-targets">Target assessments</a>' +
+    '<a href="' + base + '/tools/#local-utilities">Local utilities</a>' +
+    "</nav>" +
+    '<nav class="footer-col" aria-label="Learn">' +
+    "<strong>Learn</strong>" +
+    '<a href="' + base + '/methodology/">Methodology</a>' +
+    '<a href="' + base + '/#methodology">Scoring methodology</a>' +
+    '<a href="' + base + '/methodology/#privacy">Privacy</a>' +
+    "</nav>" +
+    '<nav class="footer-col" aria-label="Project">' +
+    "<strong>Project</strong>" +
+    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">GitHub</a>' +
+    '<a href="' + base + '/.well-known/security.txt">Security policy</a>' +
+    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">Documentation</a>' +
+    "</nav>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
     "you are responsible for having permission to test them. Scan history stays in your browser " +
@@ -393,27 +459,34 @@ function stdBadgeHtml(code) {
   return '<span class="std-id"' + t + ">" + esc(code) + "</span>";
 }
 
+/* One shared card builder so the hub and the catalog can never drift apart. */
+function toolCardHtml(t, i, base, ghostAction) {
+  const icon = ICONS[t.icon] || ICONS.plus;
+  const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
+  const std = (t.std || []).map(stdBadgeHtml).join("");
+  const led = t.status === "live" ? "status-led" : "status-led " + t.status;
+  return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
+    base + t.href + '">' +
+    '<div class="tool-card-top"><span class="tool-card-icon">' + icon +
+    '</span><span class="' + led + '">' + esc(t.status) + "</span></div>" +
+    "<div><h3>" + esc(t.label) + '</h3><p class="tool-card-desc">' + esc(t.desc) + "</p></div>" +
+    '<div class="tool-card-tags">' + tags + "</div>" +
+    '<div class="tool-card-std">' + std + "</div>" +
+    '<span class="tool-card-open">' + (ghostAction || "Run check") + " " + ICONS.chevron + "</span></a>";
+}
+
 function renderToolCards() {
-  const grid = document.getElementById("toolGrid");
-  if (!grid) return;
+  const assessGrid = document.getElementById("assessGrid");
+  const localGrid = document.getElementById("localGrid");
+  if (!assessGrid || !localGrid) return;
   const base = appBase();
   const live = TOOLS_MENU.filter((t) => t.status === "live").length;
   const count = document.getElementById("toolCount");
   if (count) count.textContent = String(live).padStart(2, "0") + " live";
-  const cards = TOOLS_MENU.map((t, i) => {
-    const icon = ICONS[t.icon] || ICONS.plus;
-    const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
-    const std = (t.std || []).map(stdBadgeHtml).join("");
-    const led = t.status === "live" ? "status-led" : "status-led " + t.status;
-    return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
-      base + t.href + '">' +
-      '<div class="tool-card-top"><span class="tool-card-icon">' + icon +
-      '</span><span class="' + led + '">' + esc(t.status) + "</span></div>" +
-      "<div><h3>" + esc(t.label) + '</h3><p class="tool-card-desc">' + esc(t.desc) + "</p></div>" +
-      '<div class="tool-card-tags">' + tags + "</div>" +
-      '<div class="tool-card-std">' + std + "</div>" +
-      '<span class="tool-card-open">Run check ' + ICONS.chevron + "</span></a>";
-  }).join("");
+
+  const assess = TOOLS_MENU.filter((t) => t.category === "assess");
+  const local = TOOLS_MENU.filter((t) => t.category === "local");
+
   const soonTags = TOOLS_SOON.map((s) => '<span class="tool-tag">' + esc(s.split(" ")[0]) + "</span>").join("");
   const ghost =
     '<div class="tool-card card tool-card--ghost reveal" style="--d: .26s">' +
@@ -423,8 +496,60 @@ function renderToolCards() {
     '<p class="tool-card-desc">' + esc(TOOLS_SOON.join(", ")) +
     " and more are on the bench — this slot is reserved for the next check to ship.</p></div>" +
     '<div class="tool-card-tags">' + soonTags + "</div></div>";
-  grid.innerHTML = cards + ghost;
-  initCardSpotlights(grid);
+
+  assessGrid.innerHTML = assess.map((t, i) => toolCardHtml(t, i, base)).join("") + ghost;
+  localGrid.innerHTML = local.map((t, i) => toolCardHtml(t, i, base)).join("");
+  initCardSpotlights(assessGrid);
+  initCardSpotlights(localGrid);
+}
+
+/* Renders the dedicated tools catalog (/tools/) from the same registry as the
+   menu, hub cards and footer. One card per tool: purpose, category, input,
+   target vs local, evidence, and OWASP/CWE mapping. */
+function renderToolCatalog() {
+  const wrap = document.getElementById("toolCatalog");
+  if (!wrap) return;
+  const base = appBase();
+  const live = TOOLS_MENU.filter((t) => t.status === "live").length;
+  const count = document.getElementById("toolCount");
+  if (count) count.textContent = String(live).padStart(2, "0") + " live";
+
+  const card = (t, i) => {
+    const icon = ICONS[t.icon] || ICONS.plus;
+    const std = (t.std || []).map(stdBadgeHtml).join("");
+    const cat = TOOL_CATEGORIES[t.category] || { label: t.category };
+    return '<article class="card tool-catalog-card reveal" style="--d: ' + (0.05 + i * 0.06) + 's">' +
+      '<div class="tool-catalog-head">' +
+      '<span class="tool-card-icon">' + icon + "</span>" +
+      '<h3>' + esc(t.label) + "</h3>" +
+      '<span class="cat-badge cat-' + esc(t.category) + '">' + esc(cat.label) + "</span>" +
+      "</div>" +
+      '<p class="tool-catalog-purpose">' + esc(t.desc) + "</p>" +
+      '<dl class="catalog-meta">' +
+      "<dt>Input</dt><dd>" + esc(t.input) + "</dd>" +
+      "<dt>Mode</dt><dd>" + esc(t.mode) + "</dd>" +
+      "<dt>Evidence</dt><dd>" + esc(t.evidence) + "</dd>" +
+      "<dt>Standards</dt><dd class=\"catalog-std\">" + (std || "—") + "</dd>" +
+      "</dl>" +
+      '<a class="btn btn-primary btn-sm" href="' + base + t.href + '">Launch ' + esc(t.label) + "</a>" +
+      "</article>";
+  };
+
+  const groups = ["assess", "local"].map((category) => {
+    const tools = TOOLS_MENU.filter((t) => t.category === category);
+    if (!tools.length) return "";
+    const cat = TOOL_CATEGORIES[category];
+    return '<section class="catalog-group" id="' + (category === "assess" ? "assess-targets" : "local-utilities") + '" aria-labelledby="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' +
+      '<div class="category-head">' +
+      '<h2 id="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' + esc(cat.hubLabel) + "</h2>" +
+      (cat.suite ? '<span class="cat-badge cat-suite">part of Run suite</span>' : '<span class="cat-badge cat-local">not in Run suite</span>') +
+      '<p>' + esc(cat.blurb) + "</p>" +
+      "</div>" +
+      '<div class="tool-catalog-grid">' + tools.map(card).join("") + "</div>" +
+      "</section>";
+  });
+
+  wrap.innerHTML = groups.join("");
 }
 
 /* ---------- Engine detection -------------------------------------------- */

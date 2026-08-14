@@ -7,6 +7,7 @@ Routes
 ------
 GET /                       hub (index.html)
 GET /methodology/           scoring + engine notes
+GET /tools/                 tools catalog (every tool in one directory)
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
@@ -357,8 +358,9 @@ class Handler(BaseHTTPRequestHandler):
             self._static("404.html")
             return
 
-        if path.startswith("/tools/") or path == "/methodology" or path.startswith("/methodology/"):
+        if path.startswith("/tools/") or path == "/tools" or path == "/methodology" or path.startswith("/methodology/"):
             rel = path.lstrip("/")
+            # /tools → /tools/ (the tools catalog)
             # /tools/clickjacking → /tools/clickjacking/
             # /methodology → /methodology/
             if not rel.endswith("/") and "." not in Path(rel).name:
@@ -409,6 +411,7 @@ def main(argv: list[str] | None = None) -> None:
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"CyberBuddy serving on http://{HOST}:{PORT}")
     print(f"Hub:          http://127.0.0.1:{PORT}/")
+    print(f"Tools catalog:http://127.0.0.1:{PORT}/tools/")
     print(f"Clickjacking: http://127.0.0.1:{PORT}/tools/clickjacking/")
     print(f"Headers:      http://127.0.0.1:{PORT}/tools/headers/")
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")

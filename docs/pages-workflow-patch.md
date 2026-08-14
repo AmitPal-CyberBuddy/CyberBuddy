@@ -1,27 +1,65 @@
-# ACTION REQUIRED — add `tools/csrf` to `.github/workflows/pages.yml`
+# ACTION REQUIRED — publish the tools catalog & guard internal files
 
 The GitHub App that pushes these arena branches is **not** granted the
 `workflows` permission, so any commit that touches `.github/workflows/**` is
 rejected by the server. Everything else ships normally. This file carries the
-one workflow edit that could not be pushed, for a maintainer to apply by hand
-(the same mechanism used in PR #20).
+workflow edits that could not be pushed, for a maintainer to apply by hand
+(the same mechanism used in PR #20 for the CSRF tool).
 
-## The one required edit
+This patch is for **IA-01 — scalable tool information architecture**.
 
-The fifth tool (`tools/csrf/`, the CSRF PoC Generator) must be published to
-GitHub Pages. In `.github/workflows/pages.yml`, in the *Assemble static site*
-step, add `tools/csrf` to the tool copy list:
+## The required edits
+
+Two changes to `.github/workflows/pages.yml`:
+
+### 1. Publish the tools catalog
+
+`tools/index.html` (the catalog) must reach GitHub Pages. In the
+*Assemble static site* step, add it after the per-tool directory copy:
 
 ```yaml
 # before
-cp -a tools/clickjacking tools/headers tools/cors tools/csp _site/tools/
+cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
 # after
 cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+cp tools/index.html _site/tools/
 ```
 
-Without this the deployed site publishes the four existing tools but not
-`tools/csrf/`. Local `server.py` is unaffected — it serves everything under
-`tools/` directly.
+Without this the deployed site serves the five tool pages but **not** the
+catalog — the “All tools”, “Target assessments” and “Local utilities” links
+would 404 on the hosted site. Local `server.py` is unaffected (it serves
+everything under `tools/`).
+
+### 2. Guard internal files out of the published site
+
+Add a step immediately after the *Assemble static site* step (before
+*Stamp asset versions*) that fails the build if a repo-internal file leaks
+into `_site/`:
+
+```yaml
+      # Repo-internal files must never reach the public site. docs/ROADMAP.md
+      # is the session roadmap (like docs/DEV-NOTES.md); REVIEW.md and tests/
+      # are private working artifacts. Fail loudly if any leak into _site/.
+      - name: Guard internal files stay out of the published site
+        run: |
+          set -euo pipefail
+          for f in docs/ROADMAP.md docs/DEV-NOTES.md REVIEW.md; do
+            if [ -e "_site/$f" ]; then
+              echo "::error::Internal file leaked into _site: $f"
+              exit 1
+            fi
+          done
+          if [ -d _site/docs ] || [ -d _site/tests ]; then
+            echo "::error::Internal directory leaked into _site (docs/ or tests/)"
+            exit 1
+          fi
+          echo "Internal docs, tests and REVIEW.md stay out of the published site."
+```
+
+Until this guard is applied, the equivalent protection already runs in CI as
+a stdlib test — `test_engines.PagesExclusionTests.test_workflow_never_copies_internal_paths`
+— which fails if any future commit starts copying `docs/`, `tests/` or
+`REVIEW.md` into `_site/`.
 
 ## Why this can't be committed here
 
@@ -36,11 +74,10 @@ Without this the deployed site publishes the four existing tools but not
 `gh` authenticates as the same bot, so there is no alternative push path from
 this environment.
 
-## Reference — the full, current workflow
+## Reference — the full workflow with both edits applied
 
-The block below matches the workflow on `main` (shipped in PR #20) with the
-`tools/csrf` addition from the previous section applied. Use it to diff against
-`.github/workflows/pages.yml` if anything looks out of sync.
+Diff `.github/workflows/pages.yml` against this to confirm the two edits
+above. Everything else is unchanged from `main`.
 
 ```yaml
 # Publish the static hub + tool pages to GitHub Pages.
@@ -92,25 +129,46 @@ jobs:
           # sync with the site and ships pages with no JavaScript.
           cp css/*.css _site/css/
           cp js/*.js _site/js/
+          # Publish every live tool, including the CSP Policy Auditor and the
+          # CSRF PoC Generator, plus the tools catalog that indexes them all.
           cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+          cp tools/index.html _site/tools/
           # Full methodology page (the hub links to the #methodology anchor,
-          # but the standalone page has its own canonical URL)
+          # but the standalone page has its own canonical URL).
           test -d methodology && cp -a methodology _site/ || true
           # Cached reports for configured targets (skipped if the build step
-          # found no targets / network failed)
+          # found no targets / network failed).
           test -d cache && cp -a cache _site/ || true
           # Metadata assets: social card, app icons, manifest, robots, sitemap,
-          # humans.txt and llms.txt
+          # humans.txt and llms.txt.
           for f in og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml humans.txt llms.txt; do
             test -f "$f" && cp "$f" _site/ || true
           done
-          # Licence, so the published site carries its own terms
+          # Licence, so the published site carries its own terms.
           test -f LICENSE && cp LICENSE _site/ || true
-          # Responsible disclosure contact
+          # Responsible disclosure contact.
           test -d .well-known && cp -a .well-known _site/ || true
 
+      # Repo-internal files must never reach the public site. docs/ROADMAP.md
+      # is the session roadmap (like docs/DEV-NOTES.md); REVIEW.md and tests/
+      # are private working artifacts. Fail loudly if any leak into _site/.
+      - name: Guard internal files stay out of the published site
+        run: |
+          set -euo pipefail
+          for f in docs/ROADMAP.md docs/DEV-NOTES.md REVIEW.md; do
+            if [ -e "_site/$f" ]; then
+              echo "::error::Internal file leaked into _site: $f"
+              exit 1
+            fi
+          done
+          if [ -d _site/docs ] || [ -d _site/tests ]; then
+            echo "::error::Internal directory leaked into _site (docs/ or tests/)"
+            exit 1
+          fi
+          echo "Internal docs, tests and REVIEW.md stay out of the published site."
+
       # Cache-busting: stamp every ?v=... asset query with the commit SHA so a
-      # deploy can never serve a stale css/js to returning visitors. Replaces
+      # deploy can never serve stale css/js to returning visitors. Replaces
       # the hand-maintained ?v=YYYYMMDD strings.
       - name: Stamp asset versions
         run: |
@@ -121,7 +179,7 @@ jobs:
           echo "Stamped assets with ?v=${REV}"
 
       # Fail the build if a page references a local css/js/png that was not
-      # copied above. This is the check that would have caught the tool pages
+      # copied above. This is the check that would have caught tool pages
       # shipping without their controllers.
       - name: Verify referenced assets exist
         run: |
@@ -129,7 +187,8 @@ jobs:
           bad=$(
             find _site -name '*.html' | while IFS= read -r page; do
               dir=$(dirname "$page")
-              # Local href=/src= targets only: skip absolute URLs, data: and #anchors.
+              # Local href=/src= targets only: skip absolute URLs, data:
+              # resources, and #anchors.
               grep -oE '(href|src)="[^"#][^"]*\.(css|js|png|webmanifest)(\?[^"]*)?"' "$page" |
                 sed -E 's/^(href|src)="//; s/"$//; s/\?.*$//' |
                 while IFS= read -r ref; do
@@ -140,14 +199,17 @@ jobs:
                 done
             done
           )
+
           if [ -n "$bad" ]; then
             echo "::error::Referenced assets are missing from _site:"
             echo "$bad"
             exit 1
           fi
+
           echo "All referenced local assets are present."
 
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
