@@ -1031,3 +1031,124 @@ DOM-only smoke test.
 **Verification:** all 84 responsive/theme combinations and the extended
 functional browser suite passed after the fixes. The stdlib suite now contains
 99 tests, including guards for the CSRF roadmap and reduced-motion reveal rule.
+
+---
+
+## 17. Round 6 — report balance, overlay stacking, relay provenance (2026-08-14)
+
+Work began from `origin/main` at merge commit `9a0796b` (PR #18) on the
+Arena-assigned branch. Sections 11–16 and `docs/DEV-NOTES.md` were read first;
+the CSP and rounds 3–5 changes were verified present in main's ancestry and
+were **not** reapplied. Baseline before any behavior change: 99/99 stdlib tests
+and `node --check` clean on all ten scripts.
+
+Everything below was reproduced in a real Chromium 149 build before it was
+fixed, and re-measured after.
+
+**Bug 1 — Security Headers report: blank right column (confirmed by reporter)**
+
+Findings and Raw headers sat in a shared `.grid-2`. Measured at 1920px:
+Findings **2735px** tall, Raw headers **236px** — the right column ran out of
+content after 8% of the report height and left a ~2500px blank gutter.
+
+Fixed with a tool-specific `.headers-report-stack` (single column, both panels
+`grid-column: 1 / -1`). `.grid-2` itself was deliberately left alone — the CSP
+evidence row, hub scope grid and methodology still depend on its 1.15fr/1fr
+split. Findings stays a plain table (no accordion, nothing hidden behind a
+click), so print and the screenshot workflow are unchanged. Verified at all six
+viewport widths in both themes: single column, both panels full report width,
+Raw headers directly below Findings, zero horizontal overflow.
+
+**Bug 2 — Tools dropdown unusable on hosted result pages (confirmed by reporter)**
+
+Two independent causes, both reproduced:
+
+1. *Evidence mode killed the header's z-index.* `body.evidence .site-header`
+   set `position: static`, and **z-index only applies to positioned
+   elements** — so `z-index: 50` silently stopped applying and the header's
+   backdrop-filter stacking context painted in source order, behind
+   `.report-card`. The menu was fully visible and completely unclickable:
+   `document.elementFromPoint()` over each tool link returned
+   `.page-hero`, `.bar`, or the URL `<input>`. Fixed with
+   `position: relative` — still not sticky, so the one-shot screenshot
+   behavior Evidence mode exists for is preserved, but z-index works again.
+2. *The panel escaped the viewport on narrow screens.* A 300px panel
+   left-anchored to the small Tools `<details>` measured `right: 436px` in a
+   390px viewport and contributed **46px of horizontal overflow**. Fixed by
+   anchoring it to the full `.header-inner` row below 760px.
+
+Not fixed by raising z-index: the root causes were positioning and anchoring.
+The header blur and design are untouched, and no horizontal overflow was
+introduced.
+
+**Bug 3 — found while auditing: the footer swallowed Export menu clicks**
+
+`.container` and `.site-footer` were both `z-index: 1`. Equal z-index resolves
+by source order, so the footer — later in the document — painted over the open
+Export panel: `elementFromPoint` on its last item resolved to `.footer-inner`.
+Fixed with `main.container { z-index: 2 }`.
+
+**Bug 4 — found while auditing: Export panel off-screen at tablet/phone widths**
+
+The Export button sits in a wrapping flex row. Once it wraps to its own line it
+lands near the left edge, and a right-anchored 268px panel then started at a
+negative x — measured `left: -122px` at 768px and `-37px` at 390px. Fixed by
+anchoring the panel to the `.bar` row instead of the button.
+
+**Bug 5 — found while auditing: relayed data lost its `unverified` flag**
+
+Answering the reporter's "why does it say unverified after a scan": the flag is
+correct and deliberate — it marks header values proxied by a **third-party
+relay** (the hosted fallback when neither the Python engine nor a direct CORS
+read can answer). It is not a scan failure. Local `server.py` scans and direct
+browser reads are never flagged.
+
+But the audit did find a real honesty bug next to it. `lookupHeadersLive()`
+stamped every 10-minute cache hit as `cache-lookup`, including entries that had
+originally come from a relay. The second scan of the same target inside the TTL
+therefore dropped the `unverified` chip and relabelled third-party data as
+"this browser" — overstating the provenance of evidence. Added a distinct
+`relay-cached` source that keeps the unverified flag and reads
+"third-party relay (cached 10 min)".
+
+**Audited and found already correct (no change made)**
+
+Hub four-card suite (4 cards + ghost is a deliberate 5th, not an orphan — it
+fills the last row rather than leaving a hole), clickjacking PoC grid (both
+panels within 1px at desktop, stacks on phone), CORS report (single column
+already), CSP report (fixed in Round 5 §16, still balanced), methodology,
+blog, standards, scope, upcoming-tools, footer, dialogs and 404. No forced
+equal heights were introduced anywhere — that would create artificial empty
+cards.
+
+Two earlier "findings" were harness artifacts, not site bugs, and are recorded
+so the next round does not chase them: mid-animation `.reveal` opacity
+snapshots (the suite now polls until animations settle), and dropdown checks
+taken before smooth-scroll had finished.
+
+**Real-browser validation**
+
+- `tests/browser/layout.js` — **113 checks**: headers stack at 6 viewports × 2
+  themes; all 7 pages × 6 viewports × 2 themes for overflow, reveal visibility,
+  clipped controls and console errors; real reports for all four tools at
+  desktop and phone in both themes including evidence-mode round-trip; print
+  media layout. All passing.
+- `tests/browser/dropdown.js` — **119 checks**: the Tools menu on 7 pages × 6
+  viewports × 2 themes pre-scan; after results at 6 viewports × evidence on/off
+  × page top/middle/bottom; GitHub `/CyberBuddy/` mount; all four live links
+  actually navigating from a result page; upcoming tools staying non-links;
+  keyboard open and focus order; active-tool marker; Escape and outside-click.
+  All passing.
+- `tests/browser/overlays.js` — **48 checks**: Export menu, engine popover,
+  keyboard dialog and share control on a rendered report in evidence mode, at 6
+  viewports × 2 themes. All passing.
+
+Every assertion checks computed visibility, bounding rectangles against the
+viewport, `document.elementFromPoint()` hit-testing, real navigation and
+console errors — not DOM presence.
+
+**Verification:** 117/117 stdlib tests (99 existing + 18 new regression tests,
+each confirmed to fail against the pre-fix code), `node --check` on all
+fourteen scripts, Python compile checks, JSON/XML validation, the Pages asset
+assembly guard (67 local references resolved; `docs/`, `tests/` and `REVIEW.md`
+confirmed not published), and 280 real-browser checks.

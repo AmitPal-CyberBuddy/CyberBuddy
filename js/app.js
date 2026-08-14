@@ -728,6 +728,7 @@ function sourceLabel(data) {
   // CI and served to everyone. NOT another user's scan of your target.
   if (s === "cache") return "published report";
   if (s === "relay") return "third-party relay";
+  if (s === "relay-cached") return "third-party relay (cached 10 min)";
   if (s === "cache-lookup") return "this browser (cached 10 min)";
   if (s === "browser") return "this browser";
   if (s === "none") return "no engine";
@@ -2504,7 +2505,14 @@ function headerCachePut(url, value) {
 
 async function lookupHeadersLive(url) {
   const cached = headerCacheGet(url);
-  if (cached) return Object.assign({}, cached, { source: "cache-lookup" });
+  // A cached RELAY read is still relayed data: keep the relay source so the
+  // report stays flagged `unverified` instead of claiming "this browser"
+  // read the headers first-hand on the second scan within the TTL.
+  if (cached) {
+    return Object.assign({}, cached, {
+      source: cached.source === "relay" ? "relay-cached" : "cache-lookup"
+    });
+  }
   if (headerLookupInFlight.has(url)) return headerLookupInFlight.get(url);
   const p = lookupHeadersRemote(url)
     .then((res) => {
@@ -3020,6 +3028,7 @@ const SOURCE_EXPLAIN = {
   relay: "Header values proxied by a third-party relay — not independently verified.",
   browser: "Graded in this browser from a direct read of the target.",
   "cache-lookup": "Reused this browser's 10-minute header cache from an earlier scan.",
+  "relay-cached": "Relayed header values reused from this browser's 10-minute cache — still not independently verified.",
   none: "No engine answered this scan."
 };
 
@@ -3096,7 +3105,10 @@ async function ensureRelayConsent(url) {
 }
 
 function isUnverified(data) {
-  return !!(data && data._source === "relay");
+  const s = data && data._source;
+  // `relay-cached` is a relayed read served again from the 10-minute local
+  // cache — same provenance, so it keeps the same unverified flag.
+  return s === "relay" || s === "relay-cached";
 }
 
 function unverifiedFlag(data) {

@@ -1081,5 +1081,159 @@ class PrintStylesheetTests(unittest.TestCase):
         self.assertIn("print-color-adjust: exact", block)
 
 
+class HeadersReportLayoutTests(unittest.TestCase):
+    """Round 6: the Security Headers report stacks Findings above Raw headers.
+
+    Findings runs several times taller than Raw headers, so a 2-column split
+    left a large blank right column (measured 2735px vs 236px at 1920px).
+    """
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "headers" / "index.html").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+    def _stack_rule(self) -> str:
+        return self._rule(".headers-report-stack {")
+
+    def test_report_uses_the_tool_specific_stack_not_grid_2(self):
+        body = self.page[self.page.index('id="results"'):]
+        self.assertIn('class="headers-report-stack"', body)
+        # .grid-2 is load-bearing elsewhere; the headers report must not use
+        # it, and must not be "fixed" by changing it globally.
+        self.assertNotIn('class="grid-2"', body)
+
+    def test_stack_is_single_column(self):
+        rule = self._stack_rule()
+        self.assertIn("grid-template-columns: 1fr", rule)
+
+    def test_findings_come_first_then_raw_headers(self):
+        body = self.page[self.page.index("headers-report-stack"):]
+        self.assertLess(body.index("Findings"), body.index("Raw headers"))
+
+    def test_shared_grid_2_still_has_two_columns(self):
+        """Other sections depend on .grid-2 — it must not be flattened."""
+        start = self.css.index(".grid-2 {")
+        self.assertIn("1.15fr 1fr", self.css[start:self.css.index("}", start)])
+
+    def test_stack_children_can_shrink(self):
+        """Without min-width: 0 a long raw-header token expands the track."""
+        rule = self._rule(".headers-report-stack > * {")
+        self.assertIn("min-width: 0", rule)
+        # Full-width rows in a grid need an explicit span, not width: 100%.
+        self.assertIn("grid-column: 1 / -1", rule)
+
+    def test_raw_headers_wrap_long_unbreakable_tokens(self):
+        start = self.css.index(".raw-headers {")
+        rule = self.css[start:self.css.index("}", start)]
+        self.assertIn("overflow-wrap: anywhere", rule)
+        self.assertIn("max-width: 100%", rule)
+        self.assertIn("overflow: auto", rule)
+
+    def test_findings_are_not_hidden_behind_a_disclosure(self):
+        """Evidence must stay visible: a closed <details> cannot be forced
+        open by print CSS and breaks the screenshot workflow."""
+        start = self.page.index("headers-report-stack")
+        block = self.page[start:self.page.index("reportProvenance", start)]
+        self.assertNotIn("<details", block)
+
+    def test_print_still_flattens_report_grids(self):
+        start = self.css.index("@media print")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("grid-template-columns: 1fr", block)
+        self.assertIn(".raw-headers { max-height: none; }", block)
+
+
+class OverlayStackingTests(unittest.TestCase):
+    """Round 6: dropdowns/menus must render above the report and stay
+    inside the viewport. Reproduced in Chromium before fixing."""
+
+    def setUp(self) -> None:
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_evidence_mode_keeps_the_header_positioned(self):
+        """`position: static` drops the header out of the z-index game, so
+        its z-index: 50 stopped applying and the Tools menu painted behind
+        the report card. Evidence mode must un-stick it without un-position
+        -ing it."""
+        start = self.css.index("body.evidence .site-header")
+        rule = self.css[start:self.css.index("}", start)]
+        self.assertIn("position: relative", rule)
+        self.assertNotIn("position: static", rule)
+        self.assertNotIn("position: sticky", rule)
+
+    def test_site_header_still_declares_a_stacking_order(self):
+        start = self.css.index(".site-header {")
+        self.assertIn("z-index: 50", self.css[start:self.css.index("}", start)])
+
+    def test_main_content_outranks_the_footer(self):
+        """`.container` and `.site-footer` were both z-index: 1, so the
+        footer painted over an open Export panel and swallowed its clicks."""
+        self.assertIn("main.container { z-index: 2; }", self.css)
+        start = self.css.index(".site-footer {")
+        self.assertIn("z-index: 1", self.css[start:self.css.index("}", start)])
+
+    def test_narrow_tools_menu_anchors_to_the_header_row(self):
+        """A 300px panel anchored to the small Tools <details> ran past the
+        right edge at 390px (measured 46px of horizontal overflow)."""
+        self.assertIn("position: relative", self._rule(".header-inner {"))
+        self.assertIn(".header-inner .nav-menu { position: static; }", self.css)
+        panel = self._rule(".header-inner .nav-menu-panel {")
+        self.assertIn("left: 0; right: 0", panel)
+        self.assertIn("overflow-y: auto", panel)
+
+    def test_export_panel_anchors_to_the_scan_bar(self):
+        """The Export button wraps to its own line on narrow screens; a
+        right-anchored 268px panel then started at a negative x."""
+        self.assertIn(".bar, .suite-bar {", self.css)
+        self.assertIn("position: relative", self._rule(".bar, .suite-bar {"))
+        self.assertIn(".bar .export-menu, .suite-bar .export-menu { position: static; }", self.css)
+
+    def test_export_panel_outranks_report_content(self):
+        start = self.css.index(".export-menu-panel {")
+        self.assertIn("z-index: 70", self.css[start:self.css.index("}", start)])
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+
+class RelayProvenanceTests(unittest.TestCase):
+    """Round 6: relayed header values keep their `unverified` flag even when
+    they are re-served from the 10-minute local lookup cache."""
+
+    def setUp(self) -> None:
+        self.js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    def test_cached_relay_reads_keep_a_relay_source(self):
+        start = self.js.index("async function lookupHeadersLive")
+        body = self.js[start:start + 700]
+        self.assertIn('"relay-cached"', body)
+        self.assertIn('cached.source === "relay"', body)
+
+    def test_relay_cached_counts_as_unverified(self):
+        start = self.js.index("function isUnverified(")
+        body = self.js[start:self.js.index("}", start)]
+        self.assertIn('"relay"', body)
+        self.assertIn('"relay-cached"', body)
+
+    def test_relay_cached_is_not_labelled_as_this_browser(self):
+        """Calling relayed data 'this browser' overstates the provenance."""
+        start = self.js.index("function sourceLabel(")
+        body = self.js[start:self.js.index("\n}", start)]
+        line = [l for l in body.splitlines() if "relay-cached" in l][0]
+        self.assertIn("relay", line)
+        self.assertNotIn("this browser", line)
+
+    def test_every_source_has_an_explanation(self):
+        start = self.js.index("const SOURCE_EXPLAIN")
+        block = self.js[start:self.js.index("};", start)]
+        for src in ("python", "cache", "relay", "relay-cached", "browser", "cache-lookup", "none"):
+            self.assertIn(src, block)
+
+
 if __name__ == "__main__":
     unittest.main()

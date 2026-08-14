@@ -72,6 +72,78 @@ repository history instead:
 - LIVE / CACHED tags are an honesty promise: cached = CI-built demo report
   for a `urls.txt` target, never a fresh scan. Keep them on every result.
 
+## Real-browser test suites
+
+`test_engines.py` stays stdlib-only so CI can run it anywhere; it can only
+assert that the *rules* are present in the CSS/JS. The things that actually
+broke in Round 6 — stacking contexts, panel geometry, pointer interception —
+are only observable in a real browser, so they live in `tests/browser/`:
+
+    python3 server.py --port 8080 --allow-private        # shell 1
+    npm i puppeteer-core                                 # once
+    CB_CHROME=/path/to/chrome node tests/browser/layout.js
+    CB_CHROME=/path/to/chrome node tests/browser/dropdown.js
+    CB_CHROME=/path/to/chrome node tests/browser/overlays.js
+
+They need a live server and a Chromium binary, so they are not wired into
+the Pages workflow (which must stay dependency-free). Run them by hand
+before a release, and after ANY change to positioning, z-index, grid
+templates or the report markup. Set `CB_TARGET` to point at a scannable
+host; the default assumes a throwaway local one on :8099.
+
+Each suite exits non-zero on the first failure. Assert computed values —
+`getComputedStyle`, `getBoundingClientRect`, `document.elementFromPoint`,
+real navigation — never DOM presence, which is what let the Round 4
+invisible-cards bug ship.
+
+## Round 6 traps — stacking contexts and panel balance
+
+- **`position: static` silently disables `z-index`.** Evidence mode used to
+  set `body.evidence .site-header { position: static }` to un-stick the
+  header for one-shot screenshots. z-index only applies to *positioned*
+  elements, so `z-index: 50` stopped applying, the header's
+  backdrop-filter stacking context painted in source order, and the open
+  Tools menu rendered BEHIND `.report-card` — visible but unclickable.
+  Use `position: relative` when you want "not sticky" but still stacked.
+  If you ever need static again, verify with `elementFromPoint()` over each
+  menu item, not by eye.
+- **Equal z-index resolves by source order.** `.container` and
+  `.site-footer` were both `z-index: 1`, so the footer painted over an open
+  Export panel and ate its clicks. `main.container { z-index: 2 }` breaks
+  the tie. Watch for this whenever a new positioned section is added.
+- **Absolute panels anchored to small controls escape narrow viewports.**
+  A 300px Tools panel on the small `<details>` ran 46px past a 390px
+  viewport; the 268px Export panel started at `left: -122px` at 768px once
+  its button wrapped to a new flex line. Anchor wide panels to a full-width
+  row (`.header-inner`, `.bar`) instead of the button, and re-measure the
+  panel rect against `innerWidth` — not just the page's overflow, because a
+  clipped ancestor can hide the overflow while the panel is still
+  unreachable.
+- **Panels only belong side by side when their content lengths are
+  comparable.** Findings vs Raw headers measured 2735px vs 236px at 1920px:
+  a 2-column grid there is ~2500px of blank gutter. Stack long evidence
+  full width. Use a tool-specific class (`.headers-report-stack`) — do NOT
+  flatten `.grid-2`, which the CSP evidence row, hub scope grid and
+  methodology all depend on. And never force equal heights to "balance" a
+  row; that just makes an artificially empty card.
+- **Testing traps.** A `.reveal` mid-animation reads `opacity < 1` and is
+  not a bug — poll until animations settle before asserting. Likewise
+  `scroll-behavior: smooth` means a menu check right after `scrollTo` can
+  measure a stale header position. Both cost a false-positive round.
+
+## Provenance traps
+
+- **A cache entry inherits the provenance of whatever filled it.** The
+  10-minute header lookup cache used to stamp every hit `cache-lookup`,
+  including entries originally fetched through a third-party relay — so the
+  second scan of a target inside the TTL dropped the `unverified` chip and
+  claimed "this browser" read the headers. `relay-cached` keeps the relay
+  provenance and the flag. If you add another lookup source, decide what it
+  degrades to on a cache hit before you ship it.
+- `unverified` is a provenance label, not an error: it means the values came
+  from a public relay rather than the Python engine or a first-hand CORS
+  read. Never suppress it to make a report look cleaner.
+
 ## Parity contract
 
 `tests/grader_fixtures.json` is the shared contract between the Python
