@@ -15,7 +15,8 @@ per host into cache/<host>.json:
           "generated_at": "...",
           "clickjacking": { ... ScanResult ... },
           "headers":     { ... HeadersResult ... },
-          "cors":        { ... CorsResult ... }
+          "cors":        { ... CorsResult ... },
+          "csp":         { ... CspResult ... }
         }
       }
     }
@@ -47,6 +48,7 @@ sys.path.insert(0, str(ROOT))
 from clickjacking_validator import scan_url as scan_clickjacking  # noqa: E402
 from concurrent_scanner import scan_urls_concurrent  # noqa: E402
 from cors_validator import scan_cors  # noqa: E402
+from csp_checker import scan_csp  # noqa: E402
 from security_headers import scan_headers  # noqa: E402
 
 # Public targets only — a cache on GitHub Pages must never scan private
@@ -75,11 +77,12 @@ def host_of(url: str) -> str:
 
 
 def scan_all(url: str) -> tuple:
-    """Run all three engines against one URL (used per worker)."""
+    """Run every engine against one URL (used per worker)."""
     return (
         scan_clickjacking(url, **SCAN_KWARGS),
         scan_headers(url, **SCAN_KWARGS),
         scan_cors(url, **SCAN_KWARGS),
+        scan_csp(url, **SCAN_KWARGS),
     )
 
 
@@ -107,29 +110,31 @@ def main(argv: list[str] | None = None) -> int:
         if triple is None:
             print(f"  ERROR {url}: worker failed")
             continue
-        cj, hd, cr = triple
+        cj, hd, cr, cp = triple
         entry = {
             "url": url,
             "generated_at": stamp,
             "clickjacking": cj.to_dict(),
             "headers": hd.to_dict(),
             "cors": cr.to_dict(),
+            "csp": cp.to_dict(),
         }
         host = host_of(url)
         bucket = by_host.setdefault(host, {"generated_at": stamp, "urls": {}})
         bucket["urls"][url] = entry
         print(
             f"  clickjacking={cj.risk}  headers={hd.grade} "
-            f"({hd.score}/100)  cors={cr.risk}"
+            f"({hd.score}/100)  cors={cr.risk}  csp={cp.risk}"
         )
 
     for host, bucket in by_host.items():
         target = out_dir / f"{host}.json"
         target.write_text(json.dumps(bucket, indent=2), encoding="utf-8")
-        print(
-            f"[cache] wrote {target.relative_to(ROOT)} "
-            f"({len(bucket['urls'])} urls)"
-        )
+        try:
+            shown = target.relative_to(ROOT)
+        except ValueError:
+            shown = target
+        print(f"[cache] wrote {shown} ({len(bucket['urls'])} urls)")
     return 0
 
 

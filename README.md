@@ -18,16 +18,17 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **Clickjacking Validator** | Live iframe frame-test + PoC overlay; header scoring of X-Frame-Options / CSP frame-ancestors; analyst visual-confirmation fallback | iframe always; headers via Python API or opt-in lookup |
 | **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; opt-in lookup on GitHub Pages |
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
+| **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 
-More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` and it
-appears in the nav, footer, and hub grid.
+More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` for the
+nav and hub grid, then add its explicit footer and static no-JavaScript links.
 
 ## Quick start (full scans)
 
 ```bash
 python3 server.py
 # open http://127.0.0.1:8080/
-# tools: /tools/clickjacking/  /tools/headers/  /tools/cors/
+# tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -60,14 +61,17 @@ js/hub.js                       # hub-only console animation
 js/tool.clickjacking.js         # clickjacking page controller
 js/tool.headers.js              # headers page controller
 js/tool.cors.js                 # CORS page controller
+js/tool.csp.js                  # CSP audit page controller
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   clickjacking/index.html       # iframe + PoC overlay + ?url= sharing
   headers/index.html            # header report UI
   cors/index.html               # CORS probe + roadmap
+  csp/index.html                # CSP policy audit report
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
-tests/grader_fixtures.json      # shared Python<->JS scoring contract
+tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
+tests/csp_fixtures.json         # shared CSP Python<->JS audit contract
 docs/performance.md             # engine performance notes
 docs/pages-workflow-patch.md    # REQUIRED manual edit to pages.yml
 docs/DEV-NOTES.md               # internal maintainer notes — never deployed, never in shipped files
@@ -87,6 +91,7 @@ sitemap.xml                     # sitemap for crawlers
 clickjacking_validator.py       # clickjacking engine + shared fetch/URL safety
 security_headers.py             # headers engine + CLI
 cors_validator.py               # two-origin CORS engine + CLI
+csp_checker.py                  # dedicated CSP audit engine + CLI
 server.py                       # local API + static host (stdlib)
 test_engines.py                 # stdlib unittest suite
 ```
@@ -102,9 +107,22 @@ python3 security_headers.py -f urls.txt --json
 python3 security_headers.py -f urls.txt --workers 8   # parallel batch scan
 
 python3 cors_validator.py https://example.com/api
+
+python3 csp_checker.py https://example.com
+python3 csp_checker.py -f urls.txt --json
 ```
 
 `--public-only` refuses loopback / RFC1918 targets (metadata is always blocked).
+
+The CSP auditor includes the useful baseline checks from the original standalone
+checker — missing enforcement, wildcards, `'unsafe-inline'`, `'unsafe-eval'`,
+script/object controls, and a secure starting policy — but avoids common false
+positives. `default-src` is respected as a real fallback, Report-Only is never
+called enforced, nonce/hash + `'strict-dynamic'` compatibility fallbacks are
+explained, multiple headers combine restrictively, and duplicate directives use
+the browser's first-directive-wins behavior. The suggested policy must be
+tailored and tested in Report-Only mode before deployment; applying a generic
+policy unchanged can break an application.
 
 Exit code `1` when any target scores high risk (handy in CI), `2` for usage errors.
 
@@ -112,13 +130,13 @@ Exit code `1` when any target scores high risk (handy in CI), `2` for usage erro
 python3 -m unittest test_engines.py
 ```
 
-`tests/grader_fixtures.json` is the **shared scoring contract**. CyberBuddy
-implements the graders twice — stdlib Python for `server.py`/CLI, and a browser
-port in `js/app.js` so GitHub Pages can grade without a server. Both are run
-against those fixtures, and a third test compares the two engines directly, so
-the same target can never get a different grade depending on where it was
-scanned. Add a case to the JSON and both engines are checked against it
-automatically (node required for the JS side; skipped if absent).
+`tests/grader_fixtures.json` and `tests/csp_fixtures.json` are the **shared
+scoring contracts**. CyberBuddy implements the graders twice — stdlib Python
+for `server.py`/CLI, and a browser port in `js/app.js` so GitHub Pages can grade
+without a server. Both are run against those fixtures, and parity tests compare
+the engines directly, so the same target cannot get a different result based on
+where it was scanned. Add a case to the relevant JSON and both engines are
+checked automatically (node required for the JS side; skipped if absent).
 
 ## Making the hosted site full-strength
 
@@ -167,6 +185,13 @@ layers make the hosted site as close to `server.py` as possible:
 3. **Smarter live fallback.** When neither is available, the browser graders
    run exactly as before — with a dedup + 10-minute lookup cache so repeated
    or suite-wide scans stop hammering the public relays.
+
+The CSP tool uses all three layers. A Pages visitor gets the Python-built CSP
+report for configured demo targets, otherwise the browser runs the parity-tested
+CSP grader over a direct CORS header read or an explicitly approved relay. It
+also derives a CSP result from older cached Security Headers entries, so a cache
+built before the dedicated CSP key was added does not break the hosted tool.
+Every result keeps its LIVE/CACHED and verified/unverified provenance label.
 
 ## Evidence and export
 

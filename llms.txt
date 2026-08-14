@@ -1,6 +1,6 @@
 # CyberBuddy
 
-> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), and CORS posture checks with evidence-grade output.
+> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, and CORS posture checks with evidence-grade output.
 
 - Hub: https://amitpal-cyberbuddy.github.io/CyberBuddy/
 - Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology
@@ -15,6 +15,7 @@
 - Clickjacking Validator (`/tools/clickjacking/`) — X-Frame-Options + CSP frame-ancestors + live iframe proof. OWASP WSTG-CLNT-09, CWE-1021.
 - Security Headers (`/tools/headers/`) — CSP, HSTS, XFO, nosniff, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP, cookie flags. OWASP WSTG-CONF-07/12, CWE-693.
 - CORS Validator (`/tools/cors/`) — ACAO reflection vs allowlist, credentials, Vary: Origin. OWASP WSTG-CLNT-07, CWE-942.
+- CSP Policy Auditor (`/tools/csp/`) — enforced vs Report-Only CSP, effective script/style sources, navigation controls, mixed content, syntax, Trusted Types, and reporting. OWASP WSTG-CONF-12, CWE-79, CWE-693.
 
 ## How scans run
 

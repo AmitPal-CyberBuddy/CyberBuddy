@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
-  <meta name="description" content="CyberBuddy: clickjacking validation, security header grading, and CORS posture checks — evidence-grade results you can drop straight into your report." />
+  <meta name="description" content="CyberBuddy: clickjacking validation, security header and CSP auditing, and CORS posture checks — evidence-grade results for your report." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -18,9 +18,10 @@
   <link rel="prefetch" href="tools/clickjacking/" />
   <link rel="prefetch" href="tools/headers/" />
   <link rel="prefetch" href="tools/cors/" />
+  <link rel="prefetch" href="tools/csp/" />
 
   <meta property="og:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta property="og:description" content="Clickjacking, security headers, and CORS — evidence-grade checks you can screenshot." />
+  <meta property="og:description" content="Clickjacking, security headers, CSP, and CORS — evidence-grade checks you can screenshot." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/" />
@@ -30,7 +31,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta name="twitter:description" content="Clickjacking, security headers, and CORS — evidence-grade checks you can screenshot." />
+  <meta name="twitter:description" content="Clickjacking, security headers, CSP, and CORS — evidence-grade checks you can screenshot." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
@@ -50,7 +51,7 @@
       "@type": "WebApplication",
       "name": "CyberBuddy",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/",
-      "description": "Browser security assessment suite — clickjacking validation, security header grading, and CORS posture checks with evidence-grade output. Authorized testing only.",
+      "description": "Browser security assessment suite — clickjacking validation, security header grading, CSP auditing, and CORS posture checks with evidence-grade output. Authorized testing only.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Any (web browser)",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -80,7 +81,7 @@
       <span class="line">report needs.</span>
     </h1>
     <p class="lead reveal" style="--d: .14s; margin-top: 16px;">
-      Clickjacking, security headers, and CORS — scored against
+      Clickjacking, security headers, CSP, and CORS — assessed against
       OWASP-aligned methodology with raw evidence you can screenshot.
       Authorized testing only. All checks are read-only GETs.
     </p>
@@ -131,7 +132,7 @@
       <div class="card">
         <h2 style="font-size: 1.02rem;">Built for assessments</h2>
         <ul class="why-list">
-          <li><strong>No tab sprawl.</strong> Framing protections, header posture, and CORS — one roof.</li>
+          <li><strong>No tab sprawl.</strong> Framing protections, header posture, CSP, and CORS — one roof.</li>
           <li><strong>Evidence-grade output.</strong> Every finding shows the raw header value it used.</li>
           <li><strong>Hosted and local.</strong> GitHub Pages runs the graders in your browser. <code>server.py</code> is the same scoring, on your machine.</li>
         </ul>
@@ -189,7 +190,7 @@
 
   <div class="section-head reveal">
     <h2>Assessment tools</h2>
-    <span class="count" id="toolCount">03 live</span>
+    <span class="count" id="toolCount">04 live</span>
   </div>
 
   <section class="tool-grid" id="toolGrid" aria-label="Available tools">
@@ -210,11 +211,16 @@
       <p class="tool-card-desc">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
       <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing">OWASP WSTG-CLNT-07</span><span class="std-id" title="CWE-942 — Permissive Cross-domain Policy with Untrusted Domains">CWE-942</span></div>
     </a>
+    <a class="tool-card card corner-card" href="tools/csp/">
+      <h3>CSP Policy Auditor</h3>
+      <p class="tool-card-desc">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
+      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span><span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
+    </a>
   </section>
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
     <div class="stat reveal" style="--d: .05s;" role="listitem">
-      <span class="stat-num" data-count="3" data-pad="2">0</span>
+      <span class="stat-num" data-count="4" data-pad="2">0</span>
       <span class="stat-label">Live assessment tools</span>
     </div>
     <div class="stat reveal" style="--d: .12s;" role="listitem">
@@ -307,6 +313,18 @@
       </div>
       <p class="std-meta">Cross-origin access posture: ACAO reflection vs allowlist, credentials and Vary: Origin.</p>
     </div>
+    <div class="std-card reveal" style="--d: .26s;">
+      <div class="std-tool">
+        <span class="std-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
+        CSP Policy Auditor
+      </div>
+      <div class="std-ids">
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span>
+        <span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span>
+        <span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span>
+      </div>
+      <p class="std-meta">Enforced-vs-report-only policy, effective script/style fallbacks, navigation controls, mixed content and reporting.</p>
+    </div>
   </div>
   <p class="form-hint reveal" style="--d: .26s;">
     Methodology references: OWASP Web Security Testing Guide v4.2 · OWASP ASVS ·
@@ -332,6 +350,10 @@
       <p class="std-meta">The Python engine probes two origins to prove reflection vs an allowlist. On GitHub Pages the browser can only speak as this origin — a single-origin probe, labelled honestly on the report.</p>
     </article>
     <article class="card reveal" style="--d: .24s;">
+      <h3>CSP</h3>
+      <p class="std-meta">Risk comes from the highest-confidence policy gap — no fake /100. Missing enforcement or dangerous script execution is high; missing hardening directives is medium; a restrictive policy with only optional observations is low.</p>
+    </article>
+    <article class="card reveal" style="--d: .3s;">
       <h3>Hosted scan layers</h3>
       <p class="std-meta">Python when <code>server.py</code> or <code>api/</code> is up. Otherwise a same-origin published report for the demo targets in <code>urls.txt</code> (fresh within 48h). Otherwise a direct read, then opt-in relays. The source chip always says which layer ran.</p>
     </article>
@@ -357,7 +379,7 @@
       <div class="arch-node arch-engine"><strong>Hosted API</strong><span>python server.py / api — same scoring, server-side</span></div>
     </div>
     <div class="arch-down">↓</div>
-    <div class="arch-node"><strong>Security engines</strong><span>clickjacking · security headers · CORS</span></div>
+    <div class="arch-node"><strong>Security engines</strong><span>clickjacking · security headers · CSP · CORS</span></div>
     <div class="arch-down">↓</div>
     <div class="arch-node"><strong>Evidence engine</strong><span>the raw header value behind every finding</span></div>
     <div class="arch-down">↓</div>

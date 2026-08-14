@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
-  <meta name="description" content="How CyberBuddy scores clickjacking, security headers, and CORS — engines, grades, and what the hosted site can and cannot prove." />
+  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS — engines, grades, and hosted-site limits." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
   <meta property="og:title" content="Methodology — CyberBuddy" />
-  <meta property="og:description" content="How CyberBuddy scores clickjacking, security headers, and CORS." />
+  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS." />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Methodology — CyberBuddy" />
-  <meta name="twitter:description" content="How CyberBuddy scores clickjacking, security headers, and CORS." />
+  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, and CORS." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../icon-192.png" />
@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "CyberBuddy methodology",
-      "description": "How CyberBuddy scores clickjacking, security headers, and CORS.",
+      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, and CORS.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
@@ -58,8 +58,8 @@
   <p class="kicker reveal">How it scores</p>
   <h1 class="reveal">Methodology</h1>
   <p class="lead reveal" style="--d: .08s;">
-    Three read-only checks, the same graders in Python and in the browser,
-    and a report card you can paste into an assessment. Authorized testing only.
+    Four read-only checks, the same graders in Python and in the browser,
+    and report cards you can paste into an assessment. Authorized testing only.
   </p>
 
   <div class="section-head reveal">
@@ -94,6 +94,15 @@
       <p class="std-line">OWASP WSTG-CLNT-07 · CWE-942</p>
     </article>
     <article class="card reveal" style="--d: .24s;">
+      <h3>CSP Policy Auditor</h3>
+      <p>
+        Distinguishes enforced CSP from Report-Only, resolves effective
+        script/style fallbacks, and audits object, base, framing, form,
+        mixed-content, syntax, Trusted Types, and reporting controls.
+      </p>
+      <p class="std-line">OWASP WSTG-CONF-12 · CWE-79 · CWE-693</p>
+    </article>
+    <article class="card reveal" style="--d: .3s;">
       <h3>What it does not do</h3>
       <p>
         No exploits, no authenticated sessions, no POST/PUT/DELETE.
@@ -126,6 +135,23 @@
       Grade bands: <strong>A</strong> ≥ 90 · <strong>B</strong> ≥ 75 · <strong>C</strong> ≥ 60 · <strong>D</strong> ≥ 45 · <strong>F</strong> below that.
       Risk follows the grade (A/B low, C/D medium, F high).
     </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>CSP risk</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="CSP risk">
+      <thead>
+        <tr><th scope="col">Condition</th><th scope="col">Risk</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>No enforced response policy, cleartext delivery, wildcard framing, or dangerous script execution (<code>*</code>, <code>data:</code>, unprotected <code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>)</td><td>High</td></tr>
+        <tr><td>Policy enforced, but source lists or non-inherited hardening directives need tightening</td><td>Medium</td></tr>
+        <tr><td>No obvious dangerous source pattern; remaining observations are optional defense-in-depth</td><td>Low</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">There is no CSP /100 score. The highest-confidence actionable finding sets the risk. Multiple enforced CSP headers combine restrictively, and later duplicate directives inside one policy are ignored by browsers.</p>
   </article>
 
   <div class="section-head reveal">

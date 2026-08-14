@@ -922,3 +922,60 @@ page proxied through `/api/scan` is the current Security Headers tool.
 asset check, 51-check tool validation suite, 31-check interaction suite, and
 the new footer/CJ checks (footer spans at four widths, same-origin and
 cross-origin peeks, unreachable-target path, hub regression) — all passing.
+
+---
+
+## 15. CSP Policy Auditor — fourth tool + GitHub Pages parity (2026-08-14)
+
+Work began from merge commit `6e43542` on the Arena-assigned branch after
+fetching `origin/main`. The required Round 3–5 commits (`b458623`, `b4209d7`,
+`9cc8445`) were verified in main's ancestry and were not reapplied. Baseline:
+89/89 tests and all nine existing scripts passed `node --check` before behavior
+changed.
+
+**What was retained from the supplied standalone checker**
+
+- Missing enforced CSP, wildcard sources, `'unsafe-inline'`, `'unsafe-eval'`,
+  script policy, object policy, and a secure starting-policy recommendation
+  are all represented in the new report.
+- The implementation remains a read-only GET and accepts a URL with no scheme.
+- The suggested policy is visibly labelled as a starting point that must be
+  tailored and tested in Report-Only mode; applying a generic CSP unchanged can
+  break an application.
+
+**Accuracy improvements over the standalone checks**
+
+- `Content-Security-Policy-Report-Only` is never treated as enforcement.
+- `default-src` is respected as the fallback for script/style/object fetches;
+  `base-uri`, `frame-ancestors`, and `form-action` are correctly treated as
+  non-inherited controls.
+- Nonce/hash + `'strict-dynamic'` compatibility policies do not receive the
+  standalone checker's unconditional `'unsafe-inline'` false positive.
+- Multiple CSP response headers are preserved and combined restrictively;
+  duplicate directives inside one policy follow browser behavior (first wins,
+  later duplicates are ignored and reported).
+- The auditor also covers `script-src-elem` / `script-src-attr`, scheme-wide and
+  wildcard hosts, cleartext sources, style sources, object embedding, base URL,
+  framing, form submission, mixed content, Trusted Types, and violation
+  reporting. It emits risk (high/medium/low), not a decorative /100 score.
+
+**GitHub Pages compatibility**
+
+- Added the browser port (`gradeCspFromMap`) and a dedicated
+  `tests/csp_fixtures.json` Python↔JS parity contract.
+- The CSP page uses the established hosted chain: Python API → fresh same-origin
+  published report → direct CORS header read → explicit opt-in relay. Cached
+  demo targets skip the relay prompt, and older cache files can derive the CSP
+  result from their Security Headers entry.
+- Added `/api/csp`, the optional Vercel function, `/csp` aliases, CI cache output,
+  Pages workflow copy, GitHub-project mount routing, 404 repair, sitemap/PWA/LLM
+  metadata, and the CSP page's own strict meta policy.
+- CSP is the fourth hub/suite result. The suite reuses Security Headers' one
+  response instead of issuing a duplicate CSP GET and continues to show the
+  headers score as its only numeric gauge.
+
+**Verification:** 97/97 stdlib tests (including ten CSP parity fixtures and all
+four API/page routes), `node --check` on all ten scripts, Python compile checks,
+JSON/XML validation, Pages assembly asset guard, controller-to-DOM ID check,
+and live-server checks for `/tools/csp/`, `/CyberBuddy/tools/csp/`, its
+controller, and `/api/csp` — all passing.

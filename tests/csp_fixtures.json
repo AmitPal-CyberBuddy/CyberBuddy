@@ -1,0 +1,180 @@
+{
+  "_comment": [
+    "Golden fixtures shared by csp_checker.py and gradeCspFromMap in js/app.js.",
+    "The GitHub Pages browser grader and Python engine must return the same",
+    "risk and per-control status for identical response headers."
+  ],
+  "cases": [
+    {
+      "name": "missing policy",
+      "url": "https://bare.example",
+      "final_url": "https://bare.example",
+      "status_code": 200,
+      "headers": {},
+      "expect": {
+        "risk": "high",
+        "statuses": {
+          "Enforced response policy": "missing",
+          "Script execution": "missing",
+          "Object embedding": "missing",
+          "Base URL control": "missing",
+          "Framing control": "missing"
+        }
+      }
+    },
+    {
+      "name": "report only does not enforce",
+      "url": "https://report.example",
+      "final_url": "https://report.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy-report-only": "default-src 'self'; script-src 'self'"
+      },
+      "expect": {
+        "risk": "high",
+        "statuses": {
+          "Enforced response policy": "missing",
+          "Report-only policy": "info"
+        }
+      }
+    },
+    {
+      "name": "unsafe script execution",
+      "url": "https://weak.example",
+      "final_url": "https://weak.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src *; script-src * 'unsafe-inline' 'unsafe-eval' data:"
+      },
+      "expect": {
+        "risk": "high",
+        "statuses": {
+          "Enforced response policy": "ok",
+          "Script execution": "weak",
+          "Style sources": "weak",
+          "Object embedding": "weak"
+        }
+      }
+    },
+    {
+      "name": "strict baseline",
+      "url": "https://strong.example",
+      "final_url": "https://strong.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests"
+      },
+      "expect": {
+        "risk": "low",
+        "statuses": {
+          "Enforced response policy": "ok",
+          "Policy syntax": "ok",
+          "Script execution": "ok",
+          "Style sources": "ok",
+          "Object embedding": "ok",
+          "Base URL control": "ok",
+          "Framing control": "ok",
+          "Form submissions": "ok",
+          "Mixed-content control": "ok"
+        }
+      }
+    },
+    {
+      "name": "nonce strict dynamic legacy fallback",
+      "url": "https://nonce.example",
+      "final_url": "https://nonce.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'none'; script-src 'nonce-r4nd0m' 'strict-dynamic' 'unsafe-inline'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+      },
+      "expect": {
+        "risk": "low",
+        "statuses": {
+          "Script execution": "info",
+          "Object embedding": "ok",
+          "Framing control": "ok"
+        }
+      }
+    },
+    {
+      "name": "duplicate directive uses first",
+      "url": "https://duplicate.example",
+      "final_url": "https://duplicate.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self'; script-src *; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Policy syntax": "weak",
+          "Script execution": "ok"
+        }
+      }
+    },
+    {
+      "name": "scheme-wide HTTPS script source",
+      "url": "https://scheme.example",
+      "final_url": "https://scheme.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src https:; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Script execution": "weak"
+        }
+      }
+    },
+    {
+      "name": "wildcard framing override",
+      "url": "https://frame.example",
+      "final_url": "https://frame.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors *; form-action 'self'"
+      },
+      "expect": {
+        "risk": "high",
+        "statuses": {
+          "Framing control": "weak"
+        }
+      }
+    },
+    {
+      "name": "strong policy over HTTP is strip vulnerable",
+      "url": "http://plain.example",
+      "final_url": "http://plain.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      },
+      "expect": {
+        "risk": "high",
+        "statuses": {
+          "Enforced response policy": "weak",
+          "Mixed-content control": "weak"
+        }
+      }
+    },
+    {
+      "name": "multiple policies combine restrictively",
+      "url": "https://multi.example",
+      "final_url": "https://multi.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src *; script-src * 'unsafe-inline'\ndefault-src 'none'; script-src 'none'; style-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+      },
+      "expect": {
+        "risk": "low",
+        "statuses": {
+          "Script execution": "ok",
+          "Style sources": "ok",
+          "Object embedding": "ok",
+          "Framing control": "ok"
+        }
+      }
+    }
+  ]
+}

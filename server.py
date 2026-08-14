@@ -10,11 +10,12 @@ GET /methodology/           scoring + engine notes
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
-GET /headers /cors /clickjacking
+GET /headers /cors /csp /clickjacking
                             aliases → /tools/<tool>/
 GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
 GET /api/cors?url=…         two-origin CORS reflection probe
+GET /api/csp?url=…          dedicated Content-Security-Policy audit
 GET /api/health             {"ok": true}  (alias: /health)
 GET /poc?url=…              standalone clickjacking PoC page
 
@@ -37,6 +38,7 @@ from urllib.parse import parse_qs, urlparse
 
 from clickjacking_validator import normalize_url, scan_url, validate_target
 from cors_validator import scan_cors
+from csp_checker import scan_csp
 from security_headers import scan_headers
 
 HOST = "127.0.0.1"
@@ -60,6 +62,8 @@ TOOL_ALIASES = {
     "/headers/": "/tools/headers/",
     "/cors": "/tools/cors/",
     "/cors/": "/tools/cors/",
+    "/csp": "/tools/csp/",
+    "/csp/": "/tools/csp/",
     "/clickjacking": "/tools/clickjacking/",
     "/clickjacking/": "/tools/clickjacking/",
 }
@@ -304,7 +308,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
             return
 
-        if path in ("/api/scan", "/api/headers", "/api/cors"):
+        if path in ("/api/scan", "/api/headers", "/api/cors", "/api/csp"):
             if not self._api_allowed():
                 self._json(403, {"error": "cross-origin API access denied"})
                 return
@@ -316,6 +320,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, scan_url(url, **kwargs).to_dict())
             elif path == "/api/headers":
                 self._json(200, scan_headers(url, **kwargs).to_dict())
+            elif path == "/api/csp":
+                self._json(200, scan_csp(url, **kwargs).to_dict())
             else:
                 self._json(200, scan_cors(url, **kwargs).to_dict())
             return
@@ -404,7 +410,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Clickjacking: http://127.0.0.1:{PORT}/tools/clickjacking/")
     print(f"Headers:      http://127.0.0.1:{PORT}/tools/headers/")
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")
-    print("API:          /api/scan  /api/headers  /api/cors  /api/health")
+    print(f"CSP:          http://127.0.0.1:{PORT}/tools/csp/")
+    print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/health")
     if not loopback:
         print("WARNING: bound on a non-loopback address. Private-IP scans are "
               + ("ENABLED (--allow-private)." if ALLOW_PRIVATE else "disabled."))

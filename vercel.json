@@ -4,6 +4,7 @@
     "api/scan.py":    { "maxDuration": 60 },
     "api/headers.py": { "maxDuration": 60 },
     "api/cors.py":    { "maxDuration": 60 },
+    "api/csp.py":     { "maxDuration": 60 },
     "api/health.py":  { "maxDuration": 10 }
   }
 }

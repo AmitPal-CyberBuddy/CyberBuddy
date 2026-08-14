@@ -1,7 +1,7 @@
 {
   "name": "CyberBuddy",
   "short_name": "CyberBuddy",
-  "description": "Browser security assessment suite — clickjacking, security headers, and CORS checks with evidence-grade output.",
+  "description": "Browser security assessment suite — clickjacking, security headers, CSP, and CORS checks with evidence-grade output.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -59,6 +59,18 @@
       "short_name": "CORS",
       "description": "Origin reflection, credentials, and Vary: Origin",
       "url": "./tools/cors/",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "CSP Policy Auditor",
+      "short_name": "CSP Audit",
+      "description": "Audit enforced CSP sources, directives, and Report-Only gaps",
+      "url": "./tools/csp/",
       "icons": [
         {
           "src": "icon-192.png",
