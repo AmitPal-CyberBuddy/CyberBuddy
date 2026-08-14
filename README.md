@@ -70,6 +70,7 @@ LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared Python<->JS scoring contract
 docs/performance.md             # engine performance notes
 docs/pages-workflow-patch.md    # REQUIRED manual edit to pages.yml
+docs/DEV-NOTES.md               # internal maintainer notes — never deployed, never in shipped files
 urls.txt                        # demo targets pre-scanned for the published cache
 humans.txt                      # who built it
 llms.txt                        # machine-readable project summary

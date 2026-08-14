@@ -3,10 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- GitHub Pages cannot send response headers, so the policy ships as a
-       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
-       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
-       limitations'. Keep this in sync with the CSP in server.py. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Security Headers — CyberBuddy</title>
   <meta name="description" content="Grade a URL's security headers into an A–F score." />
@@ -89,19 +85,19 @@
           <span id="mTarget" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Final URL</span>
+          <span class="meta-label" title="Where the target redirected, if it did">Final URL</span>
           <span id="mFinal" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">HTTP status</span>
+          <span class="meta-label" title="HTTP response code from the target">HTTP status</span>
           <span id="mStatus" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Checked</span>
+          <span class="meta-label">Scanned</span>
           <span id="mStamp" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Engine</span>
+          <span class="meta-label" title="Which engine produced this result — hover the source chip for details">Engine</span>
           <span id="mEngine" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">

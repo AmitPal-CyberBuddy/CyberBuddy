@@ -753,3 +753,70 @@ reshaped for exactly that reason.
 No scoring code was touched: severity/recommendations are a display layer over
 the existing check statuses, so the Python↔JS parity contract is unchanged
 (89 tests pass, including parity).
+
+---
+
+## 12. Round 3 — real-browser verification, visitor-first UX, internal-notes policy (2026-08-14)
+
+Verified against a real Chromium build (headless, Python engine online).
+
+**Bug found and fixed**
+
+- **Horizontal page blowout on the Headers report** (and any grid card holding
+  a long unbreakable token): the raw-headers JSON line expanded the `.grid-2`
+  track to ~2700px because grid items default to `min-width: auto`. Fixed with
+  `min-width: 0` on all grid children (`grid-2`, `poc-grid`, `suite-grid`,
+  `arch-split`, `scope-grid-2`) + `max-width: 100%` on the raw `<pre>`.
+  Verified: overflow 1772px → 0 at 1440px and 390px.
+
+**Blog / tool cards "not showing"**
+
+Reproduced the question in a real browser: both render (4 tool cards, 2 blog
+posts; 3 tools + 2 posts even with JavaScript disabled). The likely causes on
+the reader's side are a stale Pages deploy or cached HTML — after merging,
+wait for the Pages action (~2 min) and hard-refresh. Defense-in-depth added:
+the tool grid and blog grid now carry static fallback content in the markup,
+so those sections are never empty even if every script fails.
+
+**Visitor-first explanations (the "owner knows, visitor doesn't" pass)**
+
+- The header `engine · …` chip is now a button that opens a proper explainer
+  (dialog semantics, Escape/outside-click/scroll close): what the current
+  state means, all three engine modes in plain language, and a link to the
+  methodology. On phones it renders as a bottom sheet (positioned from
+  `<body>` because the header's backdrop-filter traps `position: fixed`).
+- A visible `?` button in the header opens the existing keyboard-shortcuts
+  dialog (it was only discoverable via a hint in the fine print).
+- Tooltips everywhere jargon appears: LIVE/CACHED tags, `via …` source lines,
+  the source chip, "analyst-attested", OWASP WSTG / CWE badges (tool cards +
+  standards section), every ticker term, the score gauge (band thresholds),
+  "Origin tested from", "Final URL", "HTTP status", "Engine", the PoC overlay
+  button, and evidence mode (rewritten without the word "chrome").
+- "Checked" meta label renamed to "Scanned" (it is a timestamp, not a count).
+
+**Visual structure / space usage (measured, not guessed)**
+
+- Hero: the "does / does not" scope list moved out of the cramped right card
+  into its own two-column section — hero card heights now differ by ~43px
+  instead of 213px, and the scope gets more prominence.
+- Pipeline diagram: 615px → 521px (desktop), 697px → 594px (mobile); the
+  architecture diagram 487px → 417px desktop, 589px → 476px mobile.
+- Header on mobile: 148px → 122px (compact nav, chip, brand).
+- Footer on mobile: 901px → 839px; tap targets bumped (nav links, copy
+  finding ≥ 24px); meta grid pinned to 4 columns (2 on mobile) so 8 items
+  never land in ragged 5+3 rows; section-head margins tightened.
+- Suite summary centres its gauge on phones; the verdict gauge scales down.
+
+**Internal-notes policy**
+
+Notes that used to live in shipped files (visible via view-source) now live
+in `docs/DEV-NOTES.md`, which the Pages workflow never deploys. Moved: the
+CSP-sync comment from six pages, the robots.txt advisory, the humans.txt
+"no last-update line" note, and the CSS font-loading rationale. Shipped files
+keep only comments a curious visitor can read without seeing maintainer
+notes. Future notes-to-self go in `docs/DEV-NOTES.md`.
+
+**Verification:** 89/89 engine tests (incl. Python↔JS parity), node --check
+on all scripts, jsdom boot/smoke of all five pages, Pages-build asset check,
+and a 27-point real-browser interaction suite (popover, shortcuts, suite
+scan, gauge, tags, no-JS fallbacks, mobile overflow) — all passing.

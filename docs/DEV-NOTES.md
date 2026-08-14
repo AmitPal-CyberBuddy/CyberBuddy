@@ -1,0 +1,73 @@
+# CyberBuddy — internal dev notes
+
+> This file is **repo-internal**: the Pages workflow does not copy `docs/`
+> to the deployed site. Notes that used to live as comments inside shipped
+> files (where visitors could read them via view-source) now live here.
+> If you add a "note to self" while editing, put it here — not in
+> `index.html`, the tool pages, `css/app.css`, `js/*.js`, `robots.txt`,
+> `humans.txt` or `404.html`.
+
+## CSP between server.py and the static pages
+
+GitHub Pages cannot send response headers, so the site's policy ships as a
+`<meta http-equiv="Content-Security-Policy">` tag in every page `<head>`.
+**Keep the meta tag in sync with the CSP in `server.py`** — they are the
+same policy expressed two ways.
+
+Known trap: `frame-ancestors` / `X-Frame-Options` **cannot** be set through
+a meta tag (meta CSP ignores `frame-ancestors`). The clickjacking tool page
+is the one place that widens `frame-src` to `https: http:` so its live
+iframe proof can load the target; the hub and other tool pages keep
+`frame-src 'none'`.
+
+When the CSP changes: update `server.py` (`self.CSP`) and every page
+(`index.html`, `404.html`, `tools/*/index.html`, `methodology/index.html`)
+in the same commit.
+
+## Font loading
+
+Fonts load from `<link>` tags in each page `<head>`, **not** `@import` in
+the stylesheet. An `@import` in `app.css` is serialized: the browser must
+download and parse the whole CSS file before it even discovers the font URL,
+which delays first paint and wastes the `preconnect` hints in `<head>`.
+
+## robots.txt is advisory on a project Pages site
+
+On a GitHub *project* Pages site this file lives at
+`/CyberBuddy/robots.txt`, but crawlers only read the **domain root**
+(`https://amitpal-cyberbuddy.github.io/robots.txt`). It only takes effect
+under a custom domain, or if the same rules are published from the
+`amitpal-cyberbuddy.github.io` repo. The absolute sitemap URL stays correct
+either way.
+
+## humans.txt has no "last update" line — on purpose
+
+A hand-maintained date rots the moment someone forgets it. Use the
+repository history instead:
+<https://github.com/AmitPal-CyberBuddy/CyberBuddy/commits/main>
+
+## Layout regression traps (learned the hard way)
+
+- Grid children need `min-width: 0` — without it, one long unbreakable token
+  (a raw header line, the JSON blob in the raw-headers `<pre>`) expands the
+  track and blows the page out horizontally. The `.grid-2 > *` rule in
+  `css/app.css` is load-bearing; keep it.
+- Evidence must stay visible without clicks: never put findings in
+  accordions, because a closed `<details>` cannot be force-opened in print
+  CSS and breaks the screenshot workflow.
+- Anything shown as a score must come from a real scan. The hub shows the
+  headers score as the only numeric gauge; clickjacking and CORS have no
+  numeric scale, so they are risks, never a fake /100.
+- LIVE / CACHED tags are an honesty promise: cached = CI-built demo report
+  for a `urls.txt` target, never a fresh scan. Keep them on every result.
+
+## Parity contract
+
+`tests/grader_fixtures.json` is the shared contract between the Python
+graders (`security_headers.py`, `clickjacking_validator.py`) and their
+browser port (`js/app.js`). The same target must never get a different grade
+on Pages than under `server.py`. The Pages workflow runs
+`python3 -m unittest test_engines.py` before every deploy — a scoring
+regression must never reach the site. Severity chips / recommendations /
+weight bars in the UI are display-only layers over the check statuses and
+must stay that way.

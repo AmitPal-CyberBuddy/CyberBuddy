@@ -3,10 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- GitHub Pages cannot send response headers, so the policy ships as a
-       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
-       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
-       limitations'. Keep this in sync with the CSP in server.py. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
   <meta name="description" content="CyberBuddy: clickjacking validation, security header grading, and CORS posture checks — evidence-grade results you can drop straight into your report." />
@@ -97,7 +93,7 @@
         </div>
         <button id="suiteGo" type="button" class="btn btn-primary">Run suite</button>
       </div>
-      <p class="form-hint">Python engine when available, published reports for the demo targets, in-browser graders otherwise — reading cross-origin headers asks your consent first. Press <kbd>?</kbd> for shortcuts. <a href="methodology/#privacy">What leaves your browser →</a></p>
+      <p class="form-hint">Python engine when available, <a href="#pagesNote">published reports</a> for the demo targets, in-browser graders otherwise — reading cross-origin headers asks your consent first. Press <kbd>?</kbd> for shortcuts. <a href="methodology/#privacy">What leaves your browser →</a></p>
       <div class="auth-badge" role="note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
         <span><strong>Authorized testing only.</strong> Read-only assessment engine — scan systems you own or have written permission to test.</span>
@@ -107,7 +103,7 @@
         <button type="button" class="recent-chip" data-url="https://example.com">example.com <span class="chip-hint">demo target</span></button>
         <button id="chipThisSite" type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site <span class="chip-hint">see the Pages limits</span></button>
       </div>
-      <details class="pages-note">
+      <details class="pages-note" id="pagesNote">
         <summary>ℹ Hosted on GitHub Pages — what that changes for scans</summary>
         <div class="pages-note-body">
           <p>GitHub Pages cannot send arbitrary response headers, so some checks run with browser-level limits here. The Python engine (<code>server.py</code>) is always preferred when it is online.</p>
@@ -139,28 +135,6 @@
           <li><strong>Evidence-grade output.</strong> Every finding shows the raw header value it used.</li>
           <li><strong>Hosted and local.</strong> GitHub Pages runs the graders in your browser. <code>server.py</code> is the same scoring, on your machine.</li>
         </ul>
-        <div class="scope-grid">
-          <div>
-            <p class="scope-title does">What CyberBuddy does</p>
-            <ul class="scope-list does">
-              <li>Read-only GET requests</li>
-              <li>Header inspection</li>
-              <li>CORS analysis</li>
-              <li>Framing analysis</li>
-              <li>Evidence collection</li>
-            </ul>
-          </div>
-          <div>
-            <p class="scope-title doesnot">What it does not do</p>
-            <ul class="scope-list doesnot">
-              <li>Exploitation</li>
-              <li>Authentication bypass</li>
-              <li>Destructive requests</li>
-              <li>POST / PUT / DELETE testing</li>
-              <li>Credential collection</li>
-            </ul>
-          </div>
-        </div>
         <div class="disclaimer mt-0" style="margin-top: 18px;">
           <span class="disclaimer-mark">! !</span>
           <span><strong>Authorized testing only.</strong> Point CyberBuddy at systems you own or have written permission to assess.</span>
@@ -169,20 +143,47 @@
     </div>
   </section>
 
+  <div class="section-head reveal">
+    <h2>What CyberBuddy is — and is not</h2>
+    <span class="count">read-only by design</span>
+  </div>
+  <div class="scope-grid-2">
+    <article class="card scope-card reveal" style="--d: .05s;">
+      <p class="card-title">What CyberBuddy does</p>
+      <ul class="scope-list does">
+        <li><strong>Read-only GET requests</strong> — no state is changed on the target</li>
+        <li><strong>Header inspection</strong> — the raw value behind every finding</li>
+        <li><strong>CORS analysis</strong> — cross-origin access posture</li>
+        <li><strong>Framing analysis</strong> — live clickjacking proof</li>
+        <li><strong>Evidence collection</strong> — screenshot-ready report cards</li>
+      </ul>
+    </article>
+    <article class="card scope-card reveal" style="--d: .12s;">
+      <p class="card-title">What it does not do</p>
+      <ul class="scope-list doesnot">
+        <li><strong>Exploitation</strong> — no payloads, no attacks</li>
+        <li><strong>Authentication bypass</strong> — no credential testing</li>
+        <li><strong>Destructive requests</strong> — GET only</li>
+        <li><strong>POST / PUT / DELETE testing</strong> — never sent</li>
+        <li><strong>Credential collection</strong> — nothing is harvested</li>
+      </ul>
+    </article>
+  </div>
+
   <div class="ticker reveal" aria-hidden="true">
     <div class="ticker-track">
-      <span>CSP frame-ancestors</span><span>X-Frame-Options</span>
-      <span>Strict-Transport-Security</span><span>X-Content-Type-Options</span>
-      <span>Referrer-Policy</span><span>Permissions-Policy</span>
-      <span>COOP · COEP · CORP</span><span>Cookie flags — Secure · HttpOnly · SameSite</span>
-      <span>Access-Control-Allow-Origin</span><span>Allow-Credentials</span>
-      <span>Vary: Origin</span><span>Raw evidence on every finding</span>
-      <span>CSP frame-ancestors</span><span>X-Frame-Options</span>
-      <span>Strict-Transport-Security</span><span>X-Content-Type-Options</span>
-      <span>Referrer-Policy</span><span>Permissions-Policy</span>
-      <span>COOP · COEP · CORP</span><span>Cookie flags — Secure · HttpOnly · SameSite</span>
-      <span>Access-Control-Allow-Origin</span><span>Allow-Credentials</span>
-      <span>Vary: Origin</span><span>Raw evidence on every finding</span>
+      <span title="Content-Security-Policy directive that controls who may frame the page">CSP frame-ancestors</span><span title="Legacy header that blocks or allows framing">X-Frame-Options</span>
+      <span title="HSTS — forces HTTPS for returning visitors">Strict-Transport-Security</span><span title="Stops browsers from MIME-sniffing responses">X-Content-Type-Options</span>
+      <span title="Controls how much of the URL is shared when linking out">Referrer-Policy</span><span title="Locks down browser features like camera and microphone">Permissions-Policy</span>
+      <span title="The cross-origin isolation header family">COOP · COEP · CORP</span><span title="Secure, HttpOnly and SameSite attributes on cookies">Cookie flags — Secure · HttpOnly · SameSite</span>
+      <span title="CORS header — which origins may read the response">Access-Control-Allow-Origin</span><span title="CORS header — allows credentialed cross-origin reads">Allow-Credentials</span>
+      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="Every finding shows the raw value it used">Raw evidence on every finding</span>
+      <span title="Content-Security-Policy directive that controls who may frame the page">CSP frame-ancestors</span><span title="Legacy header that blocks or allows framing">X-Frame-Options</span>
+      <span title="HSTS — forces HTTPS for returning visitors">Strict-Transport-Security</span><span title="Stops browsers from MIME-sniffing responses">X-Content-Type-Options</span>
+      <span title="Controls how much of the URL is shared when linking out">Referrer-Policy</span><span title="Locks down browser features like camera and microphone">Permissions-Policy</span>
+      <span title="The cross-origin isolation header family">COOP · COEP · CORP</span><span title="Secure, HttpOnly and SameSite attributes on cookies">Cookie flags — Secure · HttpOnly · SameSite</span>
+      <span title="CORS header — which origins may read the response">Access-Control-Allow-Origin</span><span title="CORS header — allows credentialed cross-origin reads">Allow-Credentials</span>
+      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="Every finding shows the raw value it used">Raw evidence on every finding</span>
     </div>
   </div>
 
@@ -192,9 +193,23 @@
   </div>
 
   <section class="tool-grid" id="toolGrid" aria-label="Available tools">
-    <a class="tool-card card corner-card" href="tools/clickjacking/"><h3>Clickjacking Validator</h3></a>
-    <a class="tool-card card corner-card" href="tools/headers/"><h3>Security Headers</h3></a>
-    <a class="tool-card card corner-card" href="tools/cors/"><h3>CORS Validator</h3></a>
+    <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
+         kept in the markup so the tools remain visible without JavaScript. -->
+    <a class="tool-card card corner-card" href="tools/clickjacking/">
+      <h3>Clickjacking Validator</h3>
+      <p class="tool-card-desc">Live frame test — if the real site UI appears in the frame, the page can be clickjacked. Screenshot the result as proof.</p>
+      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Clickjacking">OWASP WSTG-CLNT-09</span><span class="std-id" title="CWE-1021 — Improper Restriction of Rendered UI Layers or Frames">CWE-1021</span></div>
+    </a>
+    <a class="tool-card card corner-card" href="tools/headers/">
+      <h3>Security Headers</h3>
+      <p class="tool-card-desc">Grade CSP, X-Frame-Options, HSTS and the isolation headers into an A–F score, with the raw value behind every finding.</p>
+      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security">OWASP WSTG-CONF-07</span><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">WSTG-CONF-12</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
+    </a>
+    <a class="tool-card card corner-card" href="tools/cors/">
+      <h3>CORS Validator</h3>
+      <p class="tool-card-desc">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
+      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing">OWASP WSTG-CLNT-07</span><span class="std-id" title="CWE-942 — Permissive Cross-domain Policy with Untrusted Domains">CWE-942</span></div>
+    </a>
   </section>
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
@@ -264,8 +279,8 @@
         Clickjacking Validator
       </div>
       <div class="std-ids">
-        <span class="std-id">OWASP WSTG-CLNT-09</span>
-        <span class="std-id">CWE-1021</span>
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Clickjacking">OWASP WSTG-CLNT-09</span>
+        <span class="std-id" title="CWE-1021 — Improper Restriction of Rendered UI Layers or Frames">CWE-1021</span>
       </div>
       <p class="std-meta">UI-redressing checks: X-Frame-Options and CSP frame-ancestors, plus a live iframe proof.</p>
     </div>
@@ -275,9 +290,9 @@
         Security Headers
       </div>
       <div class="std-ids">
-        <span class="std-id">OWASP WSTG-CONF-07</span>
-        <span class="std-id">WSTG-CONF-12</span>
-        <span class="std-id">CWE-693</span>
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security">OWASP WSTG-CONF-07</span>
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">WSTG-CONF-12</span>
+        <span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span>
       </div>
       <p class="std-meta">Transport security (HSTS), Content-Security-Policy and the cookie-flag hardening family.</p>
     </div>
@@ -287,8 +302,8 @@
         CORS Validator
       </div>
       <div class="std-ids">
-        <span class="std-id">OWASP WSTG-CLNT-07</span>
-        <span class="std-id">CWE-942</span>
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing">OWASP WSTG-CLNT-07</span>
+        <span class="std-id" title="CWE-942 — Permissive Cross-domain Policy with Untrusted Domains">CWE-942</span>
       </div>
       <p class="std-meta">Cross-origin access posture: ACAO reflection vs allowlist, credentials and Vary: Origin.</p>
     </div>
@@ -377,7 +392,22 @@
     </div>
   </div>
 
-  <div class="blog-grid" id="blogGrid"></div>
+  <div class="blog-grid" id="blogGrid">
+    <!-- Static fallbacks for the two posts; renderBlog() replaces this
+         content when JavaScript runs. -->
+    <a class="blog-post" href="https://amitpxl.medium.com/http-request-smuggling-vs-http-request-pipelining-why-theyre-often-confused-44ffe6e528eb" target="_blank" rel="noopener noreferrer">
+      <div class="blog-post-tags"><span class="blog-badge">Newest</span><span class="tool-tag">HTTP</span><span class="tool-tag">Smuggling</span><span class="tool-tag">Burp</span></div>
+      <h3>HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused</h3>
+      <p class="blog-excerpt">Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.</p>
+      <div class="blog-post-foot"><span class="blog-date">Jun 19, 2026</span><span class="blog-open">Read on Medium →</span></div>
+    </a>
+    <a class="blog-post" href="https://amitpxl.medium.com/how-i-broke-encrypted-requests-by-reading-frontend-javascript-b016c5b9078d" target="_blank" rel="noopener noreferrer">
+      <div class="blog-post-tags"><span class="tool-tag">Client-side</span><span class="tool-tag">Crypto</span><span class="tool-tag">JS analysis</span></div>
+      <h3>How I Broke Client-Side Encryption By Frontend JavaScript Analysis</h3>
+      <p class="blog-excerpt">A walkthrough of finding hardcoded AES keys in frontend JavaScript and decrypting protected API traffic outside the browser.</p>
+      <div class="blog-post-foot"><span class="blog-date">May 27, 2026</span><span class="blog-open">Read on Medium →</span></div>
+    </a>
+  </div>
 
   <div class="blog-more reveal" style="--d: .24s;">
     <a class="btn btn-primary" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">

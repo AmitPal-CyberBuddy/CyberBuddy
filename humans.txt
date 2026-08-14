@@ -13,8 +13,3 @@ Software: CyberBuddy — browser security assessment suite
 License: Apache-2.0
 Language: English
 Authorized testing only.
-
-/* NOTE */
-No "last update" line here on purpose — a hand-maintained date rots the
-moment someone forgets it. Use the repository history for that:
-https://github.com/AmitPal-CyberBuddy/CyberBuddy/commits/main
