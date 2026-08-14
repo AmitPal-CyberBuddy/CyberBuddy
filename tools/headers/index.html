@@ -100,19 +100,33 @@
           <span class="meta-label">Checked</span>
           <span id="mStamp" class="meta-value mono">—</span>
         </div>
+        <div class="meta-item">
+          <span class="meta-label">Engine</span>
+          <span id="mEngine" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Method</span>
+          <span id="mMethod" class="meta-value mono">GET · read-only</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Checks</span>
+          <span id="mChecks" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Duration</span>
+          <span id="mDuration" class="meta-value mono">—</span>
+        </div>
       </div>
 
       <div id="verdict" role="status" aria-live="polite" class="verdict-banner unknown">
         <div class="verdict-grade">
+          <div id="gauge" class="score-gauge"></div>
           <span id="grade" class="grade f">—</span>
-          <div class="score-wrap">
-            <span id="score" class="score-num">0/100</span>
-            <div class="scorebar"><span id="scoreFill" style="width: 0%;"></span></div>
-          </div>
         </div>
         <div class="verdict-main">
           <span id="risk" class="risk unknown">—</span>
           <p id="summary" class="verdict-text">Run a scan to generate the report.</p>
+          <div id="posture" class="posture-strip" aria-label="Finding rollup"></div>
         </div>
       </div>
 

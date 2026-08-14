@@ -17,6 +17,8 @@
     const grade = (data.grade || "F").toUpperCase();
     const risk = (data.risk || "unknown").toUpperCase();
 
+    renderGauge($("gauge"), score, grade);
+
     $("grade").textContent = grade;
     $("grade").className = "grade " + (gradeFor(score) || grade.toLowerCase());
     bump($("grade"));
@@ -24,27 +26,29 @@
     $("risk").textContent = risk;
     $("risk").className = "risk " + (data.risk || "unknown");
     bump($("risk"));
-
-    countUp($("score"), score, "/100");
-    $("scoreFill").style.width = score + "%";
     $("verdict").className = "verdict-banner " + (data.risk || "unknown");
 
     $("mTarget").textContent = data.url || "—";
     $("mFinal").textContent = data.final_url || "—";
     $("mStatus").textContent = data.status_code != null ? String(data.status_code) : "—";
     $("mStamp").textContent = fmtStampUtc();
+    $("mEngine").textContent = sourceLabel(data);
+    $("mMethod").textContent = "GET · read-only";
+    $("mChecks").textContent = String((data.checks || []).length);
+    $("mDuration").textContent = data._duration_ms != null ? data._duration_ms + " ms" : "—";
     $("summary").textContent = data.summary || "";
 
     const flag = $("reportTitleFlag");
     if (flag) flag.innerHTML = unverifiedFlag(data);
 
+    $("posture").innerHTML = postureHtml(data.checks);
+
     $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
-    $("checks").querySelector("tbody").innerHTML = (data.checks || []).map((c) => {
-      const ev = c.evidence ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>" : "";
-      return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
-        "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-        "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
-    }).join("");
+    const tbody = $("checks").querySelector("tbody");
+    tbody.innerHTML = (data.checks || []).map((c, i) =>
+      findingRowHtml(c, { copy: true, index: i })
+    ).join("");
+    bindFindingCopy(tbody, data.checks || [], "Security Headers", data.url);
 
     renderProvenance(data, "Security Headers");
     enterEvidenceMode();
@@ -52,6 +56,9 @@
 
   async function scan(url) {
     setLoading($("go"), true);
+
+    const t0 = (window.performance && typeof performance.now === "function")
+      ? performance.now() : null;
 
     const consent = await ensureRelayConsent();
     if (consent === "deny") {
@@ -67,6 +74,9 @@
     }
 
     const data = await apiHeaders(url);
+    if (data && t0 != null) {
+      data._duration_ms = Math.max(1, Math.round(performance.now() - t0));
+    }
     setLoading($("go"), false);
 
     if (data && data._unreachable) {

@@ -72,6 +72,15 @@
   <div id="evidenceToggle"></div>
   <div id="relayGate" class="hidden"></div>
 
+  <details class="pages-note how-note">
+    <summary>ℹ How this probe works</summary>
+    <div class="pages-note-body">
+      <p>This page fetches the target as a cross-origin caller — exactly what a hostile website would do to read your data. The browser enforces CORS, so the probe measures the real policy from outside.</p>
+      <div class="pages-flow"><span>This page (caller origin)</span><span class="pf-arrow">→ GET →</span><span>Target server</span><span class="pf-arrow">→ ACAO decision →</span><span>Allow / block</span></div>
+      <p>On the hosted site this is a single-origin probe. The Python engine probes a second origin to prove whether <code>Access-Control-Allow-Origin</code> reflects any caller or honours an allowlist.</p>
+    </div>
+  </details>
+
   <section id="results" class="results hidden">
     <article class="card report-card">
       <div class="report-head">
@@ -101,12 +110,29 @@
           <span class="meta-label">Checked</span>
           <span id="mStamp" class="meta-value mono">—</span>
         </div>
+        <div class="meta-item">
+          <span class="meta-label">Engine</span>
+          <span id="mEngine" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Method</span>
+          <span id="mMethod" class="meta-value mono">GET · read-only</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Checks</span>
+          <span id="mChecks" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Duration</span>
+          <span id="mDuration" class="meta-value mono">—</span>
+        </div>
       </div>
 
       <div id="verdictBanner" class="verdict-banner unknown">
         <div class="verdict-main">
           <p id="protection" class="protection-line">Run a probe to assess CORS posture.</p>
           <p id="summary" class="verdict-text">Run a probe to generate the report.</p>
+          <div id="posture" class="posture-strip" aria-label="Finding rollup"></div>
         </div>
       </div>
 

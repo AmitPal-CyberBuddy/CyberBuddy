@@ -26,13 +26,13 @@
     $("protection").className = "protection-line " + cls;
   }
 
-  function renderChecks(checks) {
-    $("checks").querySelector("tbody").innerHTML = (checks || []).map((c) => {
-      const ev = c.evidence ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>" : "";
-      return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
-        "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-        "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
-    }).join("");
+  function renderChecks(checks, data) {
+    const tbody = $("checks").querySelector("tbody");
+    tbody.innerHTML = (checks || []).map((c, i) =>
+      findingRowHtml(c, { copy: true, index: i })
+    ).join("");
+    bindFindingCopy(tbody, checks || [], "CORS Validator", data && data.url);
+    $("posture").innerHTML = postureHtml(checks);
   }
 
   function finish(data) {
@@ -50,14 +50,28 @@
     $("mStamp").textContent = fmtStampUtc();
     setLoading($("go"), true);
 
+    const t0 = (window.performance && typeof performance.now === "function")
+      ? performance.now() : null;
+
     const engine = await apiCors(url);
+    if (engine && t0 != null) {
+      engine._duration_ms = Math.max(1, Math.round(performance.now() - t0));
+    }
     setSourceChip(engine || { _source: "none" });
+
+    const fillMeta = (data) => {
+      $("mEngine").textContent = sourceLabel(data || { _source: "none" });
+      $("mMethod").textContent = "GET · read-only";
+      $("mChecks").textContent = String((data && data.checks ? data.checks : []).length);
+      $("mDuration").textContent = data && data._duration_ms != null ? data._duration_ms + " ms" : "—";
+    };
 
     if (engine && engine._unreachable) {
       $("mOrigin").textContent = "engine";
       $("mStatus").textContent = "—";
       setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(engine));
-      renderChecks(engine.checks);
+      renderChecks(engine.checks, engine);
+      fillMeta(engine);
       setLoading($("go"), false);
       finish(engine);
       return;
@@ -68,18 +82,21 @@
       $("mStatus").textContent = engine.status_code != null ? String(engine.status_code) : "—";
       if (engine.error && !engine.checks) {
         setVerdict("UNKNOWN", engine.error);
-        renderChecks([]);
+        renderChecks([], engine);
+        fillMeta(engine);
         setLoading($("go"), false);
         finish(engine);
         return;
       }
       setVerdict((engine.risk || "unknown").toUpperCase(), engine.summary || "");
-      renderChecks(engine.checks);
+      renderChecks(engine.checks, engine);
+      fillMeta(engine);
       setLoading($("go"), false);
       finish(engine);
       return;
     }
 
+    fillMeta(engine);
     setLoading($("go"), false);
     finish(engine);
   }

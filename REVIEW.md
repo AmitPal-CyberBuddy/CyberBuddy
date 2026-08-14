@@ -667,3 +667,89 @@ Keep `Clickjacking-Validator` archived (GitHub's Archive button) with a README
 line pointing at CyberBuddy, rather than deleting it. It's dated 2026-08-13, one
 day before this repo — a reviewer seeing both will read it as "prototype →
 product", which is a good story. Deleting it just loses the history.
+
+---
+
+## 11. Round 2 — productization review (2026-08-14)
+
+A 30-point improvement roadmap was proposed for the hosted site. Each item was
+challenged against one question: *does this make the assessment more credible,
+or just more decorated?* An evidence-grade security tool must never show data
+that did not actually come from a scan — several proposals were rejected or
+reshaped for exactly that reason.
+
+**Adopted as proposed**
+
+- **Animated score gauge** — SVG ring that animates to the real 0–100 headers
+  score, with the number kept as text (screenshots/AT), grade-band label, and
+  full `prefers-reduced-motion` handling. Used on the Headers report and in the
+  hub's suite summary.
+- **Scan pipeline** — the hub now shows the real stages a run passes through
+  (normalize → engine → consent → collect → evaluate → report) with stage-based
+  progress, instead of three "Scanning…" skeletons. Stage notes are honest:
+  they name the engine that answered and whether consent was needed or skipped.
+- **Posture rollup** — missing/weak/OK/info counts under the verdict.
+- **Copy finding** — every finding row copies a paste-ready block (status,
+  severity, evidence, recommendation, target, UTC stamp) via the existing
+  clipboard helper.
+- **Scan metadata** — engine, method (GET · read-only), check count, and a
+  *measured* duration on every tool report. ("Redirects" was skipped: the
+  browser cannot see redirect chains, and faking it would be worse than
+  omitting it.)
+- **Demo vs live** — results now carry LIVE / CACHED tags (cache =
+  CI-published demo reports), the sample console is labelled "demo · cached",
+  and the cached-demo line was added to the typed console output.
+- **Pages-limits panel** — collapsible "what hosting on GitHub Pages changes"
+  block with the browser-engine → CORS → header-visibility chain and the
+  `python3 server.py` answer.
+- **Scope panel + authorized badge** — "What CyberBuddy does / does not do"
+  grid, plus a prominent authorized-testing badge next to the scan bar.
+- **Footer architecture** — Tools / Methodology & resources / Connect columns
+  plus the engine line under the brand.
+- **Scan history with grades** — recent-scan chips show the last headers grade
+  (small digest in localStorage, same 24h TTL, cleared by Clear history).
+  Clicking a chip still *re-scans*: restoring stale cached reports would
+  present old data as fresh evidence.
+
+**Adopted with modifications**
+
+- **Hero (#1)** — the proposed fake "LIVE ASSESSMENT" dashboard was rejected
+  (it shows a scan that never happened, 40px above real results). Instead:
+  product framing in the kicker, the real console labelled as a cached demo,
+  and the real dashboard appears when you actually scan.
+- **Tool cards (#3)** — OWASP/CWE badges added (real data). Pre-filled green
+  checkmarks rejected: capabilities that look like results.
+- **VAPT-style findings (#5)** — severity chip, recommendation, and per-check
+  earned-weight bar inside the existing row. Accordions rejected: they hide
+  evidence behind clicks and break print (a closed `<details>` cannot be
+  force-opened in print CSS).
+- **Headers matrix (#15)** — expressed as `8/10 pts` weight bars in the
+  findings table rather than a second, redundant PRESENT/VALID/SCORE table.
+- **CORS explainer (#13)** — static "how this probe works" (one real fetch,
+  drawn honestly) instead of animated fake packets.
+- **Methodology/architecture (#8/#28)** — static vertical pipeline diagram and
+  an architecture diagram (UI → browser engine / hosted API → engines →
+  evidence → score). Interactive/animated versions would be decoration.
+- **Suite summary** — worst-case risk across the three tools + per-tool chips,
+  with the headers gauge as the *only* numeric score. No invented aggregate
+  /100: clickjacking and CORS have no numeric scale.
+
+**Rejected, with reasons**
+
+- **Evidence/Summary/Technical tabs (#6)** — the pages are already
+  evidence-forward (raw headers, provenance strip, unverified flags); tabs
+  hide evidence behind clicks.
+- **HTML report export (#7)** — markdown copy, print/PDF and the PNG evidence
+  card already cover VAPT handoff.
+- **Clickjacking diagram (#14)** — the page already renders the *real* framed
+  target with a PoC overlay; a drawing is strictly worse evidence.
+- **Scan comparison (#18)** — persisting full results for comparison conflicts
+  with the local-only, 24h, clearable storage promise; retests are served by
+  copy/export.
+- **Engine popover (#10)** — engine state is already visible in the header
+  chip tooltip, the pipeline's engine stage, and the report metadata row.
+- **Keyboard modal (#21), engine provenance (#27)** — already shipped.
+
+No scoring code was touched: severity/recommendations are a display layer over
+the existing check statuses, so the Python↔JS parity contract is unchanged
+(89 tests pass, including parity).
