@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- GitHub Pages cannot send response headers, so the policy ships as a
+       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
+       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
+       limitations'. Keep this in sync with the CSP in server.py. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
   <meta name="description" content="CyberBuddy: clickjacking validation, security header grading, and CORS posture checks — evidence-grade results you can drop straight into your report." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
@@ -41,6 +46,7 @@
   <script src="js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="css/app.css?v=20260814d" />
   <script type="application/ld+json">
     {
@@ -91,13 +97,14 @@
         </div>
         <button id="suiteGo" type="button" class="btn btn-primary">Run suite</button>
       </div>
-      <p class="form-hint">Works on this hosted site. Python engine when available, cached reports for configured targets, live graders otherwise. Press <kbd>?</kbd> for shortcuts.</p>
+      <p class="form-hint">Works on this hosted site. Python engine when available, published reports for the demo targets, in-browser graders otherwise — reading cross-origin headers asks your consent first. Press <kbd>?</kbd> for shortcuts. <a href="methodology/#privacy">What leaves your browser →</a></p>
       <div id="suggestedTargets" class="suggested-targets" aria-label="Demo targets">
         <span class="recent-label">Try:</span>
-        <button type="button" class="recent-chip" data-url="https://example.com">example.com <span class="chip-hint">cached</span></button>
-        <button id="chipThisSite" type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site</button>
+        <button type="button" class="recent-chip" data-url="https://example.com">example.com <span class="chip-hint">demo target</span></button>
+        <button id="chipThisSite" type="button" class="recent-chip" data-url="https://amitpal-cyberbuddy.github.io/CyberBuddy/">this site <span class="chip-hint">see the Pages limits</span></button>
       </div>
       <div id="recentScans" class="recent-scans hidden" aria-label="Recent scans"></div>
+      <div id="relayGate" class="hidden"></div>
       <div id="suiteToolbar" class="suite-toolbar hidden">
         <button type="button" id="suiteShare" class="btn btn-ghost btn-sm">Share suite</button>
         <button type="button" id="suiteCopy" class="btn btn-ghost btn-sm">Copy suite report</button>

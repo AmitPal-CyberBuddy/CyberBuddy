@@ -152,7 +152,9 @@ class Handler(BaseHTTPRequestHandler):
         "style-src-attr 'unsafe-inline'; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "script-src 'self'; "
-        "img-src 'self' data:; "
+        # blob: — the evidence-card / PoC-image exports build a canvas, call
+        # toBlob(), and download it via an object URL.
+        "img-src 'self' data: blob:; "
         "connect-src 'self' http: https:; "
         "frame-src http: https:; "
         "object-src 'none'; "

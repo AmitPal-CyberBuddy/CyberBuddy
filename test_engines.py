@@ -800,6 +800,76 @@ class SessionPoolTests(unittest.TestCase):
         )
 
 
+class HostedCspTests(unittest.TestCase):
+    """GitHub Pages cannot send response headers, so the policy ships as a
+    <meta> tag. A header-grading tool that ships no policy on its own hosted
+    site is a credibility problem, so keep these locked in."""
+
+    PAGES = [
+        "index.html",
+        "404.html",
+        "methodology/index.html",
+        "tools/clickjacking/index.html",
+        "tools/headers/index.html",
+        "tools/cors/index.html",
+    ]
+
+    def _csp(self, page: str) -> str:
+        text = (ROOT / page).read_text(encoding="utf-8")
+        m = re.search(
+            r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', text
+        )
+        self.assertIsNotNone(m, f"{page} has no meta CSP")
+        return m.group(1)
+
+    def test_every_page_ships_a_meta_csp(self):
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                self.assertIn("default-src 'self'", csp)
+                self.assertIn("object-src 'none'", csp)
+                self.assertIn("base-uri 'self'", csp)
+
+    def test_no_unsafe_inline_script_anywhere(self):
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                script = re.search(r"script-src ([^;]+)", csp).group(1)
+                self.assertNotIn("unsafe-inline", script)
+                self.assertNotIn("unsafe-eval", script)
+
+    def test_only_clickjacking_tool_may_frame_targets(self):
+        """Least privilege: the framing capability is the whole point of one
+        tool and a liability on every other page."""
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                if page == "tools/clickjacking/index.html":
+                    self.assertIn("frame-src https:", csp)
+                else:
+                    self.assertIn("frame-src 'none'", csp)
+
+    def test_exports_are_not_blocked(self):
+        """The evidence-card / PoC-image download builds a canvas blob."""
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                self.assertIn("blob:", re.search(r"img-src ([^;]+)", self._csp(page)).group(1))
+
+    def test_fonts_are_not_render_blocking_imports(self):
+        """@import inside app.css serializes the font fetch behind the CSS
+        download+parse, which defeats the preconnect hints."""
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertNotIn("@import url(", css)
+        for page in ["index.html", "tools/headers/index.html"]:
+            text = (ROOT / page).read_text(encoding="utf-8")
+            self.assertIn("fonts.googleapis.com/css2", text)
+
+    def test_hub_can_offer_relay_consent(self):
+        """Without #relayGate the hub silently degrades to 'no header data'
+        on the hosted site with no way for the analyst to opt in."""
+        self.assertIn('id="relayGate"', (ROOT / "index.html").read_text(encoding="utf-8"))
+
+
 class ClearRecentScansTests(unittest.TestCase):
     """Clearing scan history must also drop the cached response headers."""
 

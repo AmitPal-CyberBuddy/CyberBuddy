@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- GitHub Pages cannot send response headers, so the policy ships as a
+       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
+       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
+       limitations'. Keep this in sync with the CSP in server.py. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CORS Validator — CyberBuddy</title>
   <meta name="description" content="Check how a site shares data with other origins." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
@@ -36,6 +41,7 @@
   <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="../../css/app.css?v=20260814d" />
   <script src="../../js/app.js?v=20260814d" defer></script>
   <script src="../../js/tool.cors.js?v=20260814d" defer></script>

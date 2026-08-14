@@ -249,6 +249,30 @@ framing headers.
 - `robots.txt` and `.well-known/security.txt` only take effect at a **domain
   root**. On a project Pages site they live under `/CyberBuddy/`, so crawlers
   will not read them until the project moves to a custom domain.
+
+## Hosted site limitations (GitHub Pages)
+
+Pages serves static files and **cannot send response headers**, which has real
+consequences for a tool that grades response headers:
+
+- The policy ships as a `<meta http-equiv="Content-Security-Policy">` on every
+  page instead. That covers `script-src`, `object-src`, `base-uri`,
+  `frame-src` and friends.
+- **`frame-ancestors` and `X-Frame-Options` cannot be set this way** — a meta
+  CSP ignores `frame-ancestors` by specification, and XFO is header-only. So
+  *the hosted site itself can be framed*, and scanning it with CyberBuddy will
+  (correctly) report missing framing protection. `server.py` sets both properly.
+  Fixing this on the hosted site requires a host that can send headers
+  (Cloudflare Pages `_headers`, Netlify, Vercel) or a custom domain behind a
+  proxy.
+- HSTS is likewise header-only; `github.io` is HSTS-preloaded at the domain
+  level, so this is covered in practice but not by anything in this repo.
+- Because of the above, **the hosted site will not score A against itself even
+  though `server.py` does.** That is a hosting limit, not a scoring bug — say
+  so if anyone asks.
+- Only `/tools/clickjacking/` is allowed to frame arbitrary targets
+  (`frame-src https: http:`); every other page is `frame-src 'none'`.
+
 - Asset cache-busting (`?v=…`) is stamped with the commit SHA by the Pages
   workflow — do not hand-maintain those strings.
 

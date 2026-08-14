@@ -4,7 +4,10 @@
    Reports stay screenshot-ready; print stylesheet flips to paper.
    ========================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap");
+/* Fonts are loaded via <link rel="preload"/stylesheet> in each page <head>,
+   NOT @import. An @import here is serialized: the browser must download and
+   parse this file before it even discovers the font URL, which delays first
+   paint and makes the preconnect hints in <head> nearly useless. */
 
 :root {
   color-scheme: dark;

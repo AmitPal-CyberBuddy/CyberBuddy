@@ -589,6 +589,51 @@ All items below shipped in this branch.
 - `PERFORMANCE.md` → `docs/performance.md`, rewritten as reference notes.
 - `humans.txt` no longer carries a hand-maintained date that would rot.
 
+## 8b. Hosted-site (GitHub Pages) pass
+
+Reviewed specifically as the site behaves on Pages — no Python engine, no
+response headers — rather than as it behaves locally.
+
+**Bug: the hub could never grade headers.** `ensureRelayConsent()` calls
+`renderRelayGate()`, which no-ops when `#relayGate` is absent — and the hub
+never had that element. It failed *closed* (no leak, good) but the consent
+prompt could never appear, so on the hosted site the suite silently degraded
+to "UNKNOWN / no header data" for every target with no way to opt in. Since
+the hub is the landing page, this was the first thing every visitor hit.
+Added `#relayGate` to the hub and wired consent into the suite run, with a
+useful message on decline. Verified: gate appears, and after consent the
+suite returns real grades while only the hostname leaves the browser.
+
+**Fonts were render-blocking.** `css/app.css` pulled Google Fonts via
+`@import`, which serializes: the browser must download and parse the whole
+stylesheet before it even discovers the font URL, making the `preconnect`
+hints in `<head>` nearly useless. Moved to a parallel `<link>` in every page.
+(First attempt used `media="print" onload="this.media='all'"` — caught that
+the inline `onload` would violate the strict CSP we had just earned, so it
+ships as a plain link; `display=swap` already prevents invisible text.)
+
+**The hosted site shipped no security policy at all.** Pages cannot send
+response headers, so a header-grading tool was publishing itself with zero
+headers. Added a `<meta http-equiv="Content-Security-Policy">` to all six
+pages, least-privilege: only `/tools/clickjacking/` may frame arbitrary
+targets (`frame-src https: http:`), everything else is `frame-src 'none'`.
+Added `img-src blob:` after checking the canvas export path — the
+evidence-card and PoC-image downloads would otherwise have been blocked.
+`server.py` updated to match so local and hosted stay in sync.
+
+**Documented an honest limitation.** A meta CSP *cannot* set
+`frame-ancestors`, and `X-Frame-Options` is header-only, so the hosted site
+can still be framed and will not score A against itself even though
+`server.py` does. That is a hosting limit, not a scoring bug; README now says
+so plainly rather than leaving it as a surprise.
+
+**Copy.** Engine chip `live · browser` -> `browser · no engine` with a
+tooltip stating the trust level. Removed the `cached` promise from the demo
+chip (it breaks if the cache job fails); "this site" chip now frames the
+Pages limits as the teaching moment they are.
+
+6 new tests lock all of this in (89 total).
+
 ## 9. Original suggested order of work
 
 **This week (small, high value)**

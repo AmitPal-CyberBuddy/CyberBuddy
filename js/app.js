@@ -391,10 +391,16 @@ async function detectEngine() {
   } catch (_) { /* fall through to live */ }
 
   window.__cbEngine = { mode: "live" };
-  chip.title = "Live mode — graders run in this browser";
+  // Be specific about the trust level rather than a vague "live". A security
+  // audience needs to know the grading is client-side and that reading
+  // headers may involve a relay they have to approve.
+  chip.title =
+    "No Python engine detected. Graders run in this browser; reading " +
+    "cross-origin headers needs your consent to use a public relay. " +
+    "Run server.py locally for a same-origin scan.";
   chip.classList.add("is-live");
   dot.classList.add("on", "live");
-  text.textContent = "live · browser";
+  text.textContent = "browser · no engine";
   return { online: false, reason: "live" };
 }
 
@@ -1932,6 +1938,20 @@ function initSuite() {
     setLoading(go, true);
     out.classList.remove("hidden");
     if (toolbar) toolbar.classList.add("hidden");
+    // Ask before anything can reach a third-party relay. Without this the
+    // hub silently degraded to "no header data" for every target on the
+    // hosted site, with no way for the analyst to opt in.
+    const consent = await ensureRelayConsent();
+    if (consent === "deny") {
+      out.innerHTML =
+        '<div class="notice"><h3>Relay lookups declined</h3>' +
+        "<p>Header grading needs either a local <code>server.py</code> or a " +
+        "third-party relay. Run the Clickjacking tool for a frame-based visual " +
+        "proof that needs neither, or start <code>python3 server.py</code> for " +
+        "a full scan that never leaves your machine.</p></div>";
+      setLoading(go, false);
+      return;
+    }
     out.innerHTML = '<div class="suite-grid">' +
       suiteSkeleton("Clickjacking") + suiteSkeleton("Headers") + suiteSkeleton("CORS") +
       "</div>";
