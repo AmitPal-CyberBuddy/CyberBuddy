@@ -131,6 +131,33 @@ invisible-cards bug ship.
   `scroll-behavior: smooth` means a menu check right after `scrollTo` can
   measure a stale header position. Both cost a false-positive round.
 
+## Blocking prompts must not look like progress
+
+The relay-consent gate blocks a scan on a human decision. Reviewers read it
+as "the scan is running, maybe stuck" instead of "answer this". Three
+separate causes, all worth remembering for any future blocking prompt:
+
+- **A spinner that keeps spinning is a lie.** The caller had already run
+  `setLoading(go, true)`, so the Scan button spun while the gate waited.
+  `ensureRelayConsent()` now parks every `.btn.is-loading` into an
+  `is-waiting` state reading "Waiting for your choice…", and restores the
+  spinner only if the scan actually resumes. If you add another gate, park
+  the caller's busy state the same way.
+- **A prompt below the fold does not exist.** The gate rendered at
+  `top: 681px` in an 844px viewport. It now scrolls itself into view and
+  takes focus. Align the **top**, not the centre — the panel is taller than
+  a phone viewport, so `block: "center"` pushes the heading off-screen.
+  Offset by the sticky header or the title hides behind it.
+- **`btn-primary` among sibling choices reads as "already selected".** The
+  old row of three buttons looked like hostname-only was preselected and
+  the scan was merely slow. All three are now equal-weight option cards;
+  the recommendation is an explicit "Recommended" chip, not a colour.
+
+Also: if options differ in ways that matter (privacy, evidence quality),
+say so **in** the option. A tooltip nobody hovers is not documentation —
+each card states what it sends, what you get back, and why you would pick
+it.
+
 ## Provenance traps
 
 - **A cache entry inherits the provenance of whatever filled it.** The

@@ -1235,5 +1235,96 @@ class RelayProvenanceTests(unittest.TestCase):
             self.assertIn(src, block)
 
 
+class RelayConsentGateTests(unittest.TestCase):
+    """Round 6b: the relay gate blocks a scan on a human decision, so it must
+    read as a question — not as a status panel beside a running spinner."""
+
+    def setUp(self) -> None:
+        self.js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        start = self.js.index("function renderRelayGate()")
+        self.gate = self.js[start:self.js.index("\n/* Call before any scan", start)]
+        # Strip comments: they discuss the OLD markup (btn-primary, tooltips)
+        # and would otherwise satisfy assertions about the rendered output.
+        self.markup = re.sub(r"//.*", "", self.gate)
+
+    def test_gate_states_the_scan_is_paused(self):
+        """Reviewers read the gate as 'the scan is running, maybe stuck'."""
+        self.assertIn("scan is paused until you pick", self.markup)
+        self.assertIn("Action needed", self.markup)
+
+    def test_no_option_is_preselected(self):
+        """A btn-primary among three choices reads as 'already answered'."""
+        self.assertNotIn("btn-primary", self.markup)
+        # Exactly three calls to the shared option() builder, one per choice.
+        self.assertEqual(re.findall(r'\boption\("(\w+)"', self.markup),
+                         ["host", "full", "deny"])
+        self.assertIn('class="relay-option"', self.markup)
+
+    def test_exactly_one_option_is_recommended(self):
+        # The "Recommended" chip must actually be rendered…
+        self.assertIn(">Recommended<", self.markup)
+        self.assertIn("relay-option-rec", self.markup)
+        # …and exactly one option passes rec=true — the privacy-preserving one.
+        host = self.markup[self.markup.index('option("host"'):self.markup.index('option("full"')]
+        self.assertIn("true", host)
+        full = self.markup[self.markup.index('option("full"'):self.markup.index('option("deny"')]
+        self.assertIn("false", full)
+        deny = self.markup[self.markup.index('option("deny"'):]
+        self.assertIn("false", deny)
+
+    def test_each_option_explains_what_it_sends_and_returns(self):
+        """The difference must be readable without hovering a tooltip."""
+        # One shared builder emits both lines for every option.
+        self.assertIn("<strong>Sends:</strong>", self.markup)
+        self.assertIn("<strong>You get:</strong>", self.markup)
+        for mode in ('option("host"', 'option("full"', 'option("deny"'):
+            self.assertIn(mode, self.markup)
+
+    def test_gate_is_scrolled_into_view_and_focused(self):
+        """It rendered below the fold on a phone and went unnoticed."""
+        # The scroll must actually run, not sit behind a dead guard.
+        self.assertRegex(self.markup, r"\n\s*window\.scrollTo\(\{ top:")
+        self.assertRegex(self.markup, r"\n\s*try \{ panel\.focus\(")
+        # Top-aligned, not centred: the panel is taller than a phone viewport.
+        self.assertNotIn('block: "center"', self.markup)
+
+    def test_escape_declines_rather_than_relaying(self):
+        self.assertIn('choose("deny")', self.markup)
+
+    def test_spinner_stops_while_the_gate_waits(self):
+        """A spinning Scan button makes the gate look like a slow scan."""
+        start = self.js.index("async function ensureRelayConsent")
+        body = self.js[start:self.js.index("\n}", start)]
+        self.assertIn("is-waiting", body)
+        self.assertIn("setLoading(btn, false)", body)
+        self.assertIn("Waiting for your choice", body)
+        # …and the spinner comes back when the scan actually resumes.
+        self.assertIn("setLoading(btn, true)", body)
+
+    def test_waiting_button_is_styled(self):
+        self.assertIn(".btn.is-waiting", self.css)
+
+    def test_options_stack_on_narrow_screens(self):
+        start = self.css.index(".relay-consent-actions {")
+        self.assertIn("repeat(3, 1fr)", self.css[start:self.css.index("}", start)])
+        self.assertIn(".relay-consent-actions { grid-template-columns: 1fr; }", self.css)
+
+    def test_gate_still_names_every_relay_host(self):
+        """The disclosure must keep listing who would see the target."""
+        self.assertIn("RELAY_HOSTS.join(", self.markup)
+        start = self.js.index("const RELAY_HOSTS")
+        for host in ("hackertarget.com", "allorigins.win", "corsproxy.io", "codetabs.com"):
+            self.assertIn(host, self.js[start:start + 300])
+
+    def test_gate_keeps_the_local_server_escape_hatch(self):
+        self.assertIn("python3 server.py", self.markup)
+
+    def test_consent_stays_session_scoped(self):
+        """Consent must not silently persist across days."""
+        start = self.js.index("function setRelayConsent")
+        self.assertIn("sessionStorage", self.js[start:self.js.index("}", start)])
+
+
 if __name__ == "__main__":
     unittest.main()

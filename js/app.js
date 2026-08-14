@@ -3070,38 +3070,116 @@ function renderRelayGate() {
   const wrap = document.getElementById("relayGate");
   if (!wrap) return Promise.resolve("skip");
   wrap.classList.remove("hidden");
+  // Every option spells out what leaves the browser, what comes back, and
+  // what it costs. Reviewers reported the old three-button row read as
+  // "already answered" because one button was styled btn-primary — none of
+  // them is preselected now, and each carries its own explanation rather
+  // than a tooltip nobody hovers.
+  const option = (mode, label, rec, what, sends, gets) =>
+    '<button type="button" class="relay-option" data-consent="' + mode + '">' +
+    '<span class="relay-option-head"><span class="relay-option-label">' + label + "</span>" +
+    (rec ? '<span class="relay-option-rec">Recommended</span>' : "") + "</span>" +
+    '<span class="relay-option-what">' + what + "</span>" +
+    '<span class="relay-option-meta"><span><strong>Sends:</strong> ' + sends + "</span>" +
+    '<span><strong>You get:</strong> ' + gets + "</span></span></button>";
+
   wrap.innerHTML =
-    '<div class="relay-consent" role="alertdialog" aria-labelledby="relayGateTitle">' +
-    '<h3 id="relayGateTitle">No local engine — header reads would use public relays</h3>' +
-    "<p>This hosted page cannot read cross-origin response headers on its own. " +
-    "To grade them it would proxy the request through public services, which " +
-    "discloses what you are testing to operators outside your engagement:</p>" +
-    "<ul>" + RELAY_HOSTS.map((h) => "<li><code>" + esc(h) + "</code></li>").join("") + "</ul>" +
-    "<p>They would see the target and your IP address. Many assessment NDAs " +
-    "prohibit this. For a fully private scan run <code>python3 server.py</code> locally.</p>" +
-    '<div class="relay-consent-actions">' +
-    '<button type="button" class="btn btn-primary btn-sm" data-consent="host">Allow — hostname only</button>' +
-    '<button type="button" class="btn btn-ghost btn-sm" data-consent="full">Allow — full URL (path + query)</button>' +
-    '<button type="button" class="btn btn-ghost btn-sm" data-consent="deny">No — frame test only</button>' +
-    "</div></div>";
+    '<div class="relay-consent" role="alertdialog" aria-labelledby="relayGateTitle" aria-describedby="relayGateBody" tabindex="-1">' +
+    '<div class="relay-consent-head">' +
+    '<span class="relay-consent-badge">Action needed</span>' +
+    '<h3 id="relayGateTitle">Choose how to read this target\u2019s headers</h3>' +
+    "</div>" +
+    '<div id="relayGateBody">' +
+    '<p class="relay-consent-lead"><strong>The scan is paused until you pick one of the three options below.</strong> ' +
+    "This hosted page has no local engine, so it cannot read cross-origin response " +
+    "headers on its own.</p>" +
+    "<p>To grade them it would proxy the request through public services, which " +
+    "discloses what you are testing to operators outside your engagement " +
+    "(<code>" + RELAY_HOSTS.join("</code>, <code>") + "</code>). They would see the " +
+    "target and your IP address, and many assessment NDAs prohibit that. For a " +
+    "fully private scan, stop and run <code>python3 server.py</code> locally instead.</p>" +
+    "</div>" +
+    '<div class="relay-consent-actions" role="group" aria-label="Relay options">' +
+    option("host", "Allow \u2014 hostname only", true,
+      "Proxies <em>only</em> the hostname. Best balance of evidence and privacy, and enough for almost every header check \u2014 CSP, HSTS, X-Frame-Options and the cookie/isolation family are all set per origin.",
+      "<code>example.com</code>", "A full A\u2013F header grade, flagged <em>unverified</em>") +
+    option("full", "Allow \u2014 full URL", false,
+      "Also proxies the path and query string. Only needed when headers differ per path (a login route, a tenant-specific page). This is the option most likely to leak a token or customer ID from a URL.",
+      "<code>example.com/admin?token=\u2026</code>", "Same grade, scoped to that exact URL") +
+    option("deny", "No \u2014 do not use relays", false,
+      "Nothing is sent to any third party. Header grading is skipped; the Clickjacking tool still gives a real frame-based visual proof, because that runs entirely in your browser.",
+      "Nothing", "No header grade on this page") +
+    "</div>" +
+    '<p class="relay-consent-foot">Your choice applies to this browser tab only and is forgotten when you close it. ' +
+    'Relayed values are always labelled <span class="unverified-flag">unverified</span>.</p>' +
+    "</div>";
+
+  const panel = wrap.querySelector(".relay-consent");
+  // The gate can render below the fold on a phone (measured top: 681px in an
+  // 844px viewport), where it reads as "the scan is just slow". Bring it into
+  // view and move focus so keyboard and screen-reader users land on it too.
+  // Align the TOP, not the centre: the panel is taller than a phone viewport
+  // (~1100px at 390px wide), so centring pushes its heading off-screen.
+  // Offset by the sticky header so the title is not hidden behind it.
+  try {
+    const header = document.querySelector(".site-header");
+    const offset = (header && getComputedStyle(header).position === "sticky")
+      ? header.getBoundingClientRect().height + 12 : 12;
+    const top = panel.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top: Math.max(0, top), behavior: prefersReduced() ? "auto" : "smooth" });
+  } catch (_) { panel.scrollIntoView(); }
+  try { panel.focus({ preventScroll: true }); } catch (_) { /* older browsers */ }
+
   return new Promise((resolve) => {
+    const choose = (mode) => {
+      setRelayConsent(mode);
+      wrap.classList.add("hidden");
+      wrap.innerHTML = "";
+      resolve(mode);
+    };
     wrap.querySelectorAll("[data-consent]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const mode = btn.getAttribute("data-consent");
-        setRelayConsent(mode);
-        wrap.classList.add("hidden");
-        wrap.innerHTML = "";
-        resolve(mode);
-      });
+      btn.addEventListener("click", () => choose(btn.getAttribute("data-consent")));
+    });
+    // Escape is the safe default: decline rather than silently relay.
+    panel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); choose("deny"); }
     });
   });
 }
 
-/* Call before any scan that may fall through to a relay. */
+/* Call before any scan that may fall through to a relay.
+
+   While the gate is open the scan is BLOCKED on a human decision, so any
+   spinner started by the caller must stop: reviewers reported that a
+   still-spinning Scan button made the gate read as "the scan is running,
+   maybe stuck" rather than "you need to answer this". The button is parked
+   in an explicit waiting state and restored once a choice is made. */
 async function ensureRelayConsent(url) {
   const needed = await relayGateNeeded(url);
   if (!needed) return relayConsent() || "skip";
-  return renderRelayGate();
+
+  const busy = [...document.querySelectorAll(".btn.is-loading")];
+  const parked = busy.map((btn) => {
+    const label = btn.textContent.trim();
+    setLoading(btn, false);
+    btn.disabled = true;
+    btn.classList.add("is-waiting");
+    btn.dataset.cbWaitLabel = label;
+    btn.textContent = "Waiting for your choice\u2026";
+    return btn;
+  });
+
+  const mode = await renderRelayGate();
+
+  parked.forEach((btn) => {
+    btn.classList.remove("is-waiting");
+    if (btn.dataset.cbWaitLabel) btn.textContent = btn.dataset.cbWaitLabel;
+    delete btn.dataset.cbWaitLabel;
+    btn.disabled = false;
+    // Declining ends the scan; the caller re-enables on any other path.
+    if (mode !== "deny") setLoading(btn, true);
+  });
+  return mode;
 }
 
 function isUnverified(data) {

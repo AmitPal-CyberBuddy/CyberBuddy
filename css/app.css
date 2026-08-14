@@ -887,15 +887,70 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 }
 .privacy-note strong { color: var(--muted); font-weight: 600; }
 
+/* Relay consent gate. This blocks a scan on a human decision, so it has to
+   read as a question — not as a status panel that appeared while a spinner
+   was running. Hence the badge, the "scan is paused" lead, and three equal
+   option cards (no btn-primary, which reviewers read as "already chosen"). */
 .relay-consent {
   border: 1px solid var(--med-line); background: var(--med-bg);
-  border-radius: var(--radius-sm); padding: 15px 17px; margin-top: 16px;
+  border-radius: var(--radius); padding: 17px 19px; margin-top: 16px;
+  box-shadow: var(--shadow-md);
 }
-.relay-consent h3 { margin: 0 0 8px; font-size: 0.94rem; color: var(--ink); }
+.relay-consent:focus { outline: none; }
+.relay-consent:focus-visible { outline: 2px solid var(--med); outline-offset: 3px; }
+.relay-consent-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.relay-consent-badge {
+  font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--med); background: var(--surface-3);
+  border: 1px solid var(--med-line); border-radius: 999px; padding: 3px 9px;
+}
+.relay-consent h3 { margin: 0; font-size: 0.98rem; color: var(--ink); }
 .relay-consent p { margin: 0 0 10px; font-size: 0.84rem; color: var(--ink-2); }
-.relay-consent ul { margin: 0 0 12px; padding-left: 20px; font-size: 0.8rem; color: var(--muted); }
+.relay-consent-lead { color: var(--ink) !important; }
 .relay-consent code { font-size: 0.76rem; }
-.relay-consent-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.relay-consent-foot {
+  margin: 12px 0 0 !important; font-size: 0.74rem; color: var(--muted) !important;
+}
+.relay-consent-foot .unverified-flag { margin-left: 2px; }
+
+.relay-consent-actions {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px;
+}
+@media (max-width: 860px) { .relay-consent-actions { grid-template-columns: 1fr; } }
+/* Each option is a card that states what it sends and what it returns, so
+   the difference is readable without hovering for a tooltip. */
+.relay-option {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  text-align: left; cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.8rem; color: var(--ink-2);
+  background: var(--surface-3); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); padding: 12px 13px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.relay-option:hover { border-color: var(--med-line); background: var(--surface-2); transform: translateY(-1px); }
+.relay-option:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.relay-option-head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.relay-option-label { font-size: 0.86rem; font-weight: 700; color: var(--ink); }
+.relay-option-rec {
+  font-family: var(--font-mono); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--low); background: var(--low-bg);
+  border: 1px solid var(--low-line); border-radius: 999px; padding: 2px 7px;
+}
+.relay-option-what { font-size: 0.78rem; line-height: 1.5; color: var(--ink-2); }
+.relay-option-what em { color: var(--ink); font-style: normal; font-weight: 600; }
+.relay-option-meta {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-size: 0.71rem; color: var(--muted); overflow-wrap: anywhere;
+}
+.relay-option-meta strong { color: var(--faint); font-weight: 600; }
+.relay-option-meta code { font-size: 0.68rem; }
+
+/* A button parked while the relay gate waits for an answer: it must not
+   keep spinning, or the gate looks like a slow scan instead of a question. */
+.btn.is-waiting { opacity: 0.75; cursor: default; font-style: italic; }
 
 .unverified-flag {
   display: inline-block; margin-left: 8px;

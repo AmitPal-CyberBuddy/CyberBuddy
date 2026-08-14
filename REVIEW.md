@@ -1152,3 +1152,60 @@ each confirmed to fail against the pre-fix code), `node --check` on all
 fourteen scripts, Python compile checks, JSON/XML validation, the Pages asset
 assembly guard (67 local references resolved; `docs/`, `tests/` and `REVIEW.md`
 confirmed not published), and 280 real-browser checks.
+
+---
+
+## 18. Round 6b — relay-consent gate readability (2026-08-14)
+
+Reported after reviewing the hosted Security Headers page: pressing **Scan**
+with no local engine surfaces the relay-consent panel, and it was easy to
+misread as a scan that had hung. Reproduced in Chromium with `/api/*` blocked
+to simulate GitHub Pages, then fixed and re-measured.
+
+**What was actually wrong (all four confirmed in the browser)**
+
+1. **The Scan button kept spinning while the gate waited.** The tool calls
+   `setLoading(go, true)` before `ensureRelayConsent()`, so a spinner ran
+   against a panel that was blocking on a human decision — exactly the
+   "maybe it is working, maybe it is stuck" reading reported. Busy buttons
+   are now parked in an `is-waiting` state labelled *"Waiting for your
+   choice…"*, and the spinner returns only if the scan resumes.
+2. **The gate rendered below the fold on a phone** — measured `top: 681px`
+   in an 844px viewport, so on a narrow screen nothing visibly changed on
+   click. It now scrolls itself into view and takes focus. The scroll aligns
+   the panel's **top** (offset by the sticky header): the panel is ~1100px
+   tall at 390px wide, so centring pushed the heading off-screen — the first
+   attempt at this fix measured `top: -127px` and had to be corrected.
+3. **"Allow — hostname only" was styled `btn-primary`**, which read as an
+   option that had already been chosen. All three are now equal-weight
+   option cards; nothing is preselected.
+4. **The options did not explain how they differ**, and none was marked
+   recommended. Each card now carries a plain-language description plus an
+   explicit **Sends:** / **You get:** pair, and hostname-only is labelled
+   **Recommended** — it is enough for almost every header check, because
+   CSP, HSTS, X-Frame-Options and the cookie/isolation family are all set
+   per origin.
+
+**Also changed while there**
+
+- The heading is now a question ("Choose how to read this target's
+  headers") behind an **Action needed** badge, with a lead line stating the
+  scan is paused, rather than a passive status title.
+- Escape declines rather than dismissing ambiguously — the safe default is
+  never to relay.
+- A footer line states that the choice is tab-scoped and forgotten on close,
+  and that relayed values are always labelled `unverified`.
+
+No change to what is disclosed or to the privacy posture: the same four relay
+hosts are named, consent stays `sessionStorage`-scoped, and the
+`python3 server.py` escape hatch is still offered.
+
+**Verification:** 129/129 stdlib tests (12 new gate tests; six deliberate
+mutations — preselected button, missing recommendation, missing Sends/You get,
+no scroll/focus, spinner left running, Escape unhandled — were each confirmed
+to fail them), `node --check` on all fifteen scripts, the Pages asset guard,
+and 297 real-browser checks: the existing 113 layout / 119 dropdown / 48
+overlay checks all still pass, plus a new `tests/browser/relay-gate.js` (17
+checks) covering the gate at six viewports in both themes, each of the three
+choices resolving correctly, Escape declining, and the gate correctly *not*
+appearing when the Python engine is online.
