@@ -11,11 +11,11 @@ This module provides:
 
 from __future__ import annotations
 
+import http.client
 import socket
 import ssl
 import time
 import urllib.request
-from functools import lru_cache
 from threading import Lock
 from typing import NamedTuple
 
@@ -68,6 +68,82 @@ def clear_dns_cache() -> None:
     """Clear the DNS cache. Useful for testing."""
     with _dns_lock:
         _dns_cache.clear()
+
+
+def _check_connect_ip(ip: str, allow_private: bool) -> None:
+    """Re-validate the address we are actually about to connect to.
+
+    Closes the DNS TOCTOU window: validate_target() resolves the hostname to
+    decide whether a target is allowed, but urllib then resolves it again
+    independently. A hostile resolver can answer public for the check and
+    private for the fetch (classic DNS rebinding). Checking here means the
+    guard applies to the address the socket really uses.
+    """
+    import ipaddress
+
+    from clickjacking_validator import _ip_block_reason
+
+    try:
+        parsed = ipaddress.ip_address(ip)
+    except ValueError:
+        return
+    reason = _ip_block_reason(parsed, allow_private=allow_private)
+    if reason:
+        raise ValueError(f"blocked scan target ({reason}): {ip}")
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection that validates each resolved address before connecting."""
+
+    allow_private = True
+
+    def connect(self):  # noqa: D102
+        for info in socket.getaddrinfo(self.host, self.port, proto=socket.IPPROTO_TCP):
+            _check_connect_ip(info[4][0], self.allow_private)
+        super().connect()
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection with the same connect-time address validation."""
+
+    allow_private = True
+
+    def connect(self):  # noqa: D102
+        for info in socket.getaddrinfo(self.host, self.port, proto=socket.IPPROTO_TCP):
+            _check_connect_ip(info[4][0], self.allow_private)
+        super().connect()
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, allow_private: bool):
+        super().__init__()
+        self._allow_private = allow_private
+
+    def http_open(self, req):  # noqa: D102
+        allow_private = self._allow_private
+
+        class _Conn(_PinnedHTTPConnection):
+            pass
+
+        _Conn.allow_private = allow_private
+        return self.do_open(_Conn, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, ctx: ssl.SSLContext, allow_private: bool):
+        super().__init__(context=ctx)
+        self._allow_private = allow_private
+        self._ctx = ctx
+
+    def https_open(self, req):  # noqa: D102
+        allow_private = self._allow_private
+        ctx = self._ctx
+
+        class _Conn(_PinnedHTTPSConnection):
+            pass
+
+        _Conn.allow_private = allow_private
+        return self.do_open(_Conn, req, context=ctx)
 
 
 class _SessionPool:
@@ -124,18 +200,19 @@ class _SessionPool:
     
     @staticmethod
     def _build_opener(ctx: ssl.SSLContext, allow_private: bool) -> urllib.request.OpenerDirector:
-        """Build an opener with redirect validation."""
+        """Build an opener with redirect validation and connect-time IP checks."""
         # Import here to avoid circular dependency
         from clickjacking_validator import validate_target
-        
+
         class SafeRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
                 validate_target(newurl, allow_private=allow_private)
                 return super().redirect_request(req, fp, code, msg, headers, newurl)
-        
+
         return urllib.request.build_opener(
             SafeRedirect,
-            urllib.request.HTTPSHandler(context=ctx),
+            _PinnedHTTPHandler(allow_private),
+            _PinnedHTTPSHandler(ctx, allow_private),
         )
     
     def clear(self) -> None:

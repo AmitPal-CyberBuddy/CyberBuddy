@@ -6,10 +6,15 @@ Medium: https://amitpxl.medium.com/
 Location: India
 
 /* SITE */
-Last update: 2026-08-13
 Standards: HTML5, CSS3, ES2020, Python 3.10+
 Components: stdlib Python engines, static GitHub Pages hub
 Doctype: HTML5
 Software: CyberBuddy — browser security assessment suite
+License: Apache-2.0
 Language: English
 Authorized testing only.
+
+/* NOTE */
+No "last update" line here on purpose — a hand-maintained date rots the
+moment someone forgets it. Use the repository history for that:
+https://github.com/AmitPal-CyberBuddy/CyberBuddy/commits/main

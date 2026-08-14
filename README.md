@@ -67,7 +67,9 @@ tools/
   cors/index.html               # CORS probe + roadmap
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
+tests/grader_fixtures.json      # shared Python<->JS scoring contract
 docs/performance.md             # engine performance notes
+docs/pages-workflow-patch.md    # REQUIRED manual edit to pages.yml
 urls.txt                        # demo targets pre-scanned for the published cache
 humans.txt                      # who built it
 llms.txt                        # machine-readable project summary
@@ -108,6 +110,14 @@ Exit code `1` when any target scores high risk (handy in CI), `2` for usage erro
 ```bash
 python3 -m unittest test_engines.py
 ```
+
+`tests/grader_fixtures.json` is the **shared scoring contract**. CyberBuddy
+implements the graders twice — stdlib Python for `server.py`/CLI, and a browser
+port in `js/app.js` so GitHub Pages can grade without a server. Both are run
+against those fixtures, and a third test compares the two engines directly, so
+the same target can never get a different grade depending on where it was
+scanned. Add a case to the JSON and both engines are checked against it
+automatically (node required for the JS side; skipped if absent).
 
 ## Making the hosted site full-strength
 
@@ -226,6 +236,16 @@ framing headers.
 - The scan APIs refuse cross-origin browser requests (Origin / Referer check)
   and never fetch cloud-metadata or link-local addresses. Treat a `0.0.0.0`
   bind as an explicit choice, not the default.
+- **DNS rebinding is guarded at connect time.** `validate_target()` resolves a
+  hostname to decide whether it is allowed, but urllib resolves again when it
+  actually connects — a hostile resolver can answer public for the check and
+  private for the fetch. The pooled openers therefore re-validate every
+  resolved address inside `connect()`, so the policy applies to the address
+  the socket really uses.
+- The optional hosted `api/` rate limit is **per function instance** and is
+  best-effort on serverless (lost on cold start, one counter per concurrent
+  instance). Use shared KV storage or the platform WAF if you need a hard
+  quota — see the note in `apilib.py`.
 - `robots.txt` and `.well-known/security.txt` only take effect at a **domain
   root**. On a project Pages site they live under `/CyberBuddy/`, so crawlers
   will not read them until the project moves to a custom domain.

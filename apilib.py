@@ -27,7 +27,11 @@ Security posture (this endpoint is public by design)
 - Cloud-metadata hosts are always refused; private / loopback targets
   are always refused (engines run with ``allow_private=False``) because
   this API is reachable from the internet, unlike loopback ``server.py``.
-- Simple in-memory per-IP rate limit (best-effort on serverless).
+- Per-IP rate limit, per function instance. On serverless this is
+  best-effort ONLY: the counter dies with each cold start and each
+  concurrent instance has its own, so the real ceiling is roughly
+  CB_RATE_MAX x live instances. Use shared storage (KV/Redis) or the
+  platform WAF if you need a hard quota. See _rate_limited().
 - CORS is wide open ON PURPOSE so the Pages origin can call it; the
   endpoint only ever performs read-only GETs against URLs the caller
   provides, which is no more dangerous than the public relays it
@@ -51,12 +55,34 @@ RATE_MAX = int(os.environ.get("CB_RATE_MAX", "30"))
 RATE_WINDOW = int(os.environ.get("CB_RATE_WINDOW", "60"))
 ALLOW_ORIGIN = os.environ.get("CB_ALLOW_ORIGIN", "*")
 
+# Per-instance rate limit.
+#
+# IMPORTANT — this is best-effort only on serverless. The dict lives in one
+# function instance: it is lost on every cold start, and concurrent instances
+# each keep their own counter, so the effective global limit is roughly
+# RATE_MAX * (number of live instances). Treat it as protection against a
+# single hot caller, NOT as a hard quota.
+#
+# For a real limit put the counter in shared storage (Vercel KV / Upstash
+# Redis / Cloudflare KV) keyed by IP, or front the deployment with the
+# platform's own WAF/rate-limiting. Until then the endpoint is deliberately
+# read-only GET, refuses private/metadata targets, and caps redirects — the
+# blast radius of abuse is a public GET the caller could make anyway.
 _hits: dict[str, list[float]] = {}
+_HITS_MAX_KEYS = 2048  # bound memory if an instance stays warm under spray
 
 
 def _rate_limited(environ: dict) -> bool:
-    ip = environ.get("REMOTE_ADDR") or "unknown"
+    # X-Forwarded-For is set by the platform edge; REMOTE_ADDR alone is the
+    # proxy on most PaaS. Take the first hop, which is the real client.
+    fwd = (environ.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+    ip = fwd or environ.get("REMOTE_ADDR") or "unknown"
     now = time.monotonic()
+    if len(_hits) > _HITS_MAX_KEYS:
+        for key in [k for k, v in _hits.items() if not v or now - v[-1] > RATE_WINDOW]:
+            _hits.pop(key, None)
+        if len(_hits) > _HITS_MAX_KEYS:
+            _hits.clear()
     bucket = _hits.setdefault(ip, [])
     bucket[:] = [t for t in bucket if now - t < RATE_WINDOW]
     if len(bucket) >= RATE_MAX:

@@ -561,7 +561,20 @@ All items below shipped in this branch.
   load-behaviour hint pre-selecting the likely answer.
 
 **Security / quality**
-- `http_session` opener cache keyed on `(insecure, allow_private)` + 5 tests.
+- `http_session` opener cache keyed on `(insecure, allow_private)` + tests.
+- **DNS TOCTOU closed** — pooled openers re-validate every resolved address
+  inside `connect()`, so rebinding cannot slip a private IP past the
+  pre-check. Verified against `localtest.me` (public name -> 127.0.0.1):
+  blocked at connect time with the pre-check bypassed, while
+  `allow_private=True` still works.
+- **Grader parity harness** — `tests/grader_fixtures.json` (15 cases) drives
+  both the Python and JS graders, plus a test comparing them directly.
+  Verified it catches drift: changing one weight in `js/app.js` fails with
+  "score drift". Required extracting pure `grade_headers_from_map()` /
+  `grade_clickjacking_from_map()` from both engines.
+- **API rate limit** — documented honestly as per-instance/best-effort on
+  serverless, now keys on the real client IP via `X-Forwarded-For` and bounds
+  its memory.
 - All inline scripts externalised → `script-src 'self'` with no
   `'unsafe-inline'`, plus `Permissions-Policy`, CORP/COEP and
   `frame-ancestors 'self'`. **Self-score C (65) → A (95).**
@@ -574,6 +587,7 @@ All items below shipped in this branch.
 - sitemap includes `/methodology/`; manifest paths made relative; robots.txt and
   security.txt annotated with the domain-root caveat.
 - `PERFORMANCE.md` → `docs/performance.md`, rewritten as reference notes.
+- `humans.txt` no longer carries a hand-maintained date that would rot.
 
 ## 9. Original suggested order of work
 
