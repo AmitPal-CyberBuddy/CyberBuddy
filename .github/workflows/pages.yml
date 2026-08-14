@@ -24,6 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Guard the deploy: the published site runs the same graders as the CLI,
+      # so a scoring regression must never reach Pages.
+      - name: Run engine tests
+        run: python3 -m unittest test_engines.py
+
       # Pre-scan the URLs in urls.txt with the real Python engines
       # (uses tools/build_cache.py -> cache/<host>.json)
       - name: Build scan cache
@@ -31,12 +36,17 @@ jobs:
 
       - name: Assemble static site
         run: |
+          set -euo pipefail
           mkdir -p _site/css _site/js _site/tools
           cp index.html _site/
           touch _site/.nojekyll
           test -f 404.html && cp 404.html _site/ || true
-          cp css/app.css _site/css/
-          cp js/app.js _site/js/
+          # Copy ALL css/js, not named files. The pages load app.js plus
+          # boot.js, theme-boot.js, hub.js and a per-tool controller; naming
+          # them individually here is how the build silently drifts out of
+          # sync with the site and ships pages with no JavaScript.
+          cp css/*.css _site/css/
+          cp js/*.js _site/js/
           cp -a tools/clickjacking tools/headers tools/cors _site/tools/
           # Full methodology page (the hub links to the #methodology anchor,
           # but the standalone page has its own canonical URL)
@@ -49,8 +59,48 @@ jobs:
           for f in og-cyberbuddy.png icon-192.png icon-512.png manifest.webmanifest robots.txt sitemap.xml humans.txt llms.txt; do
             test -f "$f" && cp "$f" _site/ || true
           done
+          # Licence, so the published site carries its own terms
+          test -f LICENSE && cp LICENSE _site/ || true
           # Responsible disclosure contact
           test -d .well-known && cp -a .well-known _site/ || true
+
+      # Cache-busting: stamp every ?v=... asset query with the commit SHA so a
+      # deploy can never serve a stale css/js to returning visitors. Replaces
+      # the hand-maintained ?v=YYYYMMDD strings.
+      - name: Stamp asset versions
+        run: |
+          set -euo pipefail
+          REV="${GITHUB_SHA::12}"
+          find _site -name '*.html' -print0 |
+            xargs -0 sed -i -E "s/\?v=[A-Za-z0-9._-]+/?v=${REV}/g"
+          echo "Stamped assets with ?v=${REV}"
+
+      # Fail the build if a page references a local css/js/png that was not
+      # copied above. This is the check that would have caught the tool pages
+      # shipping without their controllers.
+      - name: Verify referenced assets exist
+        run: |
+          set -euo pipefail
+          bad=$(
+            find _site -name '*.html' | while IFS= read -r page; do
+              dir=$(dirname "$page")
+              # Local href=/src= targets only: skip absolute URLs, data: and #anchors.
+              grep -oE '(href|src)="[^"#][^"]*\.(css|js|png|webmanifest)(\?[^"]*)?"' "$page" |
+                sed -E 's/^(href|src)="//; s/"$//; s/\?.*$//' |
+                while IFS= read -r ref; do
+                  case "$ref" in
+                    http*|//*|data:*) continue ;;
+                  esac
+                  [ -f "$dir/$ref" ] || echo "  $page -> $ref"
+                done
+            done
+          )
+          if [ -n "$bad" ]; then
+            echo "::error::Referenced assets are missing from _site:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "All referenced local assets are present."
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
