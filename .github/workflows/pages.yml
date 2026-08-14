@@ -50,8 +50,9 @@ jobs:
           cp js/*.js _site/js/
 
           # Publish every live tool, including the CSP Policy Auditor and the
-          # CSRF PoC Generator.
+          # CSRF PoC Generator, plus the tools catalog that indexes them all.
           cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+          cp tools/index.html _site/tools/            # ← EDIT 1: publish the catalog
 
           # Full methodology page (the hub links to the #methodology anchor,
           # but the standalone page has its own canonical URL).
@@ -72,6 +73,24 @@ jobs:
 
           # Responsible disclosure contact.
           test -d .well-known && cp -a .well-known _site/ || true
+
+      # Repo-internal files must never reach the public site. docs/ROADMAP.md
+      # is the session roadmap (like docs/DEV-NOTES.md); REVIEW.md and tests/
+      # are private working artifacts. Fail loudly if any leak into _site/.
+      - name: Guard internal files stay out of the published site    # ← EDIT 2 (new step)
+        run: |
+          set -euo pipefail
+          for f in docs/ROADMAP.md docs/DEV-NOTES.md REVIEW.md; do
+            if [ -e "_site/$f" ]; then
+              echo "::error::Internal file leaked into _site: $f"
+              exit 1
+            fi
+          done
+          if [ -d _site/docs ] || [ -d _site/tests ]; then
+            echo "::error::Internal directory leaked into _site (docs/ or tests/)"
+            exit 1
+          fi
+          echo "Internal docs, tests and REVIEW.md stay out of the published site."
 
       # Cache-busting: stamp every ?v=... asset query with the commit SHA so a
       # deploy can never serve stale css/js to returning visitors. Replaces
