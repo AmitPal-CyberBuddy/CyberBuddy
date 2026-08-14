@@ -147,19 +147,24 @@ def validate_target(url: str, allow_private: bool = True) -> None:
 
 
 def headers_from_message(msg) -> dict[str, str]:
-    """Flatten an email/http header map, preserving every Set-Cookie."""
+    """Flatten an HTTP header map, preserving repeatable security fields."""
     out: dict[str, str] = {}
-    cookies: list[str] = []
+    repeated: dict[str, list[str]] = {
+        "set-cookie": [],
+        "content-security-policy": [],
+        "content-security-policy-report-only": [],
+    }
     if msg is None:
         return out
     for key, value in msg.items():
         lk = key.lower()
-        if lk == "set-cookie":
-            cookies.append(value)
+        if lk in repeated:
+            repeated[lk].append(value)
         else:
             out[lk] = value
-    if cookies:
-        out["set-cookie"] = "\n".join(cookies)
+    for key, values in repeated.items():
+        if values:
+            out[key] = "\n".join(values)
     return out
 
 
@@ -194,7 +199,10 @@ def fetch_headers(
 
 def parse_csp(csp: str) -> dict[str, list[str]]:
     directives: dict[str, list[str]] = {}
-    for part in csp.split(";"):
+    # Repeated CSP response fields are preserved newline-separated. The
+    # dedicated CSP auditor retains full policy boundaries; this compact
+    # parser at least keeps every directive visible to legacy header checks.
+    for part in csp.replace("\r", ";").replace("\n", ";").split(";"):
         part = part.strip()
         if not part:
             continue

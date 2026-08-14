@@ -106,7 +106,7 @@ jobs:
           # sync with the site and ships pages with no JavaScript.
           cp css/*.css _site/css/
           cp js/*.js _site/js/
-          cp -a tools/clickjacking tools/headers tools/cors _site/tools/
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp _site/tools/
           # Full methodology page (the hub links to the #methodology anchor,
           # but the standalone page has its own canonical URL)
           test -d methodology && cp -a methodology _site/ || true

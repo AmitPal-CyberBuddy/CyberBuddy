@@ -59,6 +59,10 @@ repository history instead:
   additions (MutationObserver) plus a 2s re-querying safety net. If you
   move the boot order or add a new dynamically injected `.reveal`, re-check
   computed `opacity` in the browser — DOM presence is NOT visibility.
+- Reduced-motion CSS must override the more-specific `html.js .reveal`, not
+  only `.reveal`. Keep `html.js .reveal, .reveal { opacity: 1 !important;
+  animation: none !important; animation-delay: 0s !important; }` inside the
+  media query so visitors who disable animation never wait on reveal delays.
 - Evidence must stay visible without clicks: never put findings in
   accordions, because a closed `<details>` cannot be force-opened in print
   CSS and breaks the screenshot workflow.
@@ -72,12 +76,31 @@ repository history instead:
 
 `tests/grader_fixtures.json` is the shared contract between the Python
 graders (`security_headers.py`, `clickjacking_validator.py`) and their
-browser port (`js/app.js`). The same target must never get a different grade
-on Pages than under `server.py`. The Pages workflow runs
+browser port (`js/app.js`); `tests/csp_fixtures.json` does the same for
+`csp_checker.py` / `gradeCspFromMap`. The same target must never get a
+different grade on Pages than under `server.py`. The Pages workflow runs
 `python3 -m unittest test_engines.py` before every deploy — a scoring
 regression must never reach the site. Severity chips / recommendations /
 weight bars in the UI are display-only layers over the check statuses and
 must stay that way.
+
+## CSP auditor traps
+
+- Multiple `Content-Security-Policy` response headers combine restrictively;
+  they are preserved newline-separated by both header collectors. Do not
+  collapse them to the last value or grade each policy as an independent
+  exposure.
+- Duplicate directives *inside one policy* are different: browsers use the
+  first occurrence and ignore later duplicates. `parse_policy` /
+  `parseCspPolicy` deliberately keep the first.
+- `default-src` is a real fallback for script/style/object fetch directives,
+  but not for `base-uri`, `frame-ancestors`, or `form-action`.
+- A nonce/hash plus `'unsafe-inline'` is a legitimate CSP2/CSP3 compatibility
+  pattern: modern supporting browsers ignore `'unsafe-inline'`. Do not regress
+  it to the standalone checker's unconditional high-risk result.
+- GitHub Pages compatibility is the standard header lookup chain: API, fresh
+  published cache, direct CORS read, then opt-in relay. Keep `csp` in the cache
+  builder and retain the fallback that derives it from older `headers` entries.
 
 ## Round 5 traps
 

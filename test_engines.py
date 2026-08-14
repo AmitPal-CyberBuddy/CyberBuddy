@@ -28,6 +28,7 @@ from clickjacking_validator import (
     score,
     validate_target,
 )
+from csp_checker import grade_csp_from_map, parse_policy, split_policies
 from security_headers import (
     check_coep,
     check_cookies,
@@ -155,6 +156,54 @@ class CspTests(unittest.TestCase):
         self.assertEqual(d["frame-ancestors"], ["'none'"])
 
 
+class CspAuditorTests(unittest.TestCase):
+    def test_missing_enforced_policy_is_high_risk(self):
+        result = grade_csp_from_map("https://example.test", 200, "https://example.test", {})
+        self.assertEqual(result.risk, "high")
+        self.assertEqual(result.checks[0].name, "Enforced response policy")
+        self.assertEqual(result.checks[0].status, "missing")
+
+    def test_report_only_policy_does_not_enforce(self):
+        result = grade_csp_from_map(
+            "https://example.test", 200, "https://example.test",
+            {"content-security-policy-report-only": "default-src 'self'"},
+        )
+        statuses = {check.name: check.status for check in result.checks}
+        self.assertEqual(statuses["Enforced response policy"], "missing")
+        self.assertEqual(statuses["Report-only policy"], "info")
+
+    def test_nonce_strict_dynamic_legacy_fallback_is_not_false_positive(self):
+        result = grade_csp_from_map(
+            "https://example.test", 200, "https://example.test",
+            {"content-security-policy": (
+                "default-src 'none'; script-src 'nonce-random' 'strict-dynamic' 'unsafe-inline'; "
+                "style-src 'self'; object-src 'none'; base-uri 'none'; "
+                "frame-ancestors 'none'; form-action 'self'"
+            )},
+        )
+        statuses = {check.name: check.status for check in result.checks}
+        self.assertEqual(result.risk, "low")
+        self.assertEqual(statuses["Script execution"], "info")
+
+    def test_duplicate_directive_uses_first_and_is_reported(self):
+        directives, duplicates = parse_policy("script-src 'self'; script-src *")
+        self.assertEqual(directives["script-src"], ["'self'"])
+        self.assertEqual(duplicates, ["script-src"])
+
+    def test_repeated_policies_remain_separate(self):
+        policies = split_policies("default-src *\ndefault-src 'none'")
+        self.assertEqual(policies, ["default-src *", "default-src 'none'"])
+        result = grade_csp_from_map(
+            "https://example.test", 200, "https://example.test",
+            {"content-security-policy": (
+                "default-src *; script-src * 'unsafe-inline'\n"
+                "default-src 'none'; script-src 'none'; style-src 'none'; "
+                "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+            )},
+        )
+        self.assertEqual(result.risk, "low")
+
+
 class XfoCspInteractionTests(unittest.TestCase):
     def test_missing_xfo_without_fa_full_deduction(self):
         c = check_xfo(None, False)
@@ -240,10 +289,16 @@ class CookieTests(unittest.TestCase):
         msg = Message()
         msg["Set-Cookie"] = "a=1"
         msg["Set-Cookie"] = "b=2"
+        msg["Content-Security-Policy"] = "default-src 'self'"
+        msg["Content-Security-Policy"] = "frame-ancestors 'none'"
         msg["X-Frame-Options"] = "DENY"
         hdrs = headers_from_message(msg)
         self.assertIn("a=1", hdrs["set-cookie"])
         self.assertIn("b=2", hdrs["set-cookie"])
+        self.assertEqual(
+            hdrs["content-security-policy"],
+            "default-src 'self'\nframe-ancestors 'none'",
+        )
         self.assertEqual(hdrs["x-frame-options"], "DENY")
 
     def test_assess_cookies_uses_tokens(self):
@@ -270,10 +325,12 @@ class MountAndBindTests(unittest.TestCase):
         self.assertEqual(strip_mount("/CyberBuddy/tools/headers/"), "/tools/headers/")
         self.assertEqual(strip_mount("/CyberBuddy/api/headers"), "/api/headers")
         self.assertEqual(strip_mount("/tools/cors/"), "/tools/cors/")
+        self.assertEqual(strip_mount("/CyberBuddy/tools/csp/"), "/tools/csp/")
 
-    def test_tool_aliases_cover_all_three(self):
+    def test_tool_aliases_cover_all_four(self):
         self.assertEqual(TOOL_ALIASES["/headers"], "/tools/headers/")
         self.assertEqual(TOOL_ALIASES["/cors"], "/tools/cors/")
+        self.assertEqual(TOOL_ALIASES["/csp"], "/tools/csp/")
         self.assertEqual(TOOL_ALIASES["/clickjacking"], "/tools/clickjacking/")
 
     def test_default_bind_loopback_without_port_env(self):
@@ -316,6 +373,8 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertNotIn("pathname.slice(0, idx)", src)
         self.assertIn("application/json", src)
         self.assertIn("gradeHeadersFromMap", src)
+        self.assertIn("gradeCspFromMap", src)
+        self.assertIn("apiCsp", src)
         self.assertIn("lookupHeadersLive", src)
         self.assertIn("probeCorsLive", src)
         # Hosted cache must join appBase() with a leading slash or Pages
@@ -325,11 +384,19 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("cacheLookupKeys", src)
 
     def test_tool_pages_exist(self):
-        for slug in ("clickjacking", "headers", "cors"):
+        for slug in ("clickjacking", "headers", "cors", "csp"):
             page = ROOT / "tools" / slug / "index.html"
             self.assertTrue(page.is_file(), page)
             text = page.read_text(encoding="utf-8")
             self.assertIn("js/app.js", text)
+
+    def test_csp_controller_only_references_existing_elements(self):
+        page = (ROOT / "tools" / "csp" / "index.html").read_text(encoding="utf-8")
+        controller = (ROOT / "js" / "tool.csp.js").read_text(encoding="utf-8")
+        referenced = set(re.findall(r'\$\("([A-Za-z][A-Za-z0-9_-]*)"\)', controller))
+        self.assertGreater(len(referenced), 15)
+        for element_id in referenced:
+            self.assertIn(f'id="{element_id}"', page, element_id)
 
     def test_four_oh_four_repairs_old_hosted_urls(self):
         # The repair logic lives in js/404-boot.js (externalised so the site
@@ -339,6 +406,7 @@ class AppBaseJsTests(unittest.TestCase):
         text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
+        self.assertIn("headers|cors|csp", text)
 
     def test_js_graders_match_python_scores(self):
         node = shutil.which("node")
@@ -417,11 +485,12 @@ class ServerRouteTests(unittest.TestCase):
         self.assertIn(b"CyberBuddy", body)
         self.assertIn("text/html", headers.get("content-type", ""))
 
-    def test_three_tool_pages(self):
+    def test_four_tool_pages(self):
         expect = {
             "/tools/clickjacking/": b"Clickjacking Validator",
             "/tools/headers/": b"Security Headers",
             "/tools/cors/": b"CORS Validator",
+            "/tools/csp/": b"CSP Policy Auditor",
         }
         for path, needle in expect.items():
             status, headers, body = self._req(path)
@@ -438,6 +507,7 @@ class ServerRouteTests(unittest.TestCase):
         for short, dest in (
             ("/headers", "/tools/headers/"),
             ("/cors", "/tools/cors/"),
+            ("/csp", "/tools/csp/"),
             ("/clickjacking", "/tools/clickjacking/"),
         ):
             status, headers, _ = self._req(short)
@@ -451,6 +521,9 @@ class ServerRouteTests(unittest.TestCase):
         status, _, body = self._req("/CyberBuddy/tools/cors/")
         self.assertEqual(status, 200)
         self.assertIn(b"CORS Validator", body)
+        status, _, body = self._req("/CyberBuddy/tools/csp/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CSP Policy Auditor", body)
 
     def test_static_assets(self):
         status, headers, body = self._req("/css/app.css")
@@ -485,7 +558,7 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("application/json", headers.get("content-type", ""))
         self.assertTrue(json.loads(body).get("ok"))
-        for path in ("/api/scan", "/api/headers", "/api/cors"):
+        for path in ("/api/scan", "/api/headers", "/api/cors", "/api/csp"):
             status, _, body = self._req(path)
             self.assertEqual(status, 400, path)
             self.assertIn("url required", json.loads(body).get("error", ""))
@@ -496,7 +569,7 @@ class ServerRouteTests(unittest.TestCase):
         self.assertIn("text/html", headers.get("content-type", ""))
         self.assertIn(b"404", body)
 
-    def test_three_apis_scan_this_server(self):
+    def test_four_apis_scan_this_server(self):
         target = quote(f"http://127.0.0.1:{self.port}/", safe="")
         status, _, body = self._req("/api/headers?url=" + target)
         self.assertEqual(status, 200)
@@ -511,6 +584,11 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         cors_data = json.loads(body)
         self.assertTrue(cors_data.get("checks"))
+        status, _, body = self._req("/api/csp?url=" + target)
+        self.assertEqual(status, 200)
+        csp_data = json.loads(body)
+        self.assertIn("policy", csp_data)
+        self.assertTrue(csp_data.get("checks"))
 
 
 class HostedSiteTests(unittest.TestCase):
@@ -526,6 +604,7 @@ class HostedSiteTests(unittest.TestCase):
             ROOT / "tools" / "clickjacking" / "index.html",
             ROOT / "tools" / "headers" / "index.html",
             ROOT / "tools" / "cors" / "index.html",
+            ROOT / "tools" / "csp" / "index.html",
         ]
         versions = set()
         for page in pages:
@@ -546,7 +625,15 @@ class HostedSiteTests(unittest.TestCase):
     def test_hub_has_methodology_anchor(self):
         text = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="methodology"', text)
-        self.assertIn("/tools/clickjacking/", (ROOT / "sitemap.xml").read_text(encoding="utf-8"))
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/tools/clickjacking/", sitemap)
+        self.assertIn("/tools/csp/", sitemap)
+
+    def test_upcoming_csrf_generator_is_visible(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("Next on the bench: CSRF PoC Generator", hub)
+        self.assertIn('"CSRF PoC Generator"', app)
 
 
 class GraderParityTests(unittest.TestCase):
@@ -708,6 +795,77 @@ console.log(JSON.stringify(out));
                 self.assertEqual(py_statuses, js["statuses"], "per-check status drift")
 
 
+class CspGraderParityTests(unittest.TestCase):
+    """The CSP report must not change between server.py and GitHub Pages."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = ROOT / "tests" / "csp_fixtures.json"
+        cls.fixtures = json.loads(cls.path.read_text(encoding="utf-8"))["cases"]
+
+    def test_python_csp_grader_matches_fixtures(self):
+        for case in self.fixtures:
+            with self.subTest(case=case["name"]):
+                result = grade_csp_from_map(
+                    case["url"], case["status_code"], case["final_url"], case["headers"]
+                )
+                self.assertEqual(result.risk, case["expect"]["risk"])
+                statuses = {check.name: check.status for check in result.checks}
+                for name, status in case["expect"]["statuses"].items():
+                    self.assertEqual(statuses.get(name), status, name)
+
+    def test_python_and_browser_csp_graders_agree(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        harness = r"""
+const fixtures = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8")).cases;
+const out = fixtures.map((c) => {
+  const r = gradeCspFromMap(c.url, c.status_code, c.final_url, c.headers, "test");
+  return {
+    risk: r.risk,
+    checks: r.checks.map((x) => ({ name: x.name, status: x.status, severity: x.severity }))
+  };
+});
+console.log(JSON.stringify(out));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+            script_path = handle.name
+        try:
+            proc = subprocess.run(
+                [node, script_path, str(self.path)],
+                cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(script_path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        browser = json.loads(proc.stdout.strip().splitlines()[-1])
+
+        for case, js_result in zip(self.fixtures, browser):
+            with self.subTest(case=case["name"]):
+                py_result = grade_csp_from_map(
+                    case["url"], case["status_code"], case["final_url"], case["headers"]
+                )
+                py_checks = [
+                    {"name": check.name, "status": check.status, "severity": check.severity}
+                    for check in py_result.checks
+                ]
+                self.assertEqual(js_result["risk"], py_result.risk)
+                self.assertEqual(js_result["checks"], py_checks)
+
+
 class SessionPoolTests(unittest.TestCase):
     """The opener cache must not leak one caller's allow_private policy.
 
@@ -812,6 +970,7 @@ class HostedCspTests(unittest.TestCase):
         "tools/clickjacking/index.html",
         "tools/headers/index.html",
         "tools/cors/index.html",
+        "tools/csp/index.html",
     ]
 
     def _csp(self, page: str) -> str:
@@ -863,6 +1022,13 @@ class HostedCspTests(unittest.TestCase):
         for page in ["index.html", "tools/headers/index.html"]:
             text = (ROOT / page).read_text(encoding="utf-8")
             self.assertIn("fonts.googleapis.com/css2", text)
+
+    def test_reduced_motion_never_leaves_reveals_invisible(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        block = css[css.index("@media (prefers-reduced-motion: reduce)"):]
+        self.assertIn("html.js .reveal, .reveal", block)
+        self.assertIn("opacity: 1 !important", block)
+        self.assertIn("animation-delay: 0s !important", block)
 
     def test_hub_can_offer_relay_consent(self):
         """Without #relayGate the hub silently degrades to 'no header data'

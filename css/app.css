@@ -690,6 +690,16 @@ input:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0
 }
 .raw-toggle summary:hover { color: var(--brand); }
 .raw-toggle pre { margin-top: 10px; }
+.csp-subhead { margin-top: 18px; }
+.csp-evidence-grid { margin-bottom: 18px; }
+.csp-evidence-grid .csp-starter { margin-top: 0; }
+.csp-policy-code {
+  display: block; max-width: 100%; overflow-x: auto; white-space: pre-wrap;
+  overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 0.72rem;
+  line-height: 1.65; color: var(--ink-2); background: var(--chip-bg);
+  border: 1px solid var(--line); border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
 
 /* Frame stage */
 .stage {
@@ -885,7 +895,7 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 /* Suite */
 .suite-wrap { margin-top: 28px; }
 .suite-results { margin-top: 18px; }
-.suite-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.suite-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 @media (max-width: 920px) { .suite-grid { grid-template-columns: 1fr; } }
 .suite-card { display: flex; flex-direction: column; gap: 10px; min-height: 220px; }
 .suite-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1687,7 +1697,9 @@ html.js .reveal.in,
     animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important; scroll-behavior: auto !important;
   }
-  .reveal { opacity: 1; }
+  html.js .reveal, .reveal {
+    opacity: 1 !important; animation: none !important; animation-delay: 0s !important;
+  }
   .ticker-track { animation: none; flex-wrap: wrap; width: auto; }
   .ticker { overflow-x: auto; mask-image: none; }
   .page-load-bar { display: none; }

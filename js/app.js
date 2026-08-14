@@ -14,6 +14,7 @@ const ICONS = {
   frame: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path class="dashed" d="M9 3v18M15 3v18" stroke-dasharray="3 3"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
   cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
+  policy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -237,9 +238,18 @@ const TOOLS_MENU = [
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
     tags: ["ACAO", "credentials", "Vary: Origin"],
     std: ["OWASP WSTG-CLNT-07", "CWE-942"]
+  },
+  {
+    href: "/tools/csp/",
+    label: "CSP Policy Auditor",
+    status: "live",
+    icon: "policy",
+    desc: "Audit the enforced CSP for dangerous script sources, missing navigation controls, duplicate directives, and reporting gaps.",
+    tags: ["script-src", "unsafe-inline", "frame-ancestors", "Report-Only"],
+    std: ["OWASP WSTG-CONF-12", "CWE-79", "CWE-693"]
   }
 ];
-const TOOLS_SOON = ["CSP Policy Auditor", "TLS / SSL Analyzer", "Subdomain Enumeration"];
+const TOOLS_SOON = ["CSRF PoC Generator", "TLS / SSL Analyzer", "Subdomain Enumeration"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
@@ -279,6 +289,7 @@ function renderFooter() {
     '<a href="' + base + '/tools/clickjacking/">Clickjacking Validator</a>' +
     '<a href="' + base + '/tools/headers/">Security Headers</a>' +
     '<a href="' + base + '/tools/cors/">CORS Validator</a>' +
+    '<a href="' + base + '/tools/csp/">CSP Policy Auditor</a>' +
     "</nav>" +
     '<nav class="footer-col" aria-label="Methodology and resources">' +
     "<strong>Methodology &amp; resources</strong>" +
@@ -357,6 +368,8 @@ const STD_TITLES = {
   "CWE-1021": "CWE-1021 — Improper Restriction of Rendered UI Layers or Frames",
   "OWASP WSTG-CONF-07": "OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security",
   "WSTG-CONF-12": "OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses",
+  "OWASP WSTG-CONF-12": "OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses",
+  "CWE-79": "CWE-79 — Improper Neutralization of Input During Web Page Generation (Cross-site Scripting)",
   "CWE-693": "CWE-693 — Protection Mechanism Failure",
   "OWASP WSTG-CLNT-07": "OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing",
   "CWE-942": "CWE-942 — Permissive Cross-domain Policy with Untrusted Domains"
@@ -523,6 +536,7 @@ function isUsableScan(data, kind) {
   // status_code != null means the engine actually reached the target —
   // error payloads (unreachable target) are handled by isUnreachable below.
   if (kind === "headers") return data.status_code != null && Array.isArray(data.checks) && data.grade;
+  if (kind === "csp") return data.status_code != null && Array.isArray(data.checks) && data.risk;
   if (kind === "scan") return data.status_code != null && Array.isArray(data.findings);
   if (kind === "cors") return data.status_code != null && Array.isArray(data.checks);
   return false;
@@ -609,6 +623,36 @@ async function apiCors(url) {
   return probeCorsLive(url);
 }
 
+async function apiCsp(url) {
+  const local = await apiCall("/api/csp", url);
+  if (isUsableScan(local, "csp")) {
+    local._source = "python";
+    return local;
+  }
+  if (isUnreachable(local, "checks")) return markUnreachable(local, "python");
+  const cached = await cachedReportFor(url);
+  if (cached && cached.csp && cached.csp.status_code != null &&
+      isUsableScan(cached.csp, "csp")) {
+    cached.csp._source = "cache";
+    cached.csp._cached_at = cached.generated_at || "";
+    return cached.csp;
+  }
+  // Backwards-compatible with a report built before the dedicated CSP entry
+  // existed: the Security Headers cache already carries both CSP fields.
+  if (cached && cached.headers && cached.headers.status_code != null && cached.headers.headers) {
+    const derived = gradeCspFromMap(
+      url,
+      cached.headers.status_code,
+      cached.headers.final_url || url,
+      cached.headers.headers,
+      "cache"
+    );
+    derived._cached_at = cached.generated_at || "";
+    return derived;
+  }
+  return gradeCspLive(url);
+}
+
 /* ---------- Cached reports (pre-scanned reports served by Pages) ------- */
 /* When enabled (see README), tools/build_cache.py pre-scans the URLs in
    urls.txt with the real Python engines and writes cache/<host>.json into
@@ -658,7 +702,7 @@ async function cachedReportFor(url) {
   // Only accept entries where at least one engine actually reached the
   // target (a full network failure means the cache job could not scan it),
   // and skip ancient reports.
-  const reachable = [entry.clickjacking, entry.headers, entry.cors]
+  const reachable = [entry.clickjacking, entry.headers, entry.cors, entry.csp]
     .some((r) => r && r.status_code != null);
   if (!reachable) return null;
   const at = new Date(entry.generated_at || 0).getTime();
@@ -1305,6 +1349,7 @@ function initExportMenu(toolName, getData) {
 function markdownKind(data) {
   if (!data) return "generic";
   if (Array.isArray(data.checks) && data.grade) return "headers";
+  if (Array.isArray(data.checks) && Object.prototype.hasOwnProperty.call(data, "policy")) return "csp";
   if (Array.isArray(data.checks) && data.origins_tested) return "cors";
   if (Array.isArray(data.findings)) return "clickjacking";
   return "generic";
@@ -1318,6 +1363,7 @@ function toMarkdown(data) {
   if (!data) return "No scan data.";
   const kind = markdownKind(data);
   const title = kind === "headers" ? "Security Headers"
+    : kind === "csp" ? "CSP Policy Auditor"
     : kind === "cors" ? "CORS Validator"
     : kind === "clickjacking" ? "Clickjacking Validator"
     : "CyberBuddy";
@@ -1484,6 +1530,11 @@ const FINDING_FIX = {
 
 function findingSeverity(c) {
   const s = c && c.status;
+  // Dedicated graders may provide an evidence-based severity directly.
+  // Existing tools omit it and continue through the display-only mapping.
+  if (c && ["high", "medium", "low", "info", "pass"].includes(c.severity)) {
+    return { key: c.severity, label: c.severity === "pass" ? "PASS" : c.severity.toUpperCase() };
+  }
   if (s === "ok" || s === "protected") return { key: "pass", label: "PASS" };
   if (s === "info") return { key: "info", label: "INFO" };
   if (s === "error") return { key: "high", label: "HIGH" };
@@ -1508,7 +1559,7 @@ function findingSeverity(c) {
   return { key: "low", label: "LOW" };
 }
 
-/* One shared findings-row renderer for all three tool pages, so a status
+/* One shared findings-row renderer for every tool page, so a status
    chip, severity, recommendation, evidence and (where the check has a
    weight) an earned-points bar can never drift apart between tools. */
 function findingRowHtml(c, opts) {
@@ -1516,8 +1567,9 @@ function findingRowHtml(c, opts) {
   const sev = findingSeverity(c);
   const ev = c.evidence ? '<code class="f-evidence">' + esc(c.evidence) + "</code>" : "";
   const needsFix = c.status === "missing" || c.status === "weak" || c.status === "error";
-  const fix = needsFix && FINDING_FIX[c.name]
-    ? '<p class="f-fix"><strong>Recommendation</strong>' + esc(FINDING_FIX[c.name]) + "</p>"
+  const recommendation = c.recommendation || FINDING_FIX[c.name] || "";
+  const fix = needsFix && recommendation
+    ? '<p class="f-fix"><strong>Recommendation</strong>' + esc(recommendation) + "</p>"
     : "";
   const w = WEIGHTS[c.name] || 0;
   let weight = "";
@@ -1547,7 +1599,7 @@ function findingCopyText(c, toolName, target) {
     c.evidence ? "Evidence: " + c.evidence : "Evidence: " + c.name + " not present",
     "",
     "Recommendation:",
-    FINDING_FIX[c.name] || "Review the finding and remediate before re-testing.",
+    c.recommendation || FINDING_FIX[c.name] || "Review the finding and remediate before re-testing.",
     "",
     "Target: " + (target || "—"),
     "Generated: " + fmtStampUtc(),
@@ -1606,7 +1658,7 @@ function scanTag(data) {
 
 function parseCsp(csp) {
   const directives = {};
-  String(csp || "").split(";").forEach((part) => {
+  String(csp || "").replace(/[\r\n]+/g, ";").split(";").forEach((part) => {
     part = part.trim();
     if (!part) return;
     const tokens = part.split(/\s+/);
@@ -1902,6 +1954,394 @@ function gradeHeadersFromMap(url, status, finalUrl, headers, source) {
   };
 }
 
+/* ---------- Content-Security-Policy audit ------------------------------
+   Dedicated CSP audit used by /tools/csp/. This is a pure grader: the
+   Python API, published cache and browser fallback all feed it the same
+   header map, and tests/csp_fixtures.json locks the two implementations
+   together. No synthetic numeric score is invented for CSP. */
+
+const CSP_SUGGESTED_POLICY =
+  "default-src 'self'; base-uri 'self'; object-src 'none'; " +
+  "frame-ancestors 'none'; form-action 'self'; script-src 'self'; " +
+  "style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+  "connect-src 'self'; upgrade-insecure-requests";
+
+function splitCspPolicies(value) {
+  return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function parseCspPolicy(value) {
+  const directives = {};
+  const duplicates = [];
+  String(value || "").split(";").forEach((raw) => {
+    const tokens = raw.trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    const name = tokens.shift().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(directives, name)) {
+      duplicates.push(name);
+      return;
+    }
+    directives[name] = tokens.map((token) => token.toLowerCase());
+  });
+  return { directives: directives, duplicates: duplicates };
+}
+
+function cspFinding(name, status, detail, evidence, severity, recommendation) {
+  return {
+    name: name,
+    status: status,
+    detail: detail,
+    evidence: evidence || "",
+    severity: severity || "info",
+    recommendation: recommendation || ""
+  };
+}
+
+function cspEffective(directives, names) {
+  for (let i = 0; i < names.length; i++) {
+    if (Object.prototype.hasOwnProperty.call(directives, names[i])) {
+      return { tokens: directives[names[i]], from: names[i] };
+    }
+  }
+  return { tokens: null, from: "" };
+}
+
+function cspTrustToken(token) {
+  return ["'nonce-", "'sha256-", "'sha384-", "'sha512-"].some((prefix) =>
+    String(token).startsWith(prefix));
+}
+
+function cspSourceLabel(name, tokens) {
+  if (tokens == null) return "not set";
+  return name + (tokens.length ? " " + tokens.join(" ") : " (empty source list)");
+}
+
+function cspIssueFinding(name, issues, evidence, recommendation, okDetail, info) {
+  if (issues.length) {
+    const order = { low: 1, medium: 2, high: 3 };
+    const severity = issues.reduce((worst, issue) =>
+      (order[issue[1]] || 0) > (order[worst] || 0) ? issue[1] : worst, "low");
+    return cspFinding(name, "weak", issues.map((issue) => issue[0]).join("; ") + ".",
+      evidence, severity, recommendation);
+  }
+  if (info && info.length) {
+    return cspFinding(name, "info", okDetail + " " + info.join(" "), evidence, "info");
+  }
+  return cspFinding(name, "ok", okDetail, evidence, "pass");
+}
+
+function cspCheckScripts(directives) {
+  const element = cspEffective(directives, ["script-src-elem", "script-src", "default-src"]);
+  const evaluation = cspEffective(directives, ["script-src", "default-src"]);
+  const attributes = cspEffective(directives, ["script-src-attr", "script-src", "default-src"]);
+  const fix = "Restrict script-src to trusted hosts or, preferably, per-response nonces/hashes. " +
+    "Remove wildcards, data:, 'unsafe-eval', and unprotected 'unsafe-inline'.";
+  if (element.tokens == null) {
+    return cspFinding("Script execution", "missing",
+      "No script-src, script-src-elem, or default-src fallback; script loading is unrestricted.",
+      "", "high", fix);
+  }
+
+  const sources = new Set(element.tokens);
+  const issues = [];
+  const info = [];
+  const hasTrust = Array.from(sources).some(cspTrustToken);
+  if (sources.has("*")) issues.push(["the effective script source allows * (any matching origin)", "high"]);
+  if (sources.has("data:")) issues.push(["the effective script source allows data: scripts", "high"]);
+  if (sources.has("http:") || Array.from(sources).some((token) => token.startsWith("http://"))) {
+    issues.push(["the effective script source allows cleartext HTTP", "high"]);
+  }
+  if (sources.has("https:")) {
+    issues.push(["the effective script source allows scripts from any HTTPS origin", "medium"]);
+  }
+  if (Array.from(sources).some((token) => token.startsWith("*.") || token.includes("://*.") )) {
+    issues.push(["the effective script source trusts a wildcard subdomain", "medium"]);
+  } else if (Array.from(sources).some((token) => token.includes("://*"))) {
+    issues.push(["the effective script source trusts a wildcard host", "medium"]);
+  }
+  if (sources.has("'unsafe-inline'")) {
+    if (hasTrust) {
+      info.push("'unsafe-inline' is ignored by modern nonce/hash-aware browsers and acts only as a legacy fallback.");
+    } else {
+      issues.push(["'unsafe-inline' permits inline script execution", "high"]);
+    }
+  }
+
+  const evalTokens = new Set(evaluation.tokens || []);
+  if (evalTokens.has("'unsafe-eval'")) issues.push(["'unsafe-eval' permits string-to-code execution", "high"]);
+  if (evalTokens.has("'wasm-unsafe-eval'")) {
+    issues.push(["'wasm-unsafe-eval' permits WebAssembly compilation from bytes", "medium"]);
+  }
+  const attrTokens = new Set(attributes.tokens || []);
+  if (attributes.from === "script-src-attr" && attrTokens.has("'unsafe-inline'")) {
+    issues.push(["script-src-attr 'unsafe-inline' permits inline event handlers", "high"]);
+  }
+  if (sources.has("'strict-dynamic'") && !hasTrust) {
+    issues.push(["'strict-dynamic' has no nonce or hash trust anchor", "medium"]);
+  }
+  if (sources.has("'none'") && sources.size > 1) {
+    issues.push(["'none' is mixed with other script sources and is ignored", "medium"]);
+  }
+
+  const evidence = [cspSourceLabel(element.from, element.tokens)];
+  if (evaluation.from && evaluation.from !== element.from) {
+    evidence.push(cspSourceLabel(evaluation.from, evaluation.tokens));
+  }
+  if (attributes.from && attributes.from !== element.from && attributes.from !== evaluation.from) {
+    evidence.push(cspSourceLabel(attributes.from, attributes.tokens));
+  }
+  return cspIssueFinding("Script execution", issues, evidence.join(" · "), fix,
+    "Script execution has an explicit restrictive source list.", info);
+}
+
+function cspCheckStyles(directives) {
+  const effective = cspEffective(directives, ["style-src", "default-src"]);
+  const fix = "Set style-src to required origins only. Prefer nonces or hashes for inline styles; " +
+    "remove *, data:, cleartext HTTP, and 'unsafe-inline' where the application permits.";
+  if (effective.tokens == null) {
+    return cspFinding("Style sources", "missing",
+      "No style-src or default-src fallback; stylesheet loading is unrestricted.", "", "medium", fix);
+  }
+  const sources = new Set(effective.tokens);
+  const issues = [];
+  if (sources.has("*")) issues.push(["the effective style source allows *", "medium"]);
+  if (sources.has("data:")) issues.push(["the effective style source allows data:", "low"]);
+  if (sources.has("http:") || Array.from(sources).some((token) => token.startsWith("http://"))) {
+    issues.push(["the effective style source allows cleartext HTTP", "medium"]);
+  }
+  if (sources.has("'unsafe-inline'") && !Array.from(sources).some(cspTrustToken)) {
+    issues.push(["'unsafe-inline' permits arbitrary inline CSS", "medium"]);
+  }
+  if (sources.has("'none'") && sources.size > 1) {
+    issues.push(["'none' is mixed with other style sources and is ignored", "low"]);
+  }
+  return cspIssueFinding("Style sources", issues,
+    cspSourceLabel(effective.from, effective.tokens), fix,
+    "Stylesheets have an explicit restrictive source list.");
+}
+
+function cspCheckObject(directives) {
+  const effective = cspEffective(directives, ["object-src", "default-src"]);
+  const fix = "Set object-src 'none' to disable legacy plugin/object embedding.";
+  if (effective.tokens == null) {
+    return cspFinding("Object embedding", "missing",
+      "No object-src or default-src fallback; object/embed content is unrestricted.", "", "medium", fix);
+  }
+  const evidence = cspSourceLabel(effective.from, effective.tokens);
+  if (!effective.tokens.length || (effective.tokens.length === 1 && effective.tokens[0] === "'none'")) {
+    return cspFinding("Object embedding", "ok", "Object/embed loading is blocked.", evidence, "pass");
+  }
+  return cspFinding("Object embedding", "weak",
+    "Object/embed content is still allowed. CSP hardening guidance recommends blocking it.",
+    evidence, "medium", fix);
+}
+
+function cspCheckNavigation(directives, name, label, missingSeverity, recommendation) {
+  if (!Object.prototype.hasOwnProperty.call(directives, name)) {
+    return cspFinding(label, "missing", name + " is absent and is not inherited from default-src.",
+      "", missingSeverity, recommendation);
+  }
+  const tokens = directives[name];
+  const evidence = cspSourceLabel(name, tokens);
+  if (!tokens.length || (tokens.length === 1 && (tokens[0] === "'none'" || tokens[0] === "'self'"))) {
+    return cspFinding(label, "ok", name + " uses a restrictive source list.", evidence, "pass");
+  }
+  const issues = [];
+  if (tokens.includes("*")) {
+    issues.push([name + " allows *", name === "frame-ancestors" ? "high" : "medium"]);
+  }
+  if (tokens.some((token) => token === "http:" || token === "https:")) {
+    issues.push([name + " allows every origin on a URL scheme", "medium"]);
+  }
+  if (tokens.includes("'none'") && tokens.length > 1) {
+    issues.push([name + " mixes 'none' with other sources, so 'none' is ignored", "medium"]);
+  }
+  if (issues.length) return cspIssueFinding(label, issues, evidence, recommendation, "");
+  return cspFinding(label, "ok",
+    name + " has an explicit allowlist; verify each origin is required and trusted.", evidence, "pass");
+}
+
+function cspCheckMixed(directives, finalUrl) {
+  let protocol = "";
+  try { protocol = new URL(finalUrl).protocol; } catch (_) { /* leave empty */ }
+  if (protocol !== "https:") {
+    return cspFinding("Mixed-content control", "weak",
+      "The final page is delivered over HTTP, so the CSP itself can be stripped or modified in transit.",
+      finalUrl, "high",
+      "Serve the page over HTTPS, then use upgrade-insecure-requests while migrating legacy HTTP resources.");
+  }
+  if (Object.prototype.hasOwnProperty.call(directives, "upgrade-insecure-requests") ||
+      Object.prototype.hasOwnProperty.call(directives, "block-all-mixed-content")) {
+    const name = Object.prototype.hasOwnProperty.call(directives, "upgrade-insecure-requests")
+      ? "upgrade-insecure-requests" : "block-all-mixed-content";
+    return cspFinding("Mixed-content control", "ok", name + " is present.", name, "pass");
+  }
+  const insecure = Object.keys(directives).filter((name) => {
+    if (name === "report-uri" || name === "report-to") return false;
+    const tokens = directives[name];
+    return tokens.includes("http:") || tokens.some((token) => token.startsWith("http://"));
+  }).sort();
+  if (insecure.length) {
+    return cspFinding("Mixed-content control", "weak",
+      "Cleartext HTTP sources appear in: " + insecure.join(", ") + ".",
+      insecure.join("; "), "medium",
+      "Remove HTTP source expressions or add upgrade-insecure-requests during migration.");
+  }
+  return cspFinding("Mixed-content control", "ok",
+    "No explicit cleartext HTTP sources were found.", "", "pass");
+}
+
+function auditOneCspPolicy(directives, finalUrl) {
+  const checks = [
+    cspCheckScripts(directives),
+    cspCheckStyles(directives),
+    cspCheckObject(directives),
+    cspCheckNavigation(directives, "base-uri", "Base URL control", "medium",
+      "Set base-uri 'self' (or 'none') to prevent injected <base> tags from rewriting relative URLs."),
+    cspCheckNavigation(directives, "frame-ancestors", "Framing control", "medium",
+      "Set frame-ancestors 'none' or 'self' in the response header. This directive does not work in a meta CSP."),
+    cspCheckNavigation(directives, "form-action", "Form submissions", "low",
+      "Set form-action 'self' or a narrow allowlist so injected forms cannot submit to arbitrary origins."),
+    cspCheckMixed(directives, finalUrl)
+  ];
+  if (directives["require-trusted-types-for"] &&
+      directives["require-trusted-types-for"].includes("'script'")) {
+    checks.push(cspFinding("Trusted Types", "ok", "DOM XSS sinks require Trusted Types.",
+      "require-trusted-types-for 'script'", "pass"));
+  } else {
+    checks.push(cspFinding("Trusted Types", "info",
+      "Trusted Types is not required. This is optional defense-in-depth for DOM XSS sinks.",
+      "", "info"));
+  }
+  return checks;
+}
+
+function cspIssueRank(check) {
+  if (check.status !== "missing" && check.status !== "weak" && check.status !== "error") {
+    return [0, check.status === "ok" ? 0 : 1];
+  }
+  return [{ low: 1, medium: 2, high: 3 }[check.severity] || 1, 0];
+}
+
+function compareCspRank(a, b) {
+  const ar = cspIssueRank(a), br = cspIssueRank(b);
+  return ar[0] - br[0] || ar[1] - br[1];
+}
+
+function combineCspPolicyChecks(perPolicy) {
+  if (perPolicy.length === 1) return perPolicy[0];
+  return perPolicy[0].map((_, index) => {
+    const candidates = perPolicy.map((checks) => checks[index]);
+    const best = candidates.slice().sort(compareCspRank)[0];
+    const copy = Object.assign({}, best);
+    if (candidates.some((candidate) => compareCspRank(candidate, best) > 0)) {
+      copy.detail += " Multiple enforced policies combine; another policy supplies this restriction.";
+    }
+    return copy;
+  });
+}
+
+function gradeCspFromMap(url, status, finalUrl, headers, source) {
+  const normalized = {};
+  Object.keys(headers || {}).forEach((key) => { normalized[String(key).toLowerCase()] = String(headers[key]); });
+  const policy = (normalized["content-security-policy"] || "").trim();
+  const reportOnly = (normalized["content-security-policy-report-only"] || "").trim();
+  const policies = splitCspPolicies(policy);
+  const final = finalUrl || url;
+  const checks = [];
+  let directives = {};
+  let perPolicy = [];
+
+  if (!policies.length) {
+    let detail = "No enforced Content-Security-Policy response header was found.";
+    if (reportOnly) detail += " A Report-Only policy records violations but does not block them.";
+    checks.push(cspFinding("Enforced response policy", "missing", detail, "", "high",
+      "Serve an enforced Content-Security-Policy HTTP response header. Start with the suggested policy and tailor sources before deployment."));
+    perPolicy = [auditOneCspPolicy({}, final)];
+  } else {
+    const parsed = policies.map(parseCspPolicy);
+    directives = parsed[0].directives;
+    let https = false;
+    try { https = new URL(final).protocol === "https:"; } catch (_) { /* false */ }
+    checks.push(cspFinding("Enforced response policy", https ? "ok" : "weak",
+      "Found " + policies.length + " enforced CSP response " +
+      (policies.length === 1 ? "policy." : "policies. Multiple policies combine restrictively."),
+      policy.slice(0, 500), https ? "pass" : "high",
+      https ? "" : "Serve the page and its CSP over HTTPS so the policy cannot be stripped in transit."));
+    const duplicates = Array.from(new Set(parsed.flatMap((item) => item.duplicates))).sort();
+    if (duplicates.length) {
+      checks.push(cspFinding("Policy syntax", "weak",
+        "Duplicate directives found; browsers use the first occurrence and ignore later ones: " +
+        duplicates.join(", ") + ".", duplicates.join(", "), "medium",
+        "Remove duplicate directives and merge intended source lists into the first occurrence."));
+    } else {
+      checks.push(cspFinding("Policy syntax", "ok", "No duplicate directives were found.", "", "pass"));
+    }
+    perPolicy = parsed.map((item) => auditOneCspPolicy(item.directives, final));
+  }
+  checks.push.apply(checks, combineCspPolicyChecks(perPolicy));
+
+  if (reportOnly) {
+    checks.push(cspFinding("Report-only policy", "info",
+      "A Report-Only policy is present. It reports violations but does not enforce restrictions.",
+      reportOnly.slice(0, 500), "info"));
+  }
+  let reporting = null;
+  let reportingName = "";
+  if (directives["report-to"] && directives["report-to"].length) {
+    reporting = directives["report-to"];
+    reportingName = "report-to";
+  } else if (directives["report-uri"] && directives["report-uri"].length) {
+    reporting = directives["report-uri"];
+    reportingName = "report-uri";
+  }
+  if (reporting) {
+    checks.push(cspFinding("Violation reporting", "ok",
+      "The policy declares a violation reporting destination. Confirm the endpoint is monitored and does not receive sensitive URL data.",
+      reportingName + " " + reporting.join(" "), "pass"));
+  } else {
+    checks.push(cspFinding("Violation reporting", "info",
+      "No CSP reporting destination is configured. Reporting is optional but helps detect breakage and attacks.",
+      "", "info"));
+  }
+
+  const issueOrder = { low: 1, medium: 2, high: 3 };
+  const worst = checks.reduce((level, item) => {
+    if (!["missing", "weak", "error"].includes(item.status)) return level;
+    return Math.max(level, issueOrder[item.severity] || 0);
+  }, 0);
+  const risk = worst >= 3 ? "high" : worst === 2 ? "medium" : "low";
+  const actionable = checks.filter((item) => ["missing", "weak", "error"].includes(item.status)).length;
+  let summary = "";
+  if (risk === "high") {
+    summary = "High-risk CSP gaps found (" + actionable + " actionable finding" +
+      (actionable === 1 ? "" : "s") + "). Prioritize script execution and policy delivery.";
+  } else if (risk === "medium") {
+    summary = "CSP is enforced but has " + actionable + " hardening gap" +
+      (actionable === 1 ? "" : "s") + ". Review the findings before relying on it for XSS defense-in-depth.";
+  } else {
+    summary = "No obvious exploitable CSP source pattern was found. Validate the policy in report-only mode against real application flows before tightening it further.";
+  }
+  const interesting = {};
+  ["content-security-policy", "content-security-policy-report-only"].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(normalized, key)) interesting[key] = normalized[key];
+  });
+  return {
+    url: url,
+    final_url: final,
+    status_code: status,
+    checks: checks,
+    risk: risk,
+    summary: summary,
+    policy: policy,
+    report_only_policy: reportOnly,
+    directives: directives,
+    suggested_policy: CSP_SUGGESTED_POLICY,
+    headers: interesting,
+    _source: source || "live"
+  };
+}
+
 /* ---------- Clickjacking scoring ---------------------------------------- */
 
 function assessXfo(value) {
@@ -1994,7 +2434,9 @@ function parseRawHeaderDump(text) {
     const m = /^([A-Za-z0-9!#$%&'*+.^_`|~-]+)\s*:\s*(.*)$/.exec(line);
     if (!m) return;
     const k = m[1].toLowerCase();
-    if (k === "set-cookie" && headers[k]) headers[k] += "\n" + m[2];
+    const repeatable = k === "set-cookie" || k === "content-security-policy" ||
+      k === "content-security-policy-report-only";
+    if (repeatable && headers[k]) headers[k] += "\n" + m[2];
     else headers[k] = m[2];
   });
   return { status_code: status, headers: headers };
@@ -2027,8 +2469,8 @@ async function fetchText(href, ms) {
 }
 
 /* ---------- Header lookup cache (dedupe + TTL) -------------------------- */
-/* Concurrent scans of the same URL (the hub suite runs all three tools at
-   once) share one lookup, and repeat scans reuse a 10-minute local cache —
+/* Concurrent scans of the same URL (the hub suite runs every tool at once)
+   share one lookup, and repeat scans reuse a 10-minute local cache —
    so public relays are hit far less often and rate limits rarely bite. */
 
 const HEADER_CACHE_KEY = "cb-header-lookup-v1";
@@ -2174,6 +2616,27 @@ async function gradeHeadersLive(url) {
   return gradeHeadersFromMap(url, looked.status_code, looked.final_url || url, looked.headers, looked.source);
 }
 
+async function gradeCspLive(url) {
+  const looked = await lookupHeadersLive(url);
+  if (!looked) {
+    return {
+      url: url, final_url: url, status_code: null,
+      checks: [cspFinding("request", "error", "Could not read CSP response headers from this hosted page. The target may be unreachable, the lookup may have been declined or rate-limited, or the Python engine is offline.", "", "high")],
+      risk: "unknown",
+      summary: "No CSP header data. Run python3 server.py for a same-origin scan, or retry.",
+      policy: "", report_only_policy: "", directives: {},
+      suggested_policy: CSP_SUGGESTED_POLICY, headers: {}, _source: "none"
+    };
+  }
+  return gradeCspFromMap(
+    url,
+    looked.status_code,
+    looked.final_url || url,
+    looked.headers,
+    looked.source
+  );
+}
+
 async function gradeClickjackingLive(url) {
   const looked = await lookupHeadersLive(url);
   if (!looked) {
@@ -2283,7 +2746,7 @@ function initSuite() {
     // Ask before anything can reach a third-party relay. Without this the
     // hub silently degraded to "no header data" for every target on the
     // hosted site, with no way for the analyst to opt in.
-    const consent = await ensureRelayConsent();
+    const consent = await ensureRelayConsent(url);
     if (consent === "deny") {
       setStage("consent", "failed", "declined — header grading skipped");
       out.insertAdjacentHTML("beforeend",
@@ -2298,22 +2761,56 @@ function initSuite() {
     setStage("consent", consent === "skip" ? "skipped" : "done",
       consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
 
-    setStage("collect", "active", "headers · CORS · framing — read-only GETs");
-    const [cj, hd, cr] = await Promise.all([
+    setStage("collect", "active", "headers · CSP · CORS · framing — read-only GETs");
+    // CSP needs the same response fields as Security Headers. Reuse that
+    // result in the suite instead of sending a duplicate GET to the target.
+    const headersTask = apiHeaders(url).catch(() => null);
+    const cspTask = headersTask.then((headersResult) => {
+      if (headersResult && headersResult.status_code != null && headersResult.headers) {
+        const cspResult = gradeCspFromMap(
+          url,
+          headersResult.status_code,
+          headersResult.final_url || url,
+          headersResult.headers,
+          headersResult._source || "live"
+        );
+        cspResult._cached_at = headersResult._cached_at || "";
+        return cspResult;
+      }
+      if (headersResult && headersResult._unreachable) {
+        return markUnreachable({
+          url: headersResult.url,
+          final_url: headersResult.final_url,
+          status_code: null,
+          checks: headersResult.checks || [],
+          risk: "unknown",
+          summary: headersResult.summary || "Target not reachable.",
+          policy: "",
+          report_only_policy: "",
+          directives: {},
+          suggested_policy: CSP_SUGGESTED_POLICY,
+          headers: {}
+        }, headersResult._source);
+      }
+      return apiCsp(url).catch(() => null);
+    });
+    const [cj, hd, cr, cp] = await Promise.all([
       apiScan(url).catch(() => null),
-      apiHeaders(url).catch(() => null),
-      apiCors(url).catch(() => null)
+      headersTask,
+      apiCors(url).catch(() => null),
+      cspTask
     ]);
     setStage("collect", "done");
     setStage("evaluate", "done", "OWASP-aligned checks applied");
 
-    lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr };
+    lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr, csp: cp };
     const base = appBase();
     out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) +
       '<div class="suite-grid">' +
       suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) +
       suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) +
       suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) +
+      suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) +
       "</div>";
     addRecentScan(url, recentScanSummary(lastSuite));
     renderRecentScans();
@@ -2337,7 +2834,9 @@ function initSuite() {
         "",
         toMarkdown(lastSuite.headers),
         "",
-        toMarkdown(lastSuite.cors)
+        toMarkdown(lastSuite.cors),
+        "",
+        toMarkdown(lastSuite.csp)
       ];
       const ok = await copyText(parts.join("\n"));
       flashBtn(copyBtn, ok, "Suite copied ✓");
@@ -2406,10 +2905,10 @@ function pipelineController(root) {
 }
 
 /* ---------- Suite summary ----------------------------------------------
-   One honest headline per run: worst-case risk across the three tools, the
+   One honest headline per run: worst-case risk across the four tools, the
    headers score as the only numeric gauge, and per-tool chips. There is no
-   invented aggregate score — clickjacking and CORS have no numeric scale,
-   so they are shown as risks, never as a fake /100. */
+   invented aggregate score — clickjacking, CORS and CSP have no shared
+   numeric scale, so they are shown as risks, never as a fake /100. */
 
 const RISK_ORDER = { high: 3, medium: 2, low: 1, unknown: 0 };
 
@@ -2417,7 +2916,8 @@ function worstSuiteTool(s) {
   const ds = [
     ["Clickjacking", s.clickjacking],
     ["Security Headers", s.headers],
-    ["CORS", s.cors]
+    ["CORS", s.cors],
+    ["CSP", s.csp]
   ].filter((d) => d[1]);
   if (!ds.length) return null;
   return ds.reduce((w, d) =>
@@ -2429,7 +2929,7 @@ function worstSuiteTool(s) {
    persisting full scan JSON. */
 function recentScanSummary(s) {
   const out = {};
-  ["clickjacking", "cors"].forEach((k) => {
+  ["clickjacking", "cors", "csp"].forEach((k) => {
     if (s[k] && s[k].risk) out[k] = { risk: s[k].risk };
   });
   if (s.headers && s.headers.grade) {
@@ -2463,14 +2963,15 @@ function suiteSummaryHtml(s, engineNote) {
   const verdict = worst
     ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
       esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
-      '<span class="suite-summary-worst">worst-case risk across the three tools — ' +
+      '<span class="suite-summary-worst">worst-case risk across the four tools — ' +
       esc(worst[0]) + "</span>"
     : '<span class="risk unknown">UNKNOWN</span>' +
       '<span class="suite-summary-worst">no tool returned a result</span>';
   const chips =
     suiteToolChip("Clickjacking", s.clickjacking, false) +
     suiteToolChip("Headers", s.headers, true) +
-    suiteToolChip("CORS", s.cors, false);
+    suiteToolChip("CORS", s.cors, false) +
+    suiteToolChip("CSP", s.csp, false);
   return '<div class="suite-summary">' +
     '<div class="suite-summary-gauge">' + gauge + "</div>" +
     '<div class="suite-summary-body">' +
@@ -2540,11 +3041,19 @@ function setSourceChip(data) {
    into #relayGate on each tool page (and the hub). Resolves once the
    analyst chooses, so the scan can continue or abort. */
 
-async function relayGateNeeded() {
+async function relayGateNeeded(url) {
   // Wait for engine detection to settle before deciding.
   try { await window.__cbEngineReady; } catch (_) { /* fall through */ }
   // Python engine present? Then relays are never reached.
   if (window.__cbEngine && window.__cbEngine.mode === "python") return false;
+  // A fresh same-origin Pages report also answers without disclosing the
+  // target to a relay. This keeps all cached demo tools usable immediately.
+  if (url) {
+    try {
+      const cached = await cachedReportFor(url);
+      if (cached) return false;
+    } catch (_) { /* absent cache — consent may be needed */ }
+  }
   return !relayConsent();
 }
 
@@ -2580,8 +3089,8 @@ function renderRelayGate() {
 }
 
 /* Call before any scan that may fall through to a relay. */
-async function ensureRelayConsent() {
-  const needed = await relayGateNeeded();
+async function ensureRelayConsent(url) {
+  const needed = await relayGateNeeded(url);
   if (!needed) return relayConsent() || "skip";
   return renderRelayGate();
 }
@@ -2719,7 +3228,7 @@ function addRecentScan(url, summary) {
     let items = getRecentScans().filter((it) => it.url !== url);
     const entry = { url: url, at: Date.now() };
     // summary is a small {headers:{grade,score}, clickjacking:{risk},
-    // cors:{risk}} digest — never full scan JSON.
+    // cors:{risk}, csp:{risk}} digest — never full scan JSON.
     if (summary) entry.summary = summary;
     items.unshift(entry);
     if (items.length > RECENT_MAX) items = items.slice(0, RECENT_MAX);

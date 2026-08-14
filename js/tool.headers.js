@@ -60,7 +60,7 @@
     const t0 = (window.performance && typeof performance.now === "function")
       ? performance.now() : null;
 
-    const consent = await ensureRelayConsent();
+    const consent = await ensureRelayConsent(url);
     if (consent === "deny") {
       setLoading($("go"), false);
       $("staticNotice").innerHTML =
