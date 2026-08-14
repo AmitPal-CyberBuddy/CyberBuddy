@@ -6,8 +6,29 @@
 (function () {
   let cbLastData = null;
   let frameLoaded = false;
+  let frameObservation = {
+    event: "pending",
+    rendered: null,
+    peek: "Frame has not finished loading."
+  };
 
   function $(id) { return document.getElementById(id); }
+
+  function attachFrameEvidence(data) {
+    if (!data) return data;
+    data.frame_observation = Object.assign({}, frameObservation);
+    const stage = $("stage");
+    const slider = $("pocOpacity");
+    data.poc_overlay = {
+      visible: !!(stage && stage.classList.contains("poc")),
+      opacity_percent: slider ? Number(slider.value) : 72
+    };
+    return data;
+  }
+
+  function syncFrameEvidence() {
+    if (cbLastData) attachFrameEvidence(cbLastData);
+  }
 
   function protectionLabel(risk) {
     const r = (risk || "").toLowerCase();
@@ -48,7 +69,7 @@
   }
 
   function finish(data, toolTitle) {
-    cbLastData = data;
+    cbLastData = attachFrameEvidence(data);
     renderProvenance(data, toolTitle || "Clickjacking Validator");
     const head = $("reportTitleFlag");
     if (head) head.innerHTML = unverifiedFlag(data);
@@ -59,8 +80,14 @@
     $("results").classList.remove("hidden");
     // Overlay is opt-in: the frame loads plainly by default.
     $("stage").classList.remove("poc");
+    $("pocControls").classList.add("hidden");
     $("togglePoc").textContent = "Show PoC overlay";
     frameLoaded = false;
+    frameObservation = {
+      event: "pending",
+      rendered: null,
+      peek: "Frame has not finished loading."
+    };
     $("frame").src = url;
     $("frameStatus").textContent = "Loading frame…";
     $("stage").classList.add("scanning");
@@ -141,6 +168,7 @@
     setTimeout(() => {
       const suggestion = frameLikelyBlocked($("frame"), frameLoaded) ? "blocked" : "framed";
       renderConfirmPrompt("visualConfirm", suggestion, (verdict) => {
+        frameObservation.rendered = verdict === "framed";
         const data = attestedClickjacking(Object.assign({ url: url }, base), verdict);
         fillMeta(url, data);
         setVerdict(data.risk.toUpperCase(), data.summary);
@@ -151,6 +179,7 @@
   }
 
   window.initClickjacking = function initClickjacking() {
+    initUrlInput($("url"));
     $("frame").addEventListener("load", () => {
       frameLoaded = true;
       $("stage").classList.remove("scanning");
@@ -163,6 +192,12 @@
         const doc = $("frame").contentDocument;
         if (doc && doc.location) peek = "document readable — " + doc.location.href;
       } catch (_) { /* SecurityError: cross-origin — expected */ }
+      frameObservation = {
+        event: "load",
+        rendered: frameObservation.rendered,
+        peek: peek
+      };
+      syncFrameEvidence();
       $("frameStatus").textContent =
         "Frame loaded — peek: " + peek +
         ". If the real site UI is visible, treat it as clickjackable.";
@@ -175,6 +210,12 @@
     // "Loading frame…" status stuck.
     $("frame").addEventListener("error", () => {
       $("stage").classList.remove("scanning");
+      frameObservation = {
+        event: "error",
+        rendered: false,
+        peek: "Frame error event — no framed document was readable."
+      };
+      syncFrameEvidence();
       $("frameStatus").textContent =
         "Frame load failed — the browser blocked or could not reach the target " +
         "(mixed-content policy, CSP, or connection failure). No framing verdict " +
@@ -182,9 +223,8 @@
     });
 
     $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
+      const url = validateUrlField($("url"));
+      if (!url) return;
       pushUrlParam(url);
       addRecentScan(url);
       scan(url);
@@ -197,7 +237,16 @@
     $("togglePoc").addEventListener("click", () => {
       $("stage").classList.toggle("poc");
       const on = $("stage").classList.contains("poc");
+      $("pocControls").classList.toggle("hidden", !on);
       $("togglePoc").textContent = on ? "Hide PoC overlay" : "Show PoC overlay";
+      syncFrameEvidence();
+    });
+
+    $("pocOpacity").addEventListener("input", () => {
+      const value = Math.max(5, Math.min(100, Number($("pocOpacity").value) || 72));
+      $("pocOverlay").style.setProperty("--attacker-opacity", String(value / 100));
+      $("pocOpacityValue").textContent = value + "%";
+      syncFrameEvidence();
     });
 
     initExportMenu("Clickjacking Validator", () => cbLastData);
@@ -205,8 +254,9 @@
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
-      $("url").value = normalizeUrl(initial);
-      scan(normalizeUrl(initial));
+      $("url").value = initial;
+      const url = validateUrlField($("url"), false);
+      if (url) scan(url);
     }
   };
 })();

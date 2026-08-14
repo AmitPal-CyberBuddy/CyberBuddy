@@ -229,8 +229,9 @@ async function scan(page, path, url) {
         }
         return out;
       });
-      ok = m.stageIn && m.frameIn && m.overlayIn;
-      note = JSON.stringify(m);
+      const audit = await page.evaluate(AUDIT);
+      ok = m.stageIn && m.frameIn && m.overlayIn && clean(audit);
+      note = JSON.stringify(m) + " " + summarize(audit);
     } catch (_) { ok = false; note = "no results"; }
     r.check(ok, `clickjacking stage/frame/overlay ${vn} ${note}`);
     await page.close();

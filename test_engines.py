@@ -12,6 +12,7 @@ import subprocess
 import threading
 import unittest
 import urllib.request
+from unittest.mock import patch
 from urllib.parse import quote
 from email.message import Message
 from http.server import ThreadingHTTPServer
@@ -28,6 +29,7 @@ from clickjacking_validator import (
     score,
     validate_target,
 )
+from cors_validator import ATTACKER_A, ATTACKER_B, scan_cors
 from csp_checker import grade_csp_from_map, parse_policy, split_policies
 from security_headers import (
     check_coep,
@@ -39,6 +41,7 @@ from security_headers import (
     check_xfo,
     frame_ancestors_restricts,
     grade_for,
+    grade_headers_from_map,
     summarize,
 )
 from server import ROOT, TOOL_ALIASES, _under_root, default_bind, strip_mount
@@ -106,13 +109,15 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(risk, "high")
         self.assertIn("frame-ancestors", summary.lower())
 
-    def test_xfo_only_is_medium(self):
+    def test_effective_xfo_is_low_with_csp_gap_as_recommendation(self):
         findings = [
             assess_xfo("DENY"),
-            assess_frame_ancestors(None),
+            assess_frame_ancestors("default-src 'self'"),
         ]
-        risk, _ = score(findings)
-        self.assertEqual(risk, "medium")
+        risk, summary = score(findings)
+        self.assertEqual(risk, "low")
+        self.assertIn("defense-in-depth", summary)
+        self.assertIn("frame-ancestors", summary)
 
     def test_fa_none_is_low(self):
         findings = [
@@ -126,6 +131,76 @@ class ScoreTests(unittest.TestCase):
         findings = [assess_xfo(None), assess_frame_ancestors(None)]
         risk, _ = score(findings)
         self.assertEqual(risk, "high")
+
+
+class OutcomeRollupTests(unittest.TestCase):
+    def _cors_result(self, first_headers, second_headers):
+        responses = [
+            (200, "https://api.example.test/data", first_headers),
+            (200, "https://api.example.test/data", second_headers),
+        ]
+        with (
+            patch("cors_validator.validate_target"),
+            patch("cors_validator.fetch_headers", side_effect=responses),
+        ):
+            return scan_cors("https://api.example.test/data")
+
+    def test_fixed_cors_allowlist_with_vary_gap_stays_low(self):
+        """A Vary recommendation must not outrank the two-origin outcome."""
+        fixed = {
+            "access-control-allow-origin": "https://trusted.example",
+            "access-control-allow-credentials": "true",
+        }
+        result = self._cors_result(fixed, fixed)
+        statuses = {check.name: check.status for check in result.checks}
+        self.assertEqual(statuses["Vary: Origin"], "weak")
+        self.assertEqual(result.risk, "low")
+        self.assertIn("No arbitrary-origin reflection", result.summary)
+
+    def test_reflection_outcomes_remain_medium_and_high(self):
+        reflected_a = {"access-control-allow-origin": ATTACKER_A, "vary": "Origin"}
+        reflected_b = {"access-control-allow-origin": ATTACKER_B, "vary": "Origin"}
+        self.assertEqual(self._cors_result(reflected_a, reflected_b).risk, "medium")
+        reflected_a["access-control-allow-credentials"] = "true"
+        reflected_b["access-control-allow-credentials"] = "true"
+        self.assertEqual(self._cors_result(reflected_a, reflected_b).risk, "high")
+
+    def test_strong_csp_with_reporting_only_gaps_stays_low(self):
+        policy = (
+            "default-src 'none'; script-src 'nonce-random' 'strict-dynamic'; "
+            "style-src 'self'; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'; form-action 'self'"
+        )
+        result = grade_csp_from_map(
+            "https://example.test", 200, "https://example.test",
+            {
+                "content-security-policy": policy,
+                "content-security-policy-report-only": "default-src 'self'",
+            },
+        )
+        statuses = {check.name: check.status for check in result.checks}
+        self.assertEqual(statuses["Report-only policy"], "info")
+        self.assertEqual(statuses["Violation reporting"], "info")
+        self.assertEqual(result.risk, "low")
+
+    def test_optional_header_gaps_alone_stay_in_low_band(self):
+        """Missing best-practice isolation headers cannot push a protected
+        baseline below B/low by themselves."""
+        result = grade_headers_from_map(
+            "https://example.test", 200, "https://example.test",
+            {
+                "content-security-policy": (
+                    "default-src 'self'; script-src 'self'; object-src 'none'; "
+                    "frame-ancestors 'none'"
+                ),
+                "strict-transport-security": "max-age=31536000; includeSubDomains",
+                "x-content-type-options": "nosniff",
+                "referrer-policy": "strict-origin-when-cross-origin",
+            },
+        )
+        self.assertEqual(result.score, 75)
+        self.assertEqual(result.grade, "B")
+        self.assertEqual(result.risk, "low")
 
 
 class CspTests(unittest.TestCase):
@@ -451,6 +526,186 @@ console.log(JSON.stringify({ grade: r.grade, score: r.score, risk: cj.risk }));
         payload = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertGreaterEqual(payload["score"], 70)
         self.assertEqual(payload["risk"], "low")
+
+
+class BrowserUxContractTests(unittest.TestCase):
+    def _run_app_js(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\n" + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+            path = handle.name
+        try:
+            process = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(process.returncode, 0, process.stderr)
+        return json.loads(process.stdout.strip().splitlines()[-1])
+
+    def test_url_accept_reject_and_feedback_contract(self):
+        rows = self._run_app_js(r'''
+const values = [
+  "example.com", "localhost:8080", "localhost", "127.0.0.1:8080",
+  "192.168.1.20", "  'example.org.'  ",
+  "", "https://[bad", "ftp://example.com", "javascript:alert(1)",
+  "data:text/html,hi", "httpss://example.com", "search words",
+  "example", "a..b", "-.com", "https://user:secret@example.com"
+];
+console.log(JSON.stringify(values.map((value) => ({ value, ...urlValidation(value) }))));
+''')
+        by_value = {row["value"]: row for row in rows}
+        expected = {
+            "example.com": "https://example.com",
+            "localhost:8080": "http://localhost:8080",
+            "localhost": "http://localhost",
+            "127.0.0.1:8080": "http://127.0.0.1:8080",
+            "192.168.1.20": "https://192.168.1.20",
+            "  'example.org.'  ": "https://example.org",
+        }
+        for raw, normalized in expected.items():
+            with self.subTest(raw=raw):
+                self.assertTrue(by_value[raw]["valid"])
+                self.assertEqual(by_value[raw]["url"], normalized)
+        rejected = {
+            "": "empty",
+            "https://[bad": "malformed",
+            "ftp://example.com": "scheme",
+            "javascript:alert(1)": "scheme",
+            "data:text/html,hi": "scheme",
+            "httpss://example.com": "scheme",
+            "search words": "search",
+            "example": "public-tld",
+            "a..b": "empty-label",
+            "-.com": "hyphen",
+            "https://user:secret@example.com": "credentials",
+        }
+        for raw, code in rejected.items():
+            with self.subTest(raw=raw):
+                self.assertFalse(by_value[raw]["valid"])
+                self.assertEqual(by_value[raw]["code"], code)
+                self.assertTrue(by_value[raw]["message"])
+
+    def test_single_origin_browser_cors_ignores_vary_as_headline_risk(self):
+        result = self._run_app_js(r'''
+console.log(JSON.stringify({
+  fixedAllowlist: browserCorsRisk("https://trusted.example", "true"),
+  wildcardCredentials: browserCorsRisk("*", "true"),
+  wildcardPublic: browserCorsRisk("*", "")
+}));
+''')
+        self.assertEqual(result["fixedAllowlist"], "low")
+        self.assertEqual(result["wildcardCredentials"], "medium")
+        self.assertEqual(result["wildcardPublic"], "low")
+
+    def test_all_entry_points_use_shared_visible_validation(self):
+        pages = [ROOT / "index.html"] + [
+            ROOT / "tools" / slug / "index.html"
+            for slug in ("clickjacking", "cors", "csp", "headers")
+        ]
+        for page in pages:
+            with self.subTest(page=page):
+                text = page.read_text(encoding="utf-8")
+                self.assertIn('class="field-error hidden"', text)
+                self.assertIn('role="alert"', text)
+                self.assertIn("aria-describedby=", text)
+        for controller in ("tool.clickjacking.js", "tool.cors.js", "tool.csp.js", "tool.headers.js"):
+            text = (ROOT / "js" / controller).read_text(encoding="utf-8")
+            self.assertIn('initUrlInput($("url"))', text)
+            self.assertIn('validateUrlField($("url"))', text)
+            self.assertNotIn("!validUrl", text)
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("initUrlInput(input)", app)
+        self.assertIn("showUrlError(input, result.message)", app)
+        self.assertIn('input.setAttribute("aria-invalid", "true")', app)
+
+    def test_credential_urls_are_redacted_from_exports(self):
+        result = self._run_app_js(r'''
+const data = { url: "https://alice:secret@example.com/private", final_url: "https://bob:hunter2@example.net/" };
+console.log(JSON.stringify({
+  markdown: toMarkdown({ ...data, risk: "low", checks: [], grade: "A", score: 100 }),
+  safe: reportSafeCopy(data),
+  redacted: redactUrlCredentials(data.url)
+}));
+''')
+        serialized = json.dumps(result)
+        self.assertNotIn("secret", serialized)
+        self.assertNotIn("hunter2", serialized)
+        self.assertNotIn("alice", serialized)
+        self.assertNotIn("bob", serialized)
+        self.assertEqual(result["redacted"], "https://example.com/private")
+
+    def test_export_menu_has_no_screen_capture_path(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        for removed in ("getDisplayMedia", "downloadPocImage", "canCapturePoc", 'data-act="poc"', "Download PoC image"):
+            self.assertNotIn(removed, app)
+        self.assertNotIn(".export-menu-item:disabled", css)
+        self.assertIn('data-act="card"', app)
+
+    def test_evidence_card_specs_are_tool_specific(self):
+        specs = self._run_app_js(r'''
+const base = { url: "https://example.com", final_url: "https://example.com", status_code: 200, risk: "low", summary: "Measured outcome", _source: "python" };
+const click = buildEvidenceCardSpec({ ...base,
+  findings: [{ name: "X-Frame-Options", status: "protected", detail: "DENY", evidence: "DENY" }, { name: "CSP frame-ancestors", status: "missing", detail: "Absent" }],
+  frame_observation: { event: "load", rendered: null, peek: "cross-origin (document not readable — expected)" },
+  poc_overlay: { visible: true, opacity_percent: 8 }
+}, "Clickjacking Validator");
+const cors = buildEvidenceCardSpec({ ...base,
+  checks: [], origins_tested: ["https://evil.test", "https://probe.test"],
+  headers: { "access-control-allow-origin": "(absent)", "access-control-allow-credentials": "(absent)", vary: "Origin" }
+}, "CORS Validator");
+const csp = buildEvidenceCardSpec({ ...base,
+  policy: "default-src 'none'; script-src 'nonce-abc' 'strict-dynamic'", report_only_policy: "default-src 'self'",
+  directives: { "default-src": ["'none'"], "script-src": ["'nonce-abc'", "'strict-dynamic'"] },
+  checks: [{ name: "Script execution", status: "ok", detail: "Nonce protected" }]
+}, "CSP Policy Auditor");
+const headers = buildEvidenceCardSpec({ ...base, grade: "A", score: 95, checks: [] }, "Security Headers");
+console.log(JSON.stringify({ click, cors, csp, headers }));
+''')
+        click = specs["click"]
+        self.assertIn("PROTECTION ENABLED", click["hero"])
+        self.assertEqual(click["rowsTitle"], "FRAMING CONTROLS")
+        self.assertEqual(len(click["rows"]), 2)
+        self.assertIn("NOT MACHINE-VERIFIABLE", click["context"][0]["detail"])
+        self.assertIn("cross-origin", click["context"][1]["detail"])
+        self.assertIn("8% opacity", click["context"][2]["evidence"])
+        cors = specs["cors"]
+        self.assertIn("TWO-ORIGIN REFLECTION PROOF", dict(cors["meta"])["Probe coverage"])
+        self.assertEqual([row["name"] for row in cors["context"]], ["ACAO", "ACAC", "Vary"])
+        csp = specs["csp"]
+        self.assertIn("default-src 'none'", csp["context"][0]["detail"])
+        self.assertEqual(csp["rowsTitle"], "DIRECTIVE FINDINGS")
+        self.assertEqual(csp["rows"][0]["name"], "Script execution")
+        self.assertIn("GRADE A", specs["headers"]["hero"])
+
+    def test_clickjacking_overlay_models_a_transparent_attacker_layer(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        page = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
+        controller = (ROOT / "js" / "tool.clickjacking.js").read_text(encoding="utf-8")
+        iframe_rule = css[css.index(".stage.poc iframe"):css.index("}", css.index(".stage.poc iframe"))]
+        overlay_rule = css[css.index(".overlay {"):css.index("}", css.index(".overlay {"))]
+        self.assertIn("opacity: 1", iframe_rule)
+        self.assertIn("inset: 0", overlay_rule)
+        self.assertIn("pointer-events: none", overlay_rule)
+        self.assertIn("--attacker-opacity", overlay_rule)
+        self.assertIn('id="pocOpacity" type="range"', page)
+        self.assertIn("Victim view · near-invisible", page)
+        self.assertIn("Illustrative click target", page)
+        self.assertIn('style.setProperty("--attacker-opacity"', controller)
 
 
 class ServerRouteTests(unittest.TestCase):
@@ -1009,7 +1264,7 @@ class HostedCspTests(unittest.TestCase):
                     self.assertIn("frame-src 'none'", csp)
 
     def test_exports_are_not_blocked(self):
-        """The evidence-card / PoC-image download builds a canvas blob."""
+        """The evidence-card download builds a canvas blob."""
         for page in self.PAGES:
             with self.subTest(page=page):
                 self.assertIn("blob:", re.search(r"img-src ([^;]+)", self._csp(page)).group(1))
@@ -1065,7 +1320,7 @@ class PrintStylesheetTests(unittest.TestCase):
         return block[block.rindex("}", 0, end) + 1:end]
 
     def test_poc_overlay_is_not_hidden_in_print(self):
-        # .overlay is the red decoy — it IS the clickjacking evidence.
+        # .overlay is the attacker layer — it IS the clickjacking evidence.
         self.assertNotIn(".overlay", self._print_hide_rule())
 
     def test_notice_is_not_hidden_in_print(self):

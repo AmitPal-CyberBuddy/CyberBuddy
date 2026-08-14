@@ -45,6 +45,15 @@ python3 server.py --host 0.0.0.0 --allow-private
 That serves the hub, all tool pages, and the JSON APIs that make header scans
 possible (browsers can't read cross-origin response headers on their own).
 
+URL fields accept bare public domains (`example.com` becomes
+`https://example.com`) and local host/port input (`localhost:8080` becomes
+`http://localhost:8080`). Public hostnames need a dot and plausible TLD; IP
+addresses and `localhost` remain valid for local work. Only HTTP(S) is accepted.
+URLs containing `user:password@` credentials are rejected so secrets are never
+burned into a report or evidence card. These browser checks are UX only:
+`validate_target()` and the server's SSRF/private-address policy remain the
+authoritative security boundary.
+
 ## Layout
 
 ```
@@ -209,16 +218,17 @@ The **Export** menu offers:
 | Option | What you get | Availability |
 | --- | --- | --- |
 | Print / Save as PDF | Full card, paper layout, colours and the PoC overlay preserved | everywhere |
-| Download PoC image (PNG) | Screen capture **including the framed target** | desktop Chrome/Edge (tab capture); Firefox/Safari share a window or screen; not on iOS |
-| Download evidence card (PNG) | Card drawn from the scan data — no live frame | everywhere |
+| Download evidence card (PNG) | Tool-specific card drawn from the scan data — no live frame | everywhere |
 | Copy report (Markdown) | Paste-ready findings table | everywhere |
 | Copy JSON | Raw result object | everywhere |
 
-A cross-origin iframe **cannot** be rasterised in JavaScript (canvas taints, and
-`html2canvas` does not render iframes at all), so the PoC image uses
-`getDisplayMedia` screen capture. Where that is unavailable the menu item is
-disabled and points you at your OS snipping tool. No third-party JS is used for
-either path.
+A cross-origin iframe **cannot** be rasterised in JavaScript: canvas pixels would
+be tainted, and `html2canvas` does not render iframes. CyberBuddy therefore does
+not request screen-capture permission. Use Evidence mode plus your OS screenshot
+tool when the live frame matters. The deterministic evidence card records the
+clickjacking frame outcome in words; CORS cards foreground probe origins and the
+ACAO/ACAC/Vary triple; CSP cards include the enforced policy and directive
+findings. No third-party JavaScript is used.
 
 ### Clickjacking without header data
 

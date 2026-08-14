@@ -419,8 +419,8 @@ def score(findings: Iterable[Finding]) -> tuple[str, str]:
         return "low", "Modern CSP frame-ancestors is in force. Residual risk is low for standard browsers."
     if xfo_ok:
         return (
-            "medium",
-            "Only X-Frame-Options protects the page. Add CSP frame-ancestors for modern, consistent coverage.",
+            "low",
+            "Framing is prevented by X-Frame-Options in current browsers. Add CSP frame-ancestors as modern defense-in-depth, but its absence does not make this protected response a medium-risk outcome.",
         )
     return "high", "No effective framing protection detected. The page is likely clickjackable."
 

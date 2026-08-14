@@ -92,18 +92,19 @@
       }
     },
     {
-      "name": "XFO only (no CSP) is medium clickjacking risk",
+      "name": "effective XFO with no frame-ancestors is low clickjacking risk",
       "url": "https://xfo-only.example",
       "final_url": "https://xfo-only.example",
       "status_code": 200,
       "headers": {
-        "x-frame-options": "SAMEORIGIN"
+        "x-frame-options": "DENY",
+        "content-security-policy": "default-src 'self'"
       },
       "expect": {
-        "clickjacking_risk": "medium",
+        "clickjacking_risk": "low",
         "statuses": {
           "X-Frame-Options": "ok",
-          "Content-Security-Policy": "missing"
+          "Content-Security-Policy": "ok"
         }
       }
     },

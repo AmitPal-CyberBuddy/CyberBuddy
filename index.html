@@ -90,7 +90,8 @@
       <div class="suite-bar">
         <div class="field">
           <label for="suiteUrl">Run the suite against a URL</label>
-          <input id="suiteUrl" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" />
+          <input id="suiteUrl" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" aria-describedby="suiteUrlError" />
+          <p id="suiteUrlError" class="field-error hidden" role="alert"></p>
         </div>
         <button id="suiteGo" type="button" class="btn btn-primary">Run suite</button>
       </div>

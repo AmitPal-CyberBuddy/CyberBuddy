@@ -109,10 +109,10 @@
   }
 
   window.initHeaders = function initHeaders() {
+    initUrlInput($("url"));
     $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
+      const url = validateUrlField($("url"));
+      if (!url) return;
       pushUrlParam(url);
       addRecentScan(url);
       scan(url);
@@ -127,8 +127,9 @@
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
-      $("url").value = normalizeUrl(initial);
-      scan(normalizeUrl(initial));
+      $("url").value = initial;
+      const url = validateUrlField($("url"), false);
+      if (url) scan(url);
     }
   };
 })();
