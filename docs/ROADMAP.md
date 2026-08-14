@@ -91,7 +91,8 @@ PR.
 - **Required tests:** stdlib `ToolCatalogTests` + `PagesExclusionTests`;
   catalog page added to `layout`/`responsive`/`dropdown` browser suites;
   new dropdown-grouping and hub-category/footer checks.
-- **PR/commit:** branch `arena/01a00217-cyberbuddy` — see §5.
+- **PR/commit:** PR #22 · branch `arena/01a00217-cyberbuddy` · commit
+  `baaea21`.
 
 ### GUIDES-01 — Public Guides foundation + one Clickjacking pilot guide
 - **Status:** `NEXT`
@@ -247,8 +248,8 @@ PR.
 > Replace this whole section at the end of every session.
 
 - **Last verified `origin/main`:** `237ea3b` (squashed “Update pages.yml”).
-- **Work currently in review:** IA-01 — branch `arena/01a00217-cyberbuddy`
-  (PR opened this session).
+- **Work currently in review:** IA-01 — branch `arena/01a00217-cyberbuddy`,
+  commit `baaea21`, **PR #22** (https://github.com/AmitPal-CyberBuddy/CyberBuddy/pull/22).
 - **Last completed checks:** 177/177 stdlib tests · `node --check` on all 18
   JS files · Python `compileall` · JSON + XML checks · Pages assembly guard
   (catalog published; internal files excluded). Real-browser suites could
