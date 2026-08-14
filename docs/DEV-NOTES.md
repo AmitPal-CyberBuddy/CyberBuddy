@@ -353,3 +353,50 @@ should remain shared.
 - **`tests/browser/stress_target.py`** is a local-only helper that serves the
   400-character header tokens the responsive suite needs when `CB_STRESS` is
   set; it is not shipped to Pages (the workflow only copies `tools/`).
+
+## IA-01 traps — scalable navigation, catalog and footer
+
+- **One registry, four renderers.** `TOOLS_MENU` in `js/app.js` is the only
+  source of tool metadata. The header menu (`toolsMenu`), hub cards
+  (`renderToolCards`), catalog (`renderToolCatalog`) and footer all read it.
+  Add a tool by adding one entry with a `category` of `assess` or `local` —
+  never hand-edit four places. If you add a field, add it to every entry or
+  the `TOOL_CATEGORIES`/renderer logic will render `undefined`.
+- **A generator is not a scanner.** The only thing that separates the two
+  categories is `TOOL_CATEGORIES[<category>].suite`. The hub “Run suite”
+  (`initSuite`) stays the four scan tools (`apiScan/apiHeaders/apiCors/apiCsp`);
+  CSRF is `local` and never joins it, never shows a LIVE/CACHED tag and never
+  produces a score. Do not let a future local tool creep into the suite.
+- **Dropdown grouping is markup, not behaviour.** The menu groups tools with
+  `nav-menu-group` headers inside the existing `details.nav-menu` — the
+  active-marker, Escape/outside-click, mobile containment, z-index and
+  evidence-mode contracts are untouched. If you ever re-style the menu,
+  re-run `tests/browser/dropdown.js` (it hit-tests every `.nav-menu-item`).
+- **The footer is category-based on purpose.** It links *All tools / Target
+  assessments / Local utilities*, *Learn* and *Project* — never a growing
+  per-tool list. A new tool must not re-add a footer link. `tests` assert the
+  footer contains no `/tools/<slug>/` links.
+- **Catalog path depth differs from tool pages.** `tools/index.html` is one
+  level deep (`../css`, `../js`, `../icon-192.png`); tool pages are two levels
+  (`../../`). The Pages asset guard catches a wrong depth, but only if the
+  catalog is copied — and it is **not** covered by the `cp -a tools/…`
+  directory list, so `tools/index.html` must be copied explicitly. That edit
+  lives in `docs/pages-workflow-patch.md` (the arena token cannot push
+  workflow files).
+- **`/tools` vs `/tools/`.** `server.py` serves `/tools/` as the catalog and
+  redirects `/tools` (no slash) to it, mirroring `/methodology`. A test pins
+  both plus the `/CyberBuddy/tools/` mount. If you add another top-level
+  directory page (e.g. `/guides/`), repeat this three-way route coverage.
+- **Internal files must never reach Pages.** `docs/ROADMAP.md` is the session
+  roadmap and is deliberately excluded like `docs/DEV-NOTES.md`, `tests/` and
+  `REVIEW.md`. The CI-side regression guard is stdlib
+  `PagesExclusionTests.test_workflow_never_copies_internal_paths` (it fails if
+  any future commit starts copying those paths into `_site/`); the equivalent
+  in-workflow leak check is carried in `docs/pages-workflow-patch.md` for the
+  maintainer. If you add a new internal doc directory, decide its Pages fate
+  in the same commit.
+- **Catalog static fallback vs JS registry.** `tools/index.html` ships a
+  static no-JS fallback *and* `renderToolCatalog()` replaces it from
+  `TOOLS_MENU`. This is the same intentional duplication the hub already has;
+  the JS registry is still the single JS source. Keep the fallback and the
+  registry in sync when tool metadata changes.

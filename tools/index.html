@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Tools catalog — CyberBuddy</title>
+  <meta name="description" content="Every CyberBuddy tool in one directory — target assessments and local utilities, with input type, target/local mode, evidence output, and OWASP/CWE mapping." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/" />
+  <meta property="og:title" content="Tools catalog — CyberBuddy" />
+  <meta property="og:description" content="Every CyberBuddy tool — target assessments and local utilities — with input, mode, evidence and standards mapping." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Tools catalog — CyberBuddy" />
+  <meta name="twitter:description" content="Every CyberBuddy tool in one directory." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../icon-512.png" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../css/noscript.css" /></noscript>
+  <script src="../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
+  <script src="../js/app.js?v=20260814h" defer></script>
+  <script src="../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/tools/" data-init="renderToolCatalog">
+<main id="main" class="container page-hero">
+
+  <p class="kicker reveal">Tool directory</p>
+  <h1 class="reveal">Every tool, one directory</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    The full CyberBuddy catalog. Target assessments read a URL you point them
+    at and join the hub “Run suite”; local utilities run entirely in your
+    browser and never scan a target.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">
+    <span class="count" id="toolCount">05 live</span> · authorized testing only · all scans are read-only GETs
+  </p>
+
+  <div id="toolCatalog">
+    <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
+         kept in the markup so the catalog remains readable without JS. -->
+
+    <section class="catalog-group" id="assess-targets" aria-labelledby="assess-heading">
+      <div class="category-head">
+        <h2 id="assess-heading">Assess a target</h2>
+        <span class="cat-badge cat-suite">part of Run suite</span>
+        <p>URL-based checks that read a target you point them at. These four tools
+          run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.</p>
+      </div>
+      <div class="tool-catalog-grid">
+
+        <article class="card tool-catalog-card">
+          <div class="tool-catalog-head"><h3>Clickjacking Validator</h3><span class="cat-badge cat-assess">Assess targets</span></div>
+          <p class="tool-catalog-purpose">Live frame test — if the real site UI appears in the frame, the page can be clickjacked. Screenshot the result as proof.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>URL</dd>
+            <dt>Mode</dt><dd>Contacts the target (read-only GET + live frame)</dd>
+            <dt>Evidence</dt><dd>Live frame proof + framing-header report card</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CLNT-09</span><span class="std-id">CWE-1021</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="clickjacking/">Launch Clickjacking Validator</a>
+        </article>
+
+        <article class="card tool-catalog-card">
+          <div class="tool-catalog-head"><h3>Security Headers</h3><span class="cat-badge cat-assess">Assess targets</span></div>
+          <p class="tool-catalog-purpose">Grade CSP, X-Frame-Options, HSTS and the isolation headers into an A–F score, with the raw value behind every finding.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>URL</dd>
+            <dt>Mode</dt><dd>Contacts the target (read-only GET)</dd>
+            <dt>Evidence</dt><dd>0–100 score + A–F grade report card</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CONF-07</span><span class="std-id">WSTG-CONF-12</span><span class="std-id">CWE-693</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="headers/">Launch Security Headers</a>
+        </article>
+
+        <article class="card tool-catalog-card">
+          <div class="tool-catalog-head"><h3>CORS Validator</h3><span class="cat-badge cat-assess">Assess targets</span></div>
+          <p class="tool-catalog-purpose">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>URL</dd>
+            <dt>Mode</dt><dd>Contacts the target (read-only GET)</dd>
+            <dt>Evidence</dt><dd>Origin reflection + credentials report card</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CLNT-07</span><span class="std-id">CWE-942</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="cors/">Launch CORS Validator</a>
+        </article>
+
+        <article class="card tool-catalog-card">
+          <div class="tool-catalog-head"><h3>CSP Policy Auditor</h3><span class="cat-badge cat-assess">Assess targets</span></div>
+          <p class="tool-catalog-purpose">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>URL</dd>
+            <dt>Mode</dt><dd>Contacts the target (read-only GET)</dd>
+            <dt>Evidence</dt><dd>Policy audit + directive-findings report card</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CONF-12</span><span class="std-id">CWE-79</span><span class="std-id">CWE-693</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="csp/">Launch CSP Policy Auditor</a>
+        </article>
+
+      </div>
+    </section>
+
+    <section class="catalog-group" id="local-utilities" aria-labelledby="local-heading">
+      <div class="category-head">
+        <h2 id="local-heading">Local security utilities</h2>
+        <span class="cat-badge cat-local">not in Run suite</span>
+        <p>Generators and analyzers that run entirely in your browser. They do not
+          scan a target, do not join the hub “Run suite”, and produce no LIVE/CACHED
+          result or score.</p>
+      </div>
+      <div class="tool-catalog-grid">
+
+        <article class="card tool-catalog-card">
+          <div class="tool-catalog-head"><h3>CSRF PoC Generator</h3><span class="cat-badge cat-local">Local utilities</span></div>
+          <p class="tool-catalog-purpose">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>Raw HTTP request (Burp)</dd>
+            <dt>Mode</dt><dd>Local only — nothing sent, stored or relayed</dd>
+            <dt>Evidence</dt><dd>Standalone HTML PoC variants (no score, no LIVE/CACHED tag)</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-SESS-05</span><span class="std-id">CWE-352</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="csrf/">Launch CSRF PoC Generator</a>
+        </article>
+
+      </div>
+    </section>
+  </div>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span><strong>Authorized testing only.</strong> You may only assess systems you own or have
+      written permission to test. Local utilities process your input in this browser and never
+      transmit it.</span>
+  </div>
+
+</main>
+</body>
+</html>

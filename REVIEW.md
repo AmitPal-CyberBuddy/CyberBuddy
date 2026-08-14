@@ -1465,3 +1465,91 @@ five.
   variant (fails `test_auto_submit_off_and_on`). Both mutations were reverted.
 - **Pages assembly guard:** resolves every referenced local asset across the
   eight pages (hub, 404, methodology, five tools) with `tools/csrf/` published.
+
+## 22. IA-01 — scalable tool information architecture (2026-08-14)
+
+Work began from `origin/main` at `237ea3b` on the Arena-assigned branch
+`arena/01a00217-cyberbuddy`. REVIEW §21 and `docs/DEV-NOTES.md` were read
+first; the CSRF tool and PR #20 work were verified present in the merged tree
+and were not re-applied. Baseline before behavior changed: **161/161** stdlib
+tests, `node --check` clean on all eighteen JavaScript files, and the Pages
+assembly guard green (hub, 404, methodology and five tool pages).
+
+### Why this round
+
+CyberBuddy had grown to two *kinds* of tool — four URL-based scanners and one
+local generator — but the nav, hub grid and footer still treated every tool
+as one flat list. Each new tool meant editing the menu, the hub cards **and**
+the footer by hand (the footer literally listed every tool). That does not
+scale past five, and it blurred the one distinction the product must keep
+crisp: a generator is not a scanner.
+
+### The single registry
+
+`js/app.js` now carries one `TOOLS_MENU` registry with a `category` field
+(`assess` vs `local`) plus `input`, `mode` and `evidence` metadata. The header
+menu, the hub cards, the new catalog and the footer all render from it — a new
+tool appears everywhere by adding one entry. A `TOOL_CATEGORIES` map holds the
+two labels and the one-line description that says *why* the groups differ
+(URL assessment joins “Run suite”; a local generator never scans and produces
+no LIVE/CACHED result or score).
+
+### What changed
+
+- **Header Tools menu** now groups live tools under *Assess targets* /
+  *Local utilities* and leads with an “All tools” link to the catalog. Active
+  marker, keyboard navigation, Escape/outside-click, mobile containment,
+  z-index and evidence-mode behavior are unchanged — the grouping is markup
+  (`nav-menu-group` headers), not new interaction code.
+- **Hub cards** split into “Assess a target” (the four scan tools + the
+  “coming soon” slot) and “Local security utilities” (CSRF), each with a
+  category heading, a *part of / not in Run suite* badge and a one-line
+  description. The section head links to the catalog.
+- **`tools/index.html`** is a dedicated catalog: per tool, name, purpose,
+  category, input type, target-vs-local mode, evidence artifact and OWASP/CWE
+  mapping, plus a launch button — in the established shell, both themes, all
+  viewports, with a static no-JS fallback.
+- **Footer** stopped being a per-tool list. It now reads *Tools* (All tools /
+  Target assessments / Local utilities), *Learn* (Methodology / Scoring /
+  Privacy) and *Project* (GitHub / Security policy / Documentation). Connect
+  links folded into the brand block. No broken Guides/About links were added —
+  those remain roadmap items (GUIDES-01, ABOUT-01).
+- **Routes & metadata**: `server.py` serves `/tools/` (and redirects `/tools`)
+  incl. the `/CyberBuddy` mount; `sitemap.xml` and `llms.txt` list the
+  catalog; README layout and quick-start updated.
+- **Pages publication**: the catalog copy (`cp tools/index.html _site/tools/`)
+  and an internal-file leak guard for `_site/` belong in `.github/workflows/
+  pages.yml`, but the arena push token is not granted the `workflows`
+  permission (the same restriction PR #20 hit). They are carried in
+  `docs/pages-workflow-patch.md` for the maintainer to apply. The regression
+  guard that **can** run in CI today is stdlib `PagesExclusionTests` —
+  `test_workflow_never_copies_internal_paths` fails if any future commit
+  starts copying `docs/`, `tests/` or `REVIEW.md` into `_site/`.
+
+### `docs/ROADMAP.md`
+
+Added the repo-internal roadmap — project state, status definitions, the
+work-item format, the ordered plan (IA-01 → GUIDES-01/02/03 → ABOUT-01 →
+DX-01/02 → REFACTOR-01/02/03 → QA-01 → RELEASE-01 → deferred TOOL-06 and
+FUTURE-01) and the future-session handoff protocol. It is excluded from Pages
+by the guard above.
+
+### Tests and verification
+
+- **Stdlib:** `python3 -m unittest test_engines.py` — **177/177 OK** (16 new:
+  `ToolCatalogTests`, `PagesExclusionTests`, and a `/tools` route test).
+  Every new assertion is about *structure* (registry categories, menu grouping,
+  catalog presence, scalable footer, route, sitemap, `llms.txt`, exclusion) —
+  none re-scores a grader.
+- **Static:** `python3 -m compileall` on all engines, JSON and XML checks
+  clean, `node --check` on all eighteen scripts.
+- **Pages assembly guard:** run locally with the catalog included — all
+  referenced assets resolve and `docs/`, `tests/`, `REVIEW.md` stay absent.
+  The `pages.yml` edits themselves ship via `docs/pages-workflow-patch.md`
+  (see above).
+- **Real-browser suites:** updated page arrays (`layout`, `dropdown`,
+  `responsive`) to cover `/tools/`, added a dropdown-grouping check and a
+  hub-category/footer check. **Not executed in this session** — the sandbox
+  had no Chromium binary and the browser CDN was unreachable. They must be run
+  by hand (`CB_CHROME=… node tests/browser/*.js`) before IA-01 merges; the
+  expected counts are the §21 baseline plus the new catalog/grouping checks.

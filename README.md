@@ -21,14 +21,19 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
 
-More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` for the
-nav and hub grid, then add its explicit footer and static no-JavaScript links.
+More tools slot in later — add one entry to the `TOOLS_MENU` registry in
+`js/app.js` (with a `category` of `assess` for URL-based target checks or
+`local` for generators/analyzers) and it appears in the header menu, the hub
+grid, the tools catalog (`/tools/`) and the footer automatically. Add the
+tool page under `tools/<slug>/` and its static no-JavaScript card to the hub
+and catalog fallbacks.
 
 ## Quick start (full scans)
 
 ```bash
 python3 server.py
 # open http://127.0.0.1:8080/
+# catalog: /tools/
 # tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
 ```
 
@@ -75,6 +80,7 @@ js/tool.csp.js                  # CSP audit page controller
 js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
+  index.html                    # tools catalog (every tool in one directory)
   clickjacking/index.html       # iframe + PoC overlay + ?url= sharing
   headers/index.html            # header report UI
   cors/index.html               # CORS probe + roadmap

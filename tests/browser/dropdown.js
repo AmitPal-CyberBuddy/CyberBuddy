@@ -21,6 +21,7 @@ const {
 
 const PAGES = [
   ["hub", "/"],
+  ["catalog", "/tools/"],
   ["methodology", "/methodology/"],
   ["clickjacking", "/tools/clickjacking/"],
   ["headers", "/tools/headers/"],
@@ -157,8 +158,9 @@ async function checkMenu(page, label, r) {
     const hrefs = await page.evaluate(() =>
       [...document.querySelectorAll(".header-inner .nav-menu-panel a")]
         .map((a) => new URL(a.getAttribute("href"), location.href).pathname));
+    // 5 live tool links + the "All tools" catalog link, all under the mount.
     r.check(
-      hrefs.length === 5 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
+      hrefs.length === 6 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
       `project-mount links ${vn} ${JSON.stringify(hrefs)}`
     );
     await checkMenu(page, `project-mount ${vn}`, r);
@@ -228,6 +230,32 @@ async function checkMenu(page, label, r) {
       return a && a.getAttribute("href");
     });
     r.check(!!active && active.endsWith("/tools/headers/"), `active tool marked ${active}`);
+
+    /* Tools are grouped under category labels, not one flat list. */
+    const grouping = await page.evaluate(async () => {
+      const details = document.querySelector(".header-inner details.nav-menu");
+      const summary = details.querySelector("summary");
+      summary.scrollIntoView({ block: "center", behavior: "instant" });
+      await new Promise((r) => setTimeout(r, 150));
+      summary.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const nodes = [...details.querySelectorAll(".nav-menu-panel > *")];
+      const labels = nodes
+        .filter((n) => n.classList.contains("nav-menu-group"))
+        .map((n) => n.textContent.trim());
+      const localGroup = nodes.findIndex((n) =>
+        n.classList.contains("nav-menu-group") && /Local utilities/.test(n.textContent));
+      const csrf = nodes.findIndex((n) => /CSRF PoC Generator/.test(n.textContent));
+      const catalog = nodes.findIndex((n) => /All tools/.test(n.textContent));
+      details.removeAttribute("open");
+      return { labels, localGroup, csrf, catalog };
+    });
+    r.check(
+      grouping.labels.length === 2 &&
+      grouping.labels[0] === "Assess targets" && grouping.labels[1] === "Local utilities" &&
+      grouping.catalog === 0 && grouping.csrf > grouping.localGroup,
+      `dropdown grouping ${JSON.stringify(grouping)}`
+    );
     await page.close();
   }
 

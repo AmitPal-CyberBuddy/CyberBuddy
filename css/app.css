@@ -307,6 +307,15 @@ main.container { z-index: 2; }
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
   padding: 8px 11px 4px; border-top: 1px solid var(--line); margin-top: 4px;
 }
+/* Category group label inside the Tools menu ("Assess targets" /
+   "Local utilities"). Distinct from the "In development" divider so the two
+   live categories read as sections, not one flat list. */
+.nav-menu-group {
+  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+  padding: 10px 11px 4px; border-top: 1px solid var(--line); margin-top: 4px;
+}
+.nav-menu-group:first-of-type { border-top: 0; margin-top: 2px; padding-top: 6px; }
 .nav-menu.up .nav-menu-panel { top: auto; bottom: calc(100% + 10px); }
 .footer-nav .nav-menu summary { padding: 4px 0; }
 
@@ -427,6 +436,57 @@ main.container { z-index: 2; }
 .section-head .count {
   font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint); letter-spacing: 0.08em;
 }
+.section-head .catalog-link {
+  font-size: 0.86rem; font-weight: 600; color: var(--brand); margin-left: auto;
+}
+.section-head .catalog-link:hover { text-decoration: underline; }
+
+/* Category headings on the hub and the tools catalog: a short group label,
+   a "part of / not in Run suite" badge, and a one-line description — so the
+   scan tools and the local generator are visibly different kinds of tool. */
+.category-head { margin: 40px 0 16px; }
+.category-head h2, .category-head h3 { margin: 0 0 6px; }
+.category-head p { margin: 6px 0 0; color: var(--muted); font-size: 0.88rem; max-width: 64ch; }
+.category-head .cat-badge { vertical-align: middle; margin-left: 8px; }
+
+.cat-badge {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.6rem;
+  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap;
+}
+.cat-badge.cat-assess { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
+.cat-badge.cat-local { color: var(--accent-2); background: var(--surface-2); border-color: var(--line-strong); }
+.cat-badge.cat-suite { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+.cat-badge.cat-local.cat-badge,
+.cat-badge.cat-suite.cat-badge { margin-left: 0; }
+
+/* Tools catalog (/tools/) — one spec-sheet card per tool. */
+.tool-catalog-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+}
+.tool-catalog-card {
+  padding: 20px; display: flex; flex-direction: column; gap: 14px;
+}
+.tool-catalog-card h3 { margin: 0; font-size: 1.1rem; }
+.tool-catalog-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tool-catalog-head .tool-card-icon { margin: 0; }
+.tool-catalog-purpose { margin: 0; color: var(--muted); font-size: 0.88rem; flex: 1; }
+.catalog-meta {
+  margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px;
+  font-size: 0.82rem;
+}
+.catalog-meta dt {
+  font-family: var(--font-mono); font-size: 0.64rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+  padding-top: 2px;
+}
+.catalog-meta dd { margin: 0; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.catalog-meta .catalog-std { display: flex; flex-wrap: wrap; gap: 6px; }
+.tool-catalog-card .btn { align-self: flex-start; margin-top: auto; }
+
+/* The contact links folded into the footer brand block. */
+.footer-brand .footer-contact { margin-top: 8px; }
+
 
 /* Buttons */
 .btn {

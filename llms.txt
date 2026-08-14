@@ -3,6 +3,7 @@
 > Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, CORS posture checks, and a local-only CSRF PoC generator — with evidence-grade output.
 
 - Hub: https://amitpal-cyberbuddy.github.io/CyberBuddy/
+- Tools catalog: https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/
 - Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology
 - Source: https://github.com/AmitPal-CyberBuddy/CyberBuddy
 - Author: Amit Pal — https://amitpxl.medium.com/ · https://www.linkedin.com/in/amitpal-wb/

@@ -760,6 +760,20 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 301)
         self.assertEqual(headers.get("location"), "/tools/headers/")
 
+    def test_tools_catalog_served(self):
+        status, headers, body = self._req("/tools/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Tools catalog", body)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        # /tools (no slash) redirects to the catalog, like /methodology.
+        status, headers, _ = self._req("/tools")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/tools/")
+        # The GitHub project-path form works too.
+        status, _, body = self._req("/CyberBuddy/tools/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Tool directory", body)
+
     def test_short_aliases_redirect(self):
         for short, dest in (
             ("/headers", "/tools/headers/"),
@@ -862,6 +876,7 @@ class HostedSiteTests(unittest.TestCase):
         pages = [
             ROOT / "index.html",
             ROOT / "methodology" / "index.html",
+            ROOT / "tools" / "index.html",
             ROOT / "tools" / "clickjacking" / "index.html",
             ROOT / "tools" / "headers" / "index.html",
             ROOT / "tools" / "cors" / "index.html",
@@ -1234,6 +1249,7 @@ class HostedCspTests(unittest.TestCase):
         "index.html",
         "404.html",
         "methodology/index.html",
+        "tools/index.html",
         "tools/clickjacking/index.html",
         "tools/headers/index.html",
         "tools/cors/index.html",
@@ -1916,6 +1932,162 @@ console.log(JSON.stringify({
 ''')
         self.assertEqual(out["a"], "csrf-post-victim.example.com.html")
         self.assertEqual(out["b"], "csrf-get-a-b-c.com.html")
+
+
+class ToolCatalogTests(unittest.TestCase):
+    """IA-01: scalable tool information architecture.
+
+    The TOOLS_MENU registry in js/app.js is the single source of tool
+    metadata; the header menu, hub grid, footer and the new /tools/ catalog
+    all read from it. Scan tools are category "assess" (part of the hub
+    suite), the CSRF PoC Generator is category "local" (never a scanner).
+    """
+
+    def _app(self) -> str:
+        return (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    def test_registry_has_exactly_two_categories(self):
+        app = self._app()
+        self.assertIn('category: "assess"', app)
+        self.assertIn('category: "local"', app)
+        # Four scan tools assess, exactly one local utility generates.
+        self.assertEqual(app.count('category: "assess"'), 4)
+        self.assertEqual(app.count('category: "local"'), 1)
+
+    def test_categories_define_suite_membership(self):
+        app = self._app()
+        start = app.index("const TOOL_CATEGORIES")
+        block = app[start:app.index("const TOOLS_MENU", start)]
+        self.assertIn("suite: true", block)
+        self.assertIn("suite: false", block)
+        self.assertIn("Assess targets", block)
+        self.assertIn("Local utilities", block)
+
+    def test_tools_menu_groups_by_category(self):
+        """The dropdown must not be one flat list — it groups tools under
+        category labels so it can scale past five tools."""
+        app = self._app()
+        start = app.index("function toolsMenu(")
+        body = app[start:app.index("\nfunction navLink(", start)]
+        self.assertIn("nav-menu-group", body)
+        self.assertIn('["assess", "local"]', body)
+        # The catalog is reachable from the menu itself.
+        self.assertIn('"/tools/"', body)
+        self.assertIn("All tools", body)
+
+    def test_catalog_page_exists_and_loads_shared_js(self):
+        page = ROOT / "tools" / "index.html"
+        self.assertTrue(page.is_file(), page)
+        text = page.read_text(encoding="utf-8")
+        self.assertIn("js/app.js", text)
+        self.assertIn("renderToolCatalog", text)
+        self.assertIn('id="assess-targets"', text)
+        self.assertIn('id="local-utilities"', text)
+        # The catalog must not widen the framing policy (it needs no iframe).
+        self.assertIn("frame-src 'none'", text)
+
+    def test_catalog_renderer_reads_the_single_registry(self):
+        app = self._app()
+        self.assertIn("function renderToolCatalog()", app)
+        self.assertIn("TOOLS_MENU.filter((t) => t.category", app)
+        self.assertIn("TOOL_CATEGORIES[t.category]", app)
+
+    def test_footer_is_scalable_not_a_tool_list(self):
+        """The footer lists categories, not every tool — adding a tool must
+        not require a footer edit."""
+        app = self._app()
+        start = app.index("function renderFooter()")
+        body = app[start:app.index("\n/* ---------- Blog", start)]
+        self.assertIn("All tools", body)
+        self.assertIn("Target assessments", body)
+        self.assertIn("Local utilities", body)
+        self.assertIn("Security policy", body)
+        # No per-tool links remain in the footer.
+        self.assertNotIn("/tools/clickjacking/", body)
+        self.assertNotIn("/tools/headers/", body)
+        self.assertNotIn("/tools/csrf/", body)
+
+    def test_sitemap_lists_the_catalog(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/tools/", sitemap)
+
+    def test_llms_txt_lists_the_catalog(self):
+        text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        self.assertIn("/tools/", text)
+
+    def test_hub_links_to_the_catalog(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('class="catalog-link"', hub)
+        self.assertIn('href="tools/"', hub)
+        self.assertIn('id="assess-targets"', hub)
+        self.assertIn('id="local-utilities"', hub)
+
+    def test_hub_cards_are_split_into_two_grids(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="assessGrid"', hub)
+        self.assertIn('id="localGrid"', hub)
+        # The CSRF card sits under Local utilities, not the scan group.
+        local = hub[hub.index('id="localGrid"'):hub.index('id="localGrid"') + 2000]
+        self.assertIn("CSRF PoC Generator", local)
+
+    def test_csrf_is_local_and_not_in_the_scan_suite(self):
+        """The generator never joins the hub suite — that stays the four
+        scan tools (apiScan / apiHeaders / apiCors / apiCsp)."""
+        app = self._app()
+        start = app.index("function initSuite()")
+        body = app[start:app.index("/* ---------- Scan pipeline", start)]
+        self.assertIn("apiScan", body)
+        self.assertIn("apiCsp", body)
+        self.assertNotIn("csrf", body.lower())
+
+    def test_catalog_page_uses_established_shell(self):
+        """The catalog keeps the shared theme/meta CSP contract like every
+        other page (checked in HostedCspTests)."""
+        page = (ROOT / "tools" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("theme-boot.js", page)
+        self.assertIn("boot.js", page)
+
+
+class PagesExclusionTests(unittest.TestCase):
+    """The published site must never carry repo-internal planning docs.
+
+    docs/ROADMAP.md is the session roadmap; docs/DEV-NOTES.md is internal
+    maintainer notes; REVIEW.md and tests/ are working artifacts. The Pages
+    workflow copies only the public surface, and a regression guard (here,
+    run by CI via `python3 -m unittest test_engines.py`) pins that the
+    assemble step never copies them into _site/.
+
+    Note: the arena push token is not granted the `workflows` permission, so
+    the *catalog publish + leak-guard* workflow edit itself cannot be
+    committed here — it is carried in docs/pages-workflow-patch.md for the
+    maintainer to apply (the same mechanism as PR #20).
+    """
+
+    def test_roadmap_doc_exists(self):
+        self.assertTrue((ROOT / "docs" / "ROADMAP.md").is_file())
+
+    def test_workflow_never_copies_internal_paths(self):
+        """The assemble step must not reference docs/, tests/ or REVIEW.md
+        as copy sources. This is the regression guard: CI runs it on every
+        push, so a future commit that starts copying internal files into
+        _site/ fails here."""
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        for token in (
+            "cp -a docs", "cp docs", "cp -r docs",
+            "cp -a tests", "cp tests", "cp -r tests",
+            "cp REVIEW.md", "cp -a REVIEW.md",
+            "docs/ROADMAP.md", "docs/DEV-NOTES.md",
+        ):
+            self.assertNotIn(token, text, token)
+
+    def test_patch_doc_documents_the_catalog_and_guard(self):
+        """The workflow edit that cannot be pushed (catalog copy + internal
+        -file guard) must stay recorded for the maintainer."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("cp tools/index.html _site/tools/", patch)
+        self.assertIn("docs/ROADMAP.md", patch)
+        self.assertIn("docs/DEV-NOTES.md", patch)
+        self.assertIn("REVIEW.md", patch)
 
 
 if __name__ == "__main__":

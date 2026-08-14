@@ -47,7 +47,8 @@ const PAGES = [
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
   ["methodology", "/methodology/"],
-  ["404", "/404.html"]
+  ["404", "/404.html"],
+  ["catalog", "/tools/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 

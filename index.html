@@ -192,38 +192,59 @@
   </div>
 
   <div class="section-head reveal">
-    <h2>Assessment tools</h2>
+    <h2>Tools</h2>
     <span class="count" id="toolCount">05 live</span>
+    <a class="catalog-link" href="tools/">View the full catalog →</a>
   </div>
 
-  <section class="tool-grid" id="toolGrid" aria-label="Available tools">
-    <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
-         kept in the markup so the tools remain visible without JavaScript. -->
-    <a class="tool-card card corner-card" href="tools/clickjacking/">
-      <h3>Clickjacking Validator</h3>
-      <p class="tool-card-desc">Live frame test — if the real site UI appears in the frame, the page can be clickjacked. Screenshot the result as proof.</p>
-      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Clickjacking">OWASP WSTG-CLNT-09</span><span class="std-id" title="CWE-1021 — Improper Restriction of Rendered UI Layers or Frames">CWE-1021</span></div>
-    </a>
-    <a class="tool-card card corner-card" href="tools/headers/">
-      <h3>Security Headers</h3>
-      <p class="tool-card-desc">Grade CSP, X-Frame-Options, HSTS and the isolation headers into an A–F score, with the raw value behind every finding.</p>
-      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security">OWASP WSTG-CONF-07</span><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">WSTG-CONF-12</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
-    </a>
-    <a class="tool-card card corner-card" href="tools/cors/">
-      <h3>CORS Validator</h3>
-      <p class="tool-card-desc">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
-      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing">OWASP WSTG-CLNT-07</span><span class="std-id" title="CWE-942 — Permissive Cross-domain Policy with Untrusted Domains">CWE-942</span></div>
-    </a>
-    <a class="tool-card card corner-card" href="tools/csp/">
-      <h3>CSP Policy Auditor</h3>
-      <p class="tool-card-desc">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
-      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span><span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
-    </a>
-    <a class="tool-card card corner-card" href="tools/csrf/">
-      <h3>CSRF PoC Generator</h3>
-      <p class="tool-card-desc">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
-      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery">OWASP WSTG-SESS-05</span><span class="std-id" title="CWE-352 — Cross-Site Request Forgery (CSRF)">CWE-352</span></div>
-    </a>
+  <section id="assess-targets" aria-labelledby="assess-tools-heading">
+    <div class="category-head reveal">
+      <h3 id="assess-tools-heading">Assess a target</h3>
+      <span class="cat-badge cat-suite">part of Run suite</span>
+      <p>URL-based checks that read a target you point them at. These four tools
+        run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.</p>
+    </div>
+    <div class="tool-grid" id="assessGrid" aria-label="Target assessment tools">
+      <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
+           kept in the markup so the tools remain visible without JavaScript. -->
+      <a class="tool-card card corner-card" href="tools/clickjacking/">
+        <h3>Clickjacking Validator</h3>
+        <p class="tool-card-desc">Live frame test — if the real site UI appears in the frame, the page can be clickjacked. Screenshot the result as proof.</p>
+        <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Clickjacking">OWASP WSTG-CLNT-09</span><span class="std-id" title="CWE-1021 — Improper Restriction of Rendered UI Layers or Frames">CWE-1021</span></div>
+      </a>
+      <a class="tool-card card corner-card" href="tools/headers/">
+        <h3>Security Headers</h3>
+        <p class="tool-card-desc">Grade CSP, X-Frame-Options, HSTS and the isolation headers into an A–F score, with the raw value behind every finding.</p>
+        <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security">OWASP WSTG-CONF-07</span><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">WSTG-CONF-12</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
+      </a>
+      <a class="tool-card card corner-card" href="tools/cors/">
+        <h3>CORS Validator</h3>
+        <p class="tool-card-desc">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
+        <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing">OWASP WSTG-CLNT-07</span><span class="std-id" title="CWE-942 — Permissive Cross-domain Policy with Untrusted Domains">CWE-942</span></div>
+      </a>
+      <a class="tool-card card corner-card" href="tools/csp/">
+        <h3>CSP Policy Auditor</h3>
+        <p class="tool-card-desc">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
+        <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span><span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
+      </a>
+    </div>
+  </section>
+
+  <section id="local-utilities" aria-labelledby="local-tools-heading">
+    <div class="category-head reveal">
+      <h3 id="local-tools-heading">Local security utilities</h3>
+      <span class="cat-badge cat-local">not in Run suite</span>
+      <p>Generators and analyzers that run entirely in your browser. They do not
+        scan a target, do not join the hub “Run suite”, and produce no LIVE/CACHED
+        result or score.</p>
+    </div>
+    <div class="tool-grid" id="localGrid" aria-label="Local security utilities">
+      <a class="tool-card card corner-card" href="tools/csrf/">
+        <h3>CSRF PoC Generator</h3>
+        <p class="tool-card-desc">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
+        <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery">OWASP WSTG-SESS-05</span><span class="std-id" title="CWE-352 — Cross-Site Request Forgery (CSRF)">CWE-352</span></div>
+      </a>
+    </div>
   </section>
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
