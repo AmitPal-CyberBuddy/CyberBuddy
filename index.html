@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
-  <meta name="description" content="CyberBuddy: clickjacking validation, security header and CSP auditing, and CORS posture checks — evidence-grade results for your report." />
+  <meta name="description" content="CyberBuddy: clickjacking validation, security header and CSP auditing, CORS posture checks, and a CSRF PoC generator — evidence-grade results for your report." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -19,9 +19,10 @@
   <link rel="prefetch" href="tools/headers/" />
   <link rel="prefetch" href="tools/cors/" />
   <link rel="prefetch" href="tools/csp/" />
+  <link rel="prefetch" href="tools/csrf/" />
 
   <meta property="og:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta property="og:description" content="Clickjacking, security headers, CSP, and CORS — evidence-grade checks you can screenshot." />
+  <meta property="og:description" content="Clickjacking, security headers, CSP, CORS, and CSRF PoC generation — evidence-grade checks you can screenshot." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/" />
@@ -31,7 +32,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta name="twitter:description" content="Clickjacking, security headers, CSP, and CORS — evidence-grade checks you can screenshot." />
+  <meta name="twitter:description" content="Clickjacking, security headers, CSP, CORS, and CSRF PoC generation — evidence-grade checks you can screenshot." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
@@ -51,7 +52,7 @@
       "@type": "WebApplication",
       "name": "CyberBuddy",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/",
-      "description": "Browser security assessment suite — clickjacking validation, security header grading, CSP auditing, and CORS posture checks with evidence-grade output. Authorized testing only.",
+      "description": "Browser security assessment suite — clickjacking validation, security header grading, CSP auditing, CORS posture checks, and a CSRF PoC generator with evidence-grade output. Authorized testing only.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Any (web browser)",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -81,9 +82,9 @@
       <span class="line">report needs.</span>
     </h1>
     <p class="lead reveal" style="--d: .14s; margin-top: 16px;">
-      Clickjacking, security headers, CSP, and CORS — assessed against
-      OWASP-aligned methodology with raw evidence you can screenshot.
-      Authorized testing only. All checks are read-only GETs.
+      Clickjacking, security headers, CSP, CORS, and a CSRF PoC generator —
+      assessed against OWASP-aligned methodology with raw evidence you can
+      screenshot. Authorized testing only. All scans are read-only GETs.
     </p>
 
     <div class="suite-wrap reveal" style="--d: .2s;">
@@ -133,7 +134,7 @@
       <div class="card">
         <h2 style="font-size: 1.02rem;">Built for assessments</h2>
         <ul class="why-list">
-          <li><strong>No tab sprawl.</strong> Framing protections, header posture, CSP, and CORS — one roof.</li>
+          <li><strong>No tab sprawl.</strong> Framing protections, header posture, CSP, CORS, and CSRF PoCs — one roof.</li>
           <li><strong>Evidence-grade output.</strong> Every finding shows the raw header value it used.</li>
           <li><strong>Hosted and local.</strong> GitHub Pages runs the graders in your browser. <code>server.py</code> is the same scoring, on your machine.</li>
         </ul>
@@ -157,6 +158,7 @@
         <li><strong>Header inspection</strong> — the raw value behind every finding</li>
         <li><strong>CORS analysis</strong> — cross-origin access posture</li>
         <li><strong>Framing analysis</strong> — live clickjacking proof</li>
+        <li><strong>CSRF PoC generation</strong> — standalone HTML from a pasted request, fully local</li>
         <li><strong>Evidence collection</strong> — screenshot-ready report cards</li>
       </ul>
     </article>
@@ -191,7 +193,7 @@
 
   <div class="section-head reveal">
     <h2>Assessment tools</h2>
-    <span class="count" id="toolCount">04 live</span>
+    <span class="count" id="toolCount">05 live</span>
   </div>
 
   <section class="tool-grid" id="toolGrid" aria-label="Available tools">
@@ -217,11 +219,16 @@
       <p class="tool-card-desc">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
       <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span><span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
     </a>
+    <a class="tool-card card corner-card" href="tools/csrf/">
+      <h3>CSRF PoC Generator</h3>
+      <p class="tool-card-desc">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
+      <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery">OWASP WSTG-SESS-05</span><span class="std-id" title="CWE-352 — Cross-Site Request Forgery (CSRF)">CWE-352</span></div>
+    </a>
   </section>
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
     <div class="stat reveal" style="--d: .05s;" role="listitem">
-      <span class="stat-num" data-count="4" data-pad="2">0</span>
+      <span class="stat-num" data-count="5" data-pad="2">0</span>
       <span class="stat-label">Live assessment tools</span>
     </div>
     <div class="stat reveal" style="--d: .12s;" role="listitem">
@@ -325,6 +332,17 @@
         <span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span>
       </div>
       <p class="std-meta">Enforced-vs-report-only policy, effective script/style fallbacks, navigation controls, mixed content and reporting.</p>
+    </div>
+    <div class="std-card reveal" style="--d: .3s;">
+      <div class="std-tool">
+        <span class="std-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1"/></svg></span>
+        CSRF PoC Generator
+      </div>
+      <div class="std-ids">
+        <span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery">OWASP WSTG-SESS-05</span>
+        <span class="std-id" title="CWE-352 — Cross-Site Request Forgery (CSRF)">CWE-352</span>
+      </div>
+      <p class="std-meta">Local-only request parsing and honest HTML proof-of-concept generation — READY / LIMITED / NOT DIRECTLY REPRESENTABLE, never a verdict.</p>
     </div>
   </div>
   <p class="form-hint reveal" style="--d: .26s;">
@@ -445,7 +463,7 @@
   <div class="contact-cta reveal" style="--d: .08s;">
     <div class="contact-cta-text">
       <h3>Building CyberBuddy for analysts, with analysts</h3>
-      <p><strong>Next on the bench: CSRF PoC Generator.</strong> Ideas, feedback and contributions are welcome while it is being designed.</p>
+      <p><strong>Next on the bench: TLS / SSL Analyzer.</strong> Ideas, feedback and contributions are welcome while it is being designed.</p>
     </div>
     <div class="contact-cta-actions">
       <a class="btn btn-primary" href="mailto:amitpal.secure@gmail.com?subject=CyberBuddy%20—%20feedback%20or%20collaboration">

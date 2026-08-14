@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>CSRF PoC Generator — CyberBuddy</title>
+  <meta name="description" content="Paste a raw Burp HTTP request and CyberBuddy builds a standalone HTML proof-of-concept for authorized CSRF testing — fully local, nothing sent." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/" />
+  <meta property="og:title" content="CSRF PoC Generator — CyberBuddy" />
+  <meta property="og:description" content="Turn a pasted Burp request into a standalone HTML CSRF proof-of-concept, fully local." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CSRF PoC Generator — CyberBuddy" />
+  <meta name="twitter:description" content="Paste a Burp request, download a standalone HTML CSRF proof-of-concept." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/tool.csrf.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/tools/csrf/" data-init="initCsrf">
+<main id="main" class="container page-hero">
+
+  <p class="kicker reveal">Tool 05</p>
+  <h1 class="reveal">CSRF PoC Generator</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Paste a raw Burp HTTP request and get a standalone HTML proof-of-concept
+    for authorized CSRF testing. Everything runs locally in this browser.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-SESS-05</strong> &middot; <strong>CWE-352</strong></p>
+
+  <div class="card csrf-input-card reveal" style="--d: .14s;">
+    <div class="field csrf-field">
+      <label for="request">Raw HTTP request (Burp)</label>
+      <textarea id="request" class="csrf-request" spellcheck="false" autocomplete="off"
+        aria-describedby="requestError requestHint"
+        placeholder="POST /account/change-email HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/x-www-form-urlencoded&#10;Cookie: session=&#8230;&#10;&#10;email=attacker@example.com"></textarea>
+      <p id="requestError" class="field-error hidden" role="alert"></p>
+    </div>
+    <p id="requestHint" class="form-hint">
+      Paste from Burp Repeater &middot; <strong>Local only.</strong> The request is parsed and turned into a
+      PoC in this tab &mdash; it is never sent, stored, cached, relayed, or placed in the URL. The PoC is
+      shown as inert text below and only leaves this page when you download or copy it.
+      <code>Cookie</code>, <code>Authorization</code>, <code>Host</code>, <code>Content-Length</code>,
+      <code>Origin</code> and <code>Referer</code> values are never copied into the PoC &mdash; the
+      victim&rsquo;s own ambient cookies are used instead.
+    </p>
+    <label class="evidence-toggle csrf-autosubmit">
+      <input type="checkbox" id="autoSubmit" />
+      Automatically submit when the downloaded PoC opens
+    </label>
+    <p id="autoSubmitWarn" class="csrf-autowarn hidden" role="note">
+      <strong>Auto-submit is on.</strong> The downloaded PoC will send the request the moment it is opened,
+      which can change state on the target. Only use it with a throwaway, authorized test account.
+    </p>
+    <div class="csrf-actions">
+      <button id="generate" type="button" class="btn btn-primary">Generate PoC</button>
+      <button id="download" type="button" class="btn btn-ghost" disabled>Download PoC HTML</button>
+      <button id="copyHtml" type="button" class="btn btn-ghost" disabled>Copy HTML</button>
+      <button id="copyMd" type="button" class="btn btn-ghost" disabled>Copy Markdown assessment</button>
+      <button id="clear" type="button" class="btn btn-ghost">Clear request</button>
+    </div>
+  </div>
+
+  <details class="pages-note how-note">
+    <summary>ℹ What this generator does &mdash; and does not do</summary>
+    <div class="pages-note-body">
+      <p>CyberBuddy parses the request line, headers, query string and body, then rebuilds it as one or more
+        standalone HTML pages using only what a browser can actually send: HTML forms for GET/POST and
+        <code>fetch()</code> for everything else. Each variant is labelled <strong>READY</strong> (a simple
+        request, no preflight), <strong>LIMITED</strong> (depends on a CORS preflight or server leniency), or
+        <strong>NOT DIRECTLY REPRESENTABLE</strong> (no browser mechanism reproduces it).</p>
+      <div class="pages-flow"><span>Pasted request</span><span class="pf-arrow">→</span><span>Local parse</span><span class="pf-arrow">→</span><span>Honest HTML PoC</span></div>
+      <p>A generated PoC reproduces request <em>mechanics</em>, never a vulnerability verdict. The target must
+        also change state, accept the request cross-site, and rely on the victim&rsquo;s ambient credentials.
+        File fields cannot be pre-populated, and exact <code>application/json</code> bodies cannot be sent by a
+        plain form &mdash; CyberBuddy says so instead of pretending otherwise.</p>
+    </div>
+  </details>
+
+  <section id="results" class="results hidden">
+    <article class="card report-card">
+      <div class="report-head">
+        <div><h2>PoC readiness<span id="reportTitleFlag"></span></h2></div>
+        <div class="report-actions">
+          <span id="verdict" role="status" class="risk unknown">—</span>
+        </div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item"><span class="meta-label">Method</span><span id="mMethod" class="meta-value mono">—</span></div>
+        <div class="meta-item"><span class="meta-label">URL</span><span id="mUrl" class="meta-value mono">—</span></div>
+        <div class="meta-item"><span class="meta-label">Content-Type</span><span id="mContentType" class="meta-value mono">—</span></div>
+        <div class="meta-item"><span class="meta-label" title="Based only on browser mechanics — never a vulnerability verdict">Reproducibility</span><span id="mRepro" class="meta-value mono">—</span></div>
+        <div class="meta-item"><span class="meta-label">Parameters</span><span id="mParams" class="meta-value mono">—</span></div>
+        <div class="meta-item"><span class="meta-label" title="Likely CSRF-token fields detected — include or exclude them below">Likely tokens</span><span id="mTokens" class="meta-value mono">—</span></div>
+      </div>
+
+      <div id="verdictBanner" class="verdict-banner unknown">
+        <div class="verdict-main">
+          <p id="protection" class="protection-line unknown">Generate a PoC to assess how it can be reproduced.</p>
+          <p id="summary" class="verdict-text">Generate a PoC to see which browser mechanisms can carry this request.</p>
+        </div>
+      </div>
+
+      <article class="card inset-card" id="tokensPanel">
+        <h3 class="card-title">Likely CSRF-token fields</h3>
+        <p class="card note">
+          These fields look like anti-CSRF tokens. They are included by default (CyberBuddy never silently
+          removes them); untick one to test whether the server actually validates it. A static PoC value will
+          not match a real per-session token &mdash; that is expected, not a broken PoC.
+        </p>
+        <div id="tokenList" class="csrf-token-list"></div>
+      </article>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Variants</h3>
+        <div id="variants" class="csrf-variants" role="radiogroup" aria-label="Generated PoC variants"></div>
+      </article>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Generated source (inert preview)</h3>
+        <pre id="pocSource" class="raw-headers csrf-source">(generate a PoC to preview it here)</pre>
+      </article>
+
+      <div class="grid-2 csrf-notes-grid">
+        <article class="card inset-card">
+          <h3 class="card-title">Prerequisites</h3>
+          <ul class="scope-list does">
+            <li><strong>State-changing endpoint</strong> — the request must actually change state.</li>
+            <li><strong>Ambient credentials</strong> — the victim is logged in and the browser attaches their cookies.</li>
+            <li><strong>No effective token</strong> — the target must not reject the request via a CSRF token the PoC cannot supply.</li>
+            <li><strong>SameSite cookies</strong> — cookies marked <code>SameSite=Lax/Strict</code> are not attached to most cross-site requests.</li>
+            <li><strong>Origin / Referer checks</strong> — the target must not require an Origin or Referer the attacker page cannot produce.</li>
+            <li><strong>Simple request vs preflight</strong> — <code>LIMITED</code> variants need the CORS preflight answered.</li>
+            <li><strong>Re-authentication</strong> — sensitive flows that demand a fresh login cannot be crossed.</li>
+          </ul>
+        </article>
+        <article class="card inset-card">
+          <h3 class="card-title">How to test</h3>
+          <ol class="scope-list">
+            <li>Use a dedicated, authorized test account you are permitted to mutate.</li>
+            <li>Host the downloaded PoC on a separate origin from the target (a different domain, or a localhost server).</li>
+            <li>Open the PoC in a browser where the test account is logged in.</li>
+            <li>Check whether the state change actually occurred; if not, note which control blocked it.</li>
+            <li>Never run it against other users or production accounts.</li>
+          </ol>
+        </article>
+      </div>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Recommendations</h3>
+        <ul id="recommendations" class="scope-list"></ul>
+      </article>
+
+      <div id="reportProvenance" class="report-provenance"></div>
+    </article>
+  </section>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span><strong>Authorized testing only.</strong> Generate PoCs for systems you own or have written
+      permission to assess. A generated PoC reproduces request mechanics &mdash; it never proves the target is
+      vulnerable, and it never executes inside CyberBuddy.</span>
+  </div>
+
+</main>
+</body>
+</html>

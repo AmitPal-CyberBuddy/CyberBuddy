@@ -1370,3 +1370,98 @@ sixteen scripts. The Pages assembly guard resolves all 66 asset references and
 confirms `docs/`, `tests/` and `REVIEW.md` are absent. Chromium 149 passes **513
 real-browser checks**: layout 119, dropdown 119, overlays 48, relay gate 17 and
 responsive 210 (including the 28 long-header stress combinations).
+
+## 21. CSRF PoC Generator — fifth live tool (2026-08-15)
+
+### What shipped
+
+A fifth tool, `/tools/csrf/` + `js/tool.csrf.js`, that turns a pasted
+Burp-style HTTP request into standalone HTML proof-of-concept pages for
+authorized CSRF testing. It is deliberately unlike the four scanners and is
+**not** added to the automatic hub scan suite (it needs a pasted request and it
+generates, it does not scan).
+
+### Local-only, by construction
+
+- The request is parsed and the PoC is generated in this tab. Nothing is
+  `fetch`ed, persisted, cached, relayed, or written into the URL. There is no
+  `?url=` sharing, no recent-request history, no relay gate, no LIVE/CACHED
+  tag, and no numeric score on this page.
+- The PoC is shown only as inert text (`pre.textContent`) and leaves the page
+  only via Download or Copy. CyberBuddy never executes it.
+- The provenance strip reads “generated locally — nothing transmitted” rather
+  than naming a scan engine.
+
+### Parsing
+
+The parser accepts CRLF/LF input, origin-form (relative path + `Host`) and
+absolute-form request URLs, host ports, GET/POST and query parameters,
+`application/x-www-form-urlencoded`, `multipart/form-data` (text fields and
+file fields), `text/plain`, `application/json`, and duplicate/blank
+parameters. Malformed input (empty, no request line, missing host, unsupported
+scheme, boundary-less multipart) returns clear `role=alert` feedback with
+`aria-invalid`.
+
+### Honest variants and status
+
+Each request yields labelled variants; the headline is
+**READY / LIMITED / NOT DIRECTLY REPRESENTABLE**, derived only from browser
+mechanics:
+
+- READY — a simple request (no preflight): GET/POST HTML forms, and
+  `text/plain` `fetch()` (a CORS-safelisted content type).
+- LIMITED — CORS-preflight- or server-leniency-dependent: exact
+  `application/json` `fetch()`, JSON-as-`text/plain` (only when the body can
+  split into a single `name=value` pair), `PUT/PATCH/DELETE/OPTIONS` `fetch()`,
+  custom `X-*` headers, and multipart bodies containing file fields (which
+  cannot be pre-populated).
+- NOT DIRECTLY REPRESENTABLE — e.g. a GET with a request body (no browser
+  mechanism carries it), or `CONNECT`/`TRACE`/`TRACK`.
+
+A plain form is never claimed to send arbitrary exact JSON; the tool says what
+it cannot do.
+
+### Hostile pasted input
+
+- Every value is HTML-escaped; values embedded in JavaScript go through a
+  `JSON.stringify`-based literal with `<` escaped to `\u003c`, so a pasted
+  `</script>` cannot terminate the PoC's script block.
+- `Cookie`, `Authorization`, `Host`, `Content-Length`, `Origin` and `Referer`
+  values are never emitted (the target host appears only in the form action).
+- Filenames are derived from the sanitized hostname + method.
+- Likely CSRF-token fields (query, body, and `X-CSRF-Token`-style headers) are
+  detected but never silently removed — the user includes or excludes each.
+- Auto-submit defaults **off** (manual submit button). When on, a minimal fixed
+  auto-submit script is added (no request value is concatenated into it) and an
+  accidental-state-change warning is shown.
+
+### Integration
+
+Hub card, Tools menu (active state), footer, 404 repair and 404 card,
+`server.py` aliases (`/csrf`), `sitemap.xml`, `llms.txt`, `manifest.webmanifest`
+shortcut, `README.md`, `methodology/`, and the Pages workflow copy list all now
+include `tools/csrf`. The page keeps `frame-src 'none'` (it needs no framing).
+`TOOLS_SOON` drops CSRF and now reads “TLS / SSL Analyzer, Subdomain
+Enumeration”; the hub's “Next on the bench” text and live-tool count moved to
+five.
+
+### Tests
+
+- **Stdlib:** `python3 -m unittest test_engines.py` — **161/161 OK**. Fifteen
+  new `CsrfParserTests` run `js/tool.csrf.js` under Node (its pure engine is
+  free of `document`/`window`) and cover every body type, escaping, forbidden
+  headers, token include/exclude, auto-submit and the three statuses. Existing
+  four-tool assumptions (aliases, page set, cache buster, 404 regex, meta-CSP
+  page list, upcoming-tool visibility) were updated to five.
+- **Browser:** a new `tests/browser/csrf.js` adds 22 checks (paste → generate,
+  validation feedback, copy HTML/Markdown, download filename, auto-submit
+  source change, no network/storage/URL leak, inert preview, seven widths × two
+  themes). Existing suites still green with the new page included: layout 131,
+  dropdown 132, overlays 48, relay gate 17, responsive 224 — **574 browser
+  checks** in total (up from the 513 four-tool baseline).
+- **Mutation proof:** disabling token detection empties
+  `parseRequest().tokens` (fails `test_token_detection_and_exclusion`), and
+  forcing `autoSubmit` true injects the AUTO-SUBMIT marker into the off
+  variant (fails `test_auto_submit_off_and_on`). Both mutations were reverted.
+- **Pages assembly guard:** resolves every referenced local asset across the
+  eight pages (hub, 404, methodology, five tools) with `tools/csrf/` published.

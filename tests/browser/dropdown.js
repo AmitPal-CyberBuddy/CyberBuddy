@@ -26,6 +26,7 @@ const PAGES = [
   ["headers", "/tools/headers/"],
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
+  ["csrf", "/tools/csrf/"],
   ["404", "/404.html"]
 ];
 
@@ -157,7 +158,7 @@ async function checkMenu(page, label, r) {
       [...document.querySelectorAll(".header-inner .nav-menu-panel a")]
         .map((a) => new URL(a.getAttribute("href"), location.href).pathname));
     r.check(
-      hrefs.length === 4 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
+      hrefs.length === 5 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
       `project-mount links ${vn} ${JSON.stringify(hrefs)}`
     );
     await checkMenu(page, `project-mount ${vn}`, r);
@@ -167,7 +168,7 @@ async function checkMenu(page, label, r) {
   /* ---- 4. Every live link actually navigates, from a result page -------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
-    for (const target of ["/tools/clickjacking/", "/tools/headers/", "/tools/cors/", "/tools/csp/"]) {
+    for (const target of ["/tools/clickjacking/", "/tools/headers/", "/tools/cors/", "/tools/csp/", "/tools/csrf/"]) {
       await scanHeaders(page);
       await scrollTo(page, "top");
       await page.evaluate(async (t) => {
@@ -190,16 +191,18 @@ async function checkMenu(page, label, r) {
       r.check(got === target, `navigate to ${target} -> ${got}`);
     }
 
-    /* Upcoming tools must be visibly disabled and NOT behave as links. */
+    /* Upcoming tools must be visibly disabled and NOT behave as links; CSRF
+       is now live so it must appear as a real link, never as a disabled item. */
     const disabled = await page.evaluate(() =>
       [...document.querySelectorAll(".header-inner .nav-menu-item.disabled")].map((e) => ({
         tag: e.tagName, href: e.getAttribute("href"),
         ariaDisabled: e.getAttribute("aria-disabled"), text: e.textContent.trim().slice(0, 24)
       })));
     r.check(
-      disabled.length >= 3 &&
+      disabled.length >= 2 &&
       disabled.every((d) => d.tag !== "A" && !d.href && d.ariaDisabled === "true") &&
-      disabled.some((d) => /CSRF PoC Generator/.test(d.text)),
+      !disabled.some((d) => /CSRF PoC Generator/.test(d.text)) &&
+      disabled.some((d) => /TLS \/ SSL Analyzer/.test(d.text)),
       `upcoming tools stay disabled ${JSON.stringify(disabled)}`
     );
 

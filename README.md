@@ -19,6 +19,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; opt-in lookup on GitHub Pages |
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
+| **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
 
 More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` for the
 nav and hub grid, then add its explicit footer and static no-JavaScript links.
@@ -28,7 +29,7 @@ nav and hub grid, then add its explicit footer and static no-JavaScript links.
 ```bash
 python3 server.py
 # open http://127.0.0.1:8080/
-# tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/
+# tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -71,12 +72,14 @@ js/tool.clickjacking.js         # clickjacking page controller
 js/tool.headers.js              # headers page controller
 js/tool.cors.js                 # CORS page controller
 js/tool.csp.js                  # CSP audit page controller
+js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   clickjacking/index.html       # iframe + PoC overlay + ?url= sharing
   headers/index.html            # header report UI
   cors/index.html               # CORS probe + roadmap
   csp/index.html                # CSP policy audit report
+  csrf/index.html               # CSRF PoC generator (local-only)
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
@@ -201,6 +204,37 @@ CSP grader over a direct CORS header read or an explicitly approved relay. It
 also derives a CSP result from older cached Security Headers entries, so a cache
 built before the dedicated CSP key was added does not break the hosted tool.
 Every result keeps its LIVE/CACHED and verified/unverified provenance label.
+
+## CSRF PoC Generator
+
+The fifth tool turns a pasted **Burp-style HTTP request** into a standalone
+HTML proof-of-concept for authorized CSRF testing. It is deliberately unlike
+the four scanners:
+
+- **Local only.** The request is parsed and the PoC is generated in this
+  browser tab. It is never sent, persisted, cached, relayed, or written into
+  the URL. The PoC is shown as inert (escaped) text and only leaves the page
+  when you download or copy it; CyberBuddy never executes it.
+- **Honest mechanics.** Each generated variant is labelled
+  `READY` (a simple request — a form, or a CORS-safelisted `fetch()`),
+  `LIMITED` (depends on a CORS preflight or server leniency, e.g. exact JSON,
+  `PUT/PATCH/DELETE`, custom headers, file fields), or
+  `NOT DIRECTLY REPRESENTABLE` (e.g. a GET with a body). There is no numeric
+  score and no vulnerability verdict.
+- **Never fakes the impossible.** A plain form cannot send an arbitrary exact
+  JSON body; CyberBuddy uses `fetch()` and says it needs a preflight. File
+  fields are never pre-populated — they become file pickers the victim must
+  fill. JSON-as-`text/plain` is offered only when the server might accept that
+  type.
+- **Hostile-input safe.** Every value is HTML-escaped, and values embedded in
+  JavaScript are emitted through a `JSON.stringify`-based literal with `<`
+  escaped, so a pasted `</script>` cannot break out. `Cookie`, `Authorization`,
+  `Host`, `Content-Length`, `Origin` and `Referer` values are never copied
+  into the PoC. Likely CSRF-token fields are detected but never silently
+  removed — you choose to include or exclude each one.
+- **Auto-submit is opt-in and off by default.** With it off, the PoC has a
+  manual submit button; with it on, a minimal fixed auto-submit script is added
+  and the UI shows an accidental-state-change warning.
 
 ## Evidence and export
 

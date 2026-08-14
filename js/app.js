@@ -15,6 +15,7 @@ const ICONS = {
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
   cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   policy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  csrf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -247,9 +248,18 @@ const TOOLS_MENU = [
     desc: "Audit the enforced CSP for dangerous script sources, missing navigation controls, duplicate directives, and reporting gaps.",
     tags: ["script-src", "unsafe-inline", "frame-ancestors", "Report-Only"],
     std: ["OWASP WSTG-CONF-12", "CWE-79", "CWE-693"]
+  },
+  {
+    href: "/tools/csrf/",
+    label: "CSRF PoC Generator",
+    status: "live",
+    icon: "csrf",
+    desc: "Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — parsed and generated fully in your browser.",
+    tags: ["Burp request", "hidden form", "JSON fetch", "auto-submit"],
+    std: ["OWASP WSTG-SESS-05", "CWE-352"]
   }
 ];
-const TOOLS_SOON = ["CSRF PoC Generator", "TLS / SSL Analyzer", "Subdomain Enumeration"];
+const TOOLS_SOON = ["TLS / SSL Analyzer", "Subdomain Enumeration"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
@@ -290,6 +300,7 @@ function renderFooter() {
     '<a href="' + base + '/tools/headers/">Security Headers</a>' +
     '<a href="' + base + '/tools/cors/">CORS Validator</a>' +
     '<a href="' + base + '/tools/csp/">CSP Policy Auditor</a>' +
+    '<a href="' + base + '/tools/csrf/">CSRF PoC Generator</a>' +
     "</nav>" +
     '<nav class="footer-col" aria-label="Methodology and resources">' +
     "<strong>Methodology &amp; resources</strong>" +
@@ -372,7 +383,9 @@ const STD_TITLES = {
   "CWE-79": "CWE-79 — Improper Neutralization of Input During Web Page Generation (Cross-site Scripting)",
   "CWE-693": "CWE-693 — Protection Mechanism Failure",
   "OWASP WSTG-CLNT-07": "OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing",
-  "CWE-942": "CWE-942 — Permissive Cross-domain Policy with Untrusted Domains"
+  "CWE-942": "CWE-942 — Permissive Cross-domain Policy with Untrusted Domains",
+  "OWASP WSTG-SESS-05": "OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery",
+  "CWE-352": "CWE-352 — Cross-Site Request Forgery (CSRF)"
 };
 
 function stdBadgeHtml(code) {
@@ -3238,10 +3251,12 @@ function pipelineController(root) {
 }
 
 /* ---------- Suite summary ----------------------------------------------
-   One honest headline per run: worst-case risk across the four tools, the
-   headers score as the only numeric gauge, and per-tool chips. There is no
-   invented aggregate score — clickjacking, CORS and CSP have no shared
-   numeric scale, so they are shown as risks, never as a fake /100. */
+   One honest headline per run: worst-case risk across the four scan tools
+   (the CSRF PoC Generator is a generator, not a scanner, so it is not part
+   of this suite), the headers score as the only numeric gauge, and per-tool
+   chips. There is no invented aggregate score — clickjacking, CORS and CSP
+   have no shared numeric scale, so they are shown as risks, never as a fake
+   /100. */
 
 const RISK_ORDER = { high: 3, medium: 2, low: 1, unknown: 0 };
 
@@ -3296,7 +3311,7 @@ function suiteSummaryHtml(s, engineNote) {
   const verdict = worst
     ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
       esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
-      '<span class="suite-summary-worst">worst-case risk across the four tools — ' +
+      '<span class="suite-summary-worst">worst-case risk across the four scan tools — ' +
       esc(worst[0]) + "</span>"
     : '<span class="risk unknown">UNKNOWN</span>' +
       '<span class="suite-summary-worst">no tool returned a result</span>';

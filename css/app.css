@@ -2009,3 +2009,62 @@ html.js .reveal.in,
   .findings td.k { width: 40%; }
   .blog-more .btn { width: 100%; justify-content: center; }
 }
+
+/* ==========================================================================
+   CSRF PoC Generator — tool-specific styles
+   ========================================================================== */
+
+.csrf-input-card { display: flex; flex-direction: column; gap: 4px; }
+.csrf-field { flex: 1 1 auto; padding-bottom: 26px; }
+.csrf-request {
+  width: 100%; min-height: 190px; resize: vertical;
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.55; color: var(--ink);
+  background: var(--input-bg); border: 1px solid var(--line-strong); border-radius: 12px;
+  padding: 12px 14px; white-space: pre; tab-size: 2;
+}
+.csrf-request:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.csrf-request[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px var(--high-bg); }
+.csrf-autosubmit { margin-top: 12px; }
+.csrf-autowarn {
+  margin: 10px 2px 0; padding: 10px 12px; font-size: 0.8rem;
+  color: var(--med); background: var(--med-bg); border: 1px solid var(--med-line);
+  border-radius: var(--radius-sm);
+}
+.csrf-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+
+.csrf-token-list { display: grid; gap: 8px; margin-top: 8px; }
+.csrf-token-item {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--chip-bg); cursor: pointer; min-height: 24px;
+}
+.csrf-token-item input { accent-color: var(--brand); cursor: pointer; }
+.csrf-token-item code { font-size: 0.8rem; }
+.csrf-token-src {
+  margin-left: auto; font-family: var(--font-mono); font-size: 0.62rem;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px;
+}
+
+.csrf-variants { display: grid; gap: 8px; margin-top: 4px; }
+.csrf-variant {
+  display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface-2); min-width: 0;
+}
+.csrf-variant:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.csrf-variant input { accent-color: var(--brand); }
+.csrf-variant-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.csrf-variant-main strong { font-size: 0.88rem; }
+.csrf-variant-kind {
+  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.08em; padding: 2px 9px; border-radius: 999px; border: 1px solid;
+}
+.csrf-variant-kind.ready { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+.csrf-variant-kind.limited { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+.csrf-variant-kind.blocked { color: var(--high); background: var(--high-bg); border-color: var(--high-line); }
+.csrf-variant-note { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+
+.csrf-source { max-height: 420px; overflow: auto; white-space: pre; }
+
+.csrf-notes-grid { margin-top: 18px; }
