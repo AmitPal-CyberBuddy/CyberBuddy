@@ -1081,5 +1081,300 @@ class PrintStylesheetTests(unittest.TestCase):
         self.assertIn("print-color-adjust: exact", block)
 
 
+class HeadersReportLayoutTests(unittest.TestCase):
+    """Round 6: the Security Headers report stacks Findings above Raw headers.
+
+    Findings runs several times taller than Raw headers, so a 2-column split
+    left a large blank right column (measured 2735px vs 236px at 1920px).
+    """
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "headers" / "index.html").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+    def _stack_rule(self) -> str:
+        return self._rule(".headers-report-stack {")
+
+    def test_report_uses_the_tool_specific_stack_not_grid_2(self):
+        body = self.page[self.page.index('id="results"'):]
+        self.assertIn('class="headers-report-stack"', body)
+        # .grid-2 is load-bearing elsewhere; the headers report must not use
+        # it, and must not be "fixed" by changing it globally.
+        self.assertNotIn('class="grid-2"', body)
+
+    def test_stack_is_single_column(self):
+        rule = self._stack_rule()
+        self.assertIn("grid-template-columns: 1fr", rule)
+
+    def test_findings_come_first_then_raw_headers(self):
+        body = self.page[self.page.index("headers-report-stack"):]
+        self.assertLess(body.index("Findings"), body.index("Raw headers"))
+
+    def test_shared_grid_2_still_has_two_columns(self):
+        """Other sections depend on .grid-2 — it must not be flattened."""
+        start = self.css.index(".grid-2 {")
+        self.assertIn("1.15fr 1fr", self.css[start:self.css.index("}", start)])
+
+    def test_stack_children_can_shrink(self):
+        """Without min-width: 0 a long raw-header token expands the track."""
+        rule = self._rule(".headers-report-stack > * {")
+        self.assertIn("min-width: 0", rule)
+        # Full-width rows in a grid need an explicit span, not width: 100%.
+        self.assertIn("grid-column: 1 / -1", rule)
+
+    def test_raw_headers_wrap_long_unbreakable_tokens(self):
+        start = self.css.index(".raw-headers {")
+        rule = self.css[start:self.css.index("}", start)]
+        self.assertIn("overflow-wrap: anywhere", rule)
+        self.assertIn("max-width: 100%", rule)
+        self.assertIn("overflow: auto", rule)
+
+    def test_findings_are_not_hidden_behind_a_disclosure(self):
+        """Evidence must stay visible: a closed <details> cannot be forced
+        open by print CSS and breaks the screenshot workflow."""
+        start = self.page.index("headers-report-stack")
+        block = self.page[start:self.page.index("reportProvenance", start)]
+        self.assertNotIn("<details", block)
+
+    def test_print_still_flattens_report_grids(self):
+        start = self.css.index("@media print")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("grid-template-columns: 1fr", block)
+        self.assertIn(".raw-headers { max-height: none; }", block)
+
+
+class OverlayStackingTests(unittest.TestCase):
+    """Round 6: dropdowns/menus must render above the report and stay
+    inside the viewport. Reproduced in Chromium before fixing."""
+
+    def setUp(self) -> None:
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_evidence_mode_keeps_the_header_positioned(self):
+        """`position: static` drops the header out of the z-index game, so
+        its z-index: 50 stopped applying and the Tools menu painted behind
+        the report card. Evidence mode must un-stick it without un-position
+        -ing it."""
+        start = self.css.index("body.evidence .site-header")
+        rule = self.css[start:self.css.index("}", start)]
+        self.assertIn("position: relative", rule)
+        self.assertNotIn("position: static", rule)
+        self.assertNotIn("position: sticky", rule)
+
+    def test_site_header_still_declares_a_stacking_order(self):
+        start = self.css.index(".site-header {")
+        self.assertIn("z-index: 50", self.css[start:self.css.index("}", start)])
+
+    def test_main_content_outranks_the_footer(self):
+        """`.container` and `.site-footer` were both z-index: 1, so the
+        footer painted over an open Export panel and swallowed its clicks."""
+        self.assertIn("main.container { z-index: 2; }", self.css)
+        start = self.css.index(".site-footer {")
+        self.assertIn("z-index: 1", self.css[start:self.css.index("}", start)])
+
+    def test_narrow_tools_menu_anchors_to_the_header_row(self):
+        """A 300px panel anchored to the small Tools <details> ran past the
+        right edge at 390px (measured 46px of horizontal overflow)."""
+        self.assertIn("position: relative", self._rule(".header-inner {"))
+        self.assertIn(".header-inner .nav-menu { position: static; }", self.css)
+        panel = self._rule(".header-inner .nav-menu-panel {")
+        self.assertIn("left: 0; right: 0", panel)
+        self.assertIn("overflow-y: auto", panel)
+
+    def test_export_panel_anchors_to_the_scan_bar(self):
+        """The Export button wraps to its own line on narrow screens; a
+        right-anchored 268px panel then started at a negative x."""
+        self.assertIn(".bar, .suite-bar {", self.css)
+        self.assertIn("position: relative", self._rule(".bar, .suite-bar {"))
+        self.assertIn(".bar .export-menu, .suite-bar .export-menu { position: static; }", self.css)
+
+    def test_export_panel_outranks_report_content(self):
+        start = self.css.index(".export-menu-panel {")
+        self.assertIn("z-index: 70", self.css[start:self.css.index("}", start)])
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+
+class RelayProvenanceTests(unittest.TestCase):
+    """Round 6: relayed header values keep their `unverified` flag even when
+    they are re-served from the 10-minute local lookup cache."""
+
+    def setUp(self) -> None:
+        self.js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    def test_cached_relay_reads_keep_a_relay_source(self):
+        start = self.js.index("async function lookupHeadersLive")
+        body = self.js[start:start + 700]
+        self.assertIn('"relay-cached"', body)
+        self.assertIn('cached.source === "relay"', body)
+
+    def test_relay_cached_counts_as_unverified(self):
+        start = self.js.index("function isUnverified(")
+        body = self.js[start:self.js.index("}", start)]
+        self.assertIn('"relay"', body)
+        self.assertIn('"relay-cached"', body)
+
+    def test_relay_cached_is_not_labelled_as_this_browser(self):
+        """Calling relayed data 'this browser' overstates the provenance."""
+        start = self.js.index("function sourceLabel(")
+        body = self.js[start:self.js.index("\n}", start)]
+        line = [l for l in body.splitlines() if "relay-cached" in l][0]
+        self.assertIn("relay", line)
+        self.assertNotIn("this browser", line)
+
+    def test_every_source_has_an_explanation(self):
+        start = self.js.index("const SOURCE_EXPLAIN")
+        block = self.js[start:self.js.index("};", start)]
+        for src in ("python", "cache", "relay", "relay-cached", "browser", "cache-lookup", "none"):
+            self.assertIn(src, block)
+
+
+class RelayConsentGateTests(unittest.TestCase):
+    """Round 6b: the relay gate blocks a scan on a human decision, so it must
+    read as a question — not as a status panel beside a running spinner."""
+
+    def setUp(self) -> None:
+        self.js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        start = self.js.index("function renderRelayGate()")
+        self.gate = self.js[start:self.js.index("\n/* Call before any scan", start)]
+        # Strip comments: they discuss the OLD markup (btn-primary, tooltips)
+        # and would otherwise satisfy assertions about the rendered output.
+        self.markup = re.sub(r"//.*", "", self.gate)
+
+    def test_gate_states_the_scan_is_paused(self):
+        """Reviewers read the gate as 'the scan is running, maybe stuck'."""
+        self.assertIn("scan is paused until you pick", self.markup)
+        self.assertIn("Action needed", self.markup)
+
+    def test_no_option_is_preselected(self):
+        """A btn-primary among three choices reads as 'already answered'."""
+        self.assertNotIn("btn-primary", self.markup)
+        # Exactly three calls to the shared option() builder, one per choice.
+        self.assertEqual(re.findall(r'\boption\("(\w+)"', self.markup),
+                         ["host", "full", "deny"])
+        self.assertIn('class="relay-option"', self.markup)
+
+    def test_exactly_one_option_is_recommended(self):
+        # The "Recommended" chip must actually be rendered…
+        self.assertIn(">Recommended<", self.markup)
+        self.assertIn("relay-option-rec", self.markup)
+        # …and exactly one option passes rec=true — the privacy-preserving one.
+        host = self.markup[self.markup.index('option("host"'):self.markup.index('option("full"')]
+        self.assertIn("true", host)
+        full = self.markup[self.markup.index('option("full"'):self.markup.index('option("deny"')]
+        self.assertIn("false", full)
+        deny = self.markup[self.markup.index('option("deny"'):]
+        self.assertIn("false", deny)
+
+    def test_each_option_explains_what_it_sends_and_returns(self):
+        """The difference must be readable without hovering a tooltip."""
+        # One shared builder emits both lines for every option.
+        self.assertIn("<strong>Sends:</strong>", self.markup)
+        self.assertIn("<strong>You get:</strong>", self.markup)
+        for mode in ('option("host"', 'option("full"', 'option("deny"'):
+            self.assertIn(mode, self.markup)
+
+    def test_gate_is_scrolled_into_view_and_focused(self):
+        """It rendered below the fold on a phone and went unnoticed."""
+        # The scroll must actually run, not sit behind a dead guard.
+        self.assertRegex(self.markup, r"\n\s*window\.scrollTo\(\{ top:")
+        self.assertRegex(self.markup, r"\n\s*try \{ panel\.focus\(")
+        # Top-aligned, not centred: the panel is taller than a phone viewport.
+        self.assertNotIn('block: "center"', self.markup)
+
+    def test_escape_declines_rather_than_relaying(self):
+        self.assertIn('choose("deny")', self.markup)
+
+    def test_spinner_stops_while_the_gate_waits(self):
+        """A spinning Scan button makes the gate look like a slow scan."""
+        start = self.js.index("async function ensureRelayConsent")
+        body = self.js[start:self.js.index("\n}", start)]
+        self.assertIn("is-waiting", body)
+        self.assertIn("setLoading(btn, false)", body)
+        self.assertIn("Waiting for your choice", body)
+        # …and the spinner comes back when the scan actually resumes.
+        self.assertIn("setLoading(btn, true)", body)
+
+    def test_waiting_button_is_styled(self):
+        self.assertIn(".btn.is-waiting", self.css)
+
+    def test_options_stack_on_narrow_screens(self):
+        start = self.css.index(".relay-consent-actions {")
+        self.assertIn("repeat(3, 1fr)", self.css[start:self.css.index("}", start)])
+        self.assertIn(".relay-consent-actions { grid-template-columns: 1fr; }", self.css)
+
+    def test_gate_still_names_every_relay_host(self):
+        """The disclosure must keep listing who would see the target."""
+        self.assertIn("RELAY_HOSTS.join(", self.markup)
+        start = self.js.index("const RELAY_HOSTS")
+        for host in ("hackertarget.com", "allorigins.win", "corsproxy.io", "codetabs.com"):
+            self.assertIn(host, self.js[start:start + 300])
+
+    def test_gate_keeps_the_local_server_escape_hatch(self):
+        self.assertIn("python3 server.py", self.markup)
+
+    def test_consent_stays_session_scoped(self):
+        """Consent must not silently persist across days."""
+        start = self.js.index("function setRelayConsent")
+        self.assertIn("sessionStorage", self.js[start:self.js.index("}", start)])
+
+
+class ResponsiveLayoutTests(unittest.TestCase):
+    """Round 6c: per-element responsiveness fixes, found by measuring painted
+    elements against the viewport at seven widths (2560 down to 360)."""
+
+    def setUp(self) -> None:
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        # Comments discuss the rules (and name :has()); assert on real CSS.
+        self.rules = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+    def test_touch_targets_meet_24px(self):
+        """Measured at 390px these rendered 20-23px tall — under the touch
+        minimum, and the controls a phone user most often mis-taps."""
+        start = self.css.index("/* Touch tap targets.")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("min-height: 24px", block)
+        for sel in (".engine-chip", ".recent-chip", ".recent-clear", ".copy-finding"):
+            self.assertIn(sel, block)
+
+    def test_evidence_toggle_label_is_the_tap_target(self):
+        """The checkbox is 13px; its <label> wrapper carries the minimum."""
+        self.assertIn("min-height: 24px", self._rule(".evidence-toggle {"))
+
+    def test_recent_chip_cannot_span_the_row(self):
+        """A chip holding a long URL must stay tappable without filling the
+        width of a phone screen."""
+        start = self.css.index("/* Touch tap targets.")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn("max-width: min(260px, calc(100vw - 72px))", block)
+
+    def test_console_dividers_cannot_bleed_past_the_card(self):
+        """The demo console's divider lines are fixed-length box-drawing runs
+        that cannot wrap; at 360px they painted ~21px past the edge."""
+        rules = [r for r in self.css.split("\n") if ".console .c-dim" in r]
+        self.assertTrue(any("overflow: hidden" in r for r in rules), rules)
+
+    def test_method_tables_scroll_on_tiny_screens(self):
+        """At 360px the scoring tables overflowed their card by a few px."""
+        start = self.rules.index("@media (max-width: 420px)")
+        block = self.rules[start:self.rules.index("}", self.rules.index(".method-table", start))]
+        self.assertIn("overflow-x: auto", block)
+
+    def test_no_has_selector_dependency_for_layout(self):
+        """:has() is progressive enhancement only — never load-bearing."""
+        self.assertNotIn(":has(", self.rules)
+
+
 if __name__ == "__main__":
     unittest.main()

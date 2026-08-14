@@ -1031,3 +1031,253 @@ DOM-only smoke test.
 **Verification:** all 84 responsive/theme combinations and the extended
 functional browser suite passed after the fixes. The stdlib suite now contains
 99 tests, including guards for the CSRF roadmap and reduced-motion reveal rule.
+
+---
+
+## 17. Round 6 — report balance, overlay stacking, relay provenance (2026-08-14)
+
+Work began from `origin/main` at merge commit `9a0796b` (PR #18) on the
+Arena-assigned branch. Sections 11–16 and `docs/DEV-NOTES.md` were read first;
+the CSP and rounds 3–5 changes were verified present in main's ancestry and
+were **not** reapplied. Baseline before any behavior change: 99/99 stdlib tests
+and `node --check` clean on all ten scripts.
+
+Everything below was reproduced in a real Chromium 149 build before it was
+fixed, and re-measured after.
+
+**Bug 1 — Security Headers report: blank right column (confirmed by reporter)**
+
+Findings and Raw headers sat in a shared `.grid-2`. Measured at 1920px:
+Findings **2735px** tall, Raw headers **236px** — the right column ran out of
+content after 8% of the report height and left a ~2500px blank gutter.
+
+Fixed with a tool-specific `.headers-report-stack` (single column, both panels
+`grid-column: 1 / -1`). `.grid-2` itself was deliberately left alone — the CSP
+evidence row, hub scope grid and methodology still depend on its 1.15fr/1fr
+split. Findings stays a plain table (no accordion, nothing hidden behind a
+click), so print and the screenshot workflow are unchanged. Verified at all six
+viewport widths in both themes: single column, both panels full report width,
+Raw headers directly below Findings, zero horizontal overflow.
+
+**Bug 2 — Tools dropdown unusable on hosted result pages (confirmed by reporter)**
+
+Two independent causes, both reproduced:
+
+1. *Evidence mode killed the header's z-index.* `body.evidence .site-header`
+   set `position: static`, and **z-index only applies to positioned
+   elements** — so `z-index: 50` silently stopped applying and the header's
+   backdrop-filter stacking context painted in source order, behind
+   `.report-card`. The menu was fully visible and completely unclickable:
+   `document.elementFromPoint()` over each tool link returned
+   `.page-hero`, `.bar`, or the URL `<input>`. Fixed with
+   `position: relative` — still not sticky, so the one-shot screenshot
+   behavior Evidence mode exists for is preserved, but z-index works again.
+2. *The panel escaped the viewport on narrow screens.* A 300px panel
+   left-anchored to the small Tools `<details>` measured `right: 436px` in a
+   390px viewport and contributed **46px of horizontal overflow**. Fixed by
+   anchoring it to the full `.header-inner` row below 760px.
+
+Not fixed by raising z-index: the root causes were positioning and anchoring.
+The header blur and design are untouched, and no horizontal overflow was
+introduced.
+
+**Bug 3 — found while auditing: the footer swallowed Export menu clicks**
+
+`.container` and `.site-footer` were both `z-index: 1`. Equal z-index resolves
+by source order, so the footer — later in the document — painted over the open
+Export panel: `elementFromPoint` on its last item resolved to `.footer-inner`.
+Fixed with `main.container { z-index: 2 }`.
+
+**Bug 4 — found while auditing: Export panel off-screen at tablet/phone widths**
+
+The Export button sits in a wrapping flex row. Once it wraps to its own line it
+lands near the left edge, and a right-anchored 268px panel then started at a
+negative x — measured `left: -122px` at 768px and `-37px` at 390px. Fixed by
+anchoring the panel to the `.bar` row instead of the button.
+
+**Bug 5 — found while auditing: relayed data lost its `unverified` flag**
+
+Answering the reporter's "why does it say unverified after a scan": the flag is
+correct and deliberate — it marks header values proxied by a **third-party
+relay** (the hosted fallback when neither the Python engine nor a direct CORS
+read can answer). It is not a scan failure. Local `server.py` scans and direct
+browser reads are never flagged.
+
+But the audit did find a real honesty bug next to it. `lookupHeadersLive()`
+stamped every 10-minute cache hit as `cache-lookup`, including entries that had
+originally come from a relay. The second scan of the same target inside the TTL
+therefore dropped the `unverified` chip and relabelled third-party data as
+"this browser" — overstating the provenance of evidence. Added a distinct
+`relay-cached` source that keeps the unverified flag and reads
+"third-party relay (cached 10 min)".
+
+**Audited and found already correct (no change made)**
+
+Hub four-card suite (4 cards + ghost is a deliberate 5th, not an orphan — it
+fills the last row rather than leaving a hole), clickjacking PoC grid (both
+panels within 1px at desktop, stacks on phone), CORS report (single column
+already), CSP report (fixed in Round 5 §16, still balanced), methodology,
+blog, standards, scope, upcoming-tools, footer, dialogs and 404. No forced
+equal heights were introduced anywhere — that would create artificial empty
+cards.
+
+Two earlier "findings" were harness artifacts, not site bugs, and are recorded
+so the next round does not chase them: mid-animation `.reveal` opacity
+snapshots (the suite now polls until animations settle), and dropdown checks
+taken before smooth-scroll had finished.
+
+**Real-browser validation**
+
+- `tests/browser/layout.js` — **113 checks**: headers stack at 6 viewports × 2
+  themes; all 7 pages × 6 viewports × 2 themes for overflow, reveal visibility,
+  clipped controls and console errors; real reports for all four tools at
+  desktop and phone in both themes including evidence-mode round-trip; print
+  media layout. All passing.
+- `tests/browser/dropdown.js` — **119 checks**: the Tools menu on 7 pages × 6
+  viewports × 2 themes pre-scan; after results at 6 viewports × evidence on/off
+  × page top/middle/bottom; GitHub `/CyberBuddy/` mount; all four live links
+  actually navigating from a result page; upcoming tools staying non-links;
+  keyboard open and focus order; active-tool marker; Escape and outside-click.
+  All passing.
+- `tests/browser/overlays.js` — **48 checks**: Export menu, engine popover,
+  keyboard dialog and share control on a rendered report in evidence mode, at 6
+  viewports × 2 themes. All passing.
+
+Every assertion checks computed visibility, bounding rectangles against the
+viewport, `document.elementFromPoint()` hit-testing, real navigation and
+console errors — not DOM presence.
+
+**Verification:** 117/117 stdlib tests (99 existing + 18 new regression tests,
+each confirmed to fail against the pre-fix code), `node --check` on all
+fourteen scripts, Python compile checks, JSON/XML validation, the Pages asset
+assembly guard (67 local references resolved; `docs/`, `tests/` and `REVIEW.md`
+confirmed not published), and 280 real-browser checks.
+
+---
+
+## 18. Round 6b — relay-consent gate readability (2026-08-14)
+
+Reported after reviewing the hosted Security Headers page: pressing **Scan**
+with no local engine surfaces the relay-consent panel, and it was easy to
+misread as a scan that had hung. Reproduced in Chromium with `/api/*` blocked
+to simulate GitHub Pages, then fixed and re-measured.
+
+**What was actually wrong (all four confirmed in the browser)**
+
+1. **The Scan button kept spinning while the gate waited.** The tool calls
+   `setLoading(go, true)` before `ensureRelayConsent()`, so a spinner ran
+   against a panel that was blocking on a human decision — exactly the
+   "maybe it is working, maybe it is stuck" reading reported. Busy buttons
+   are now parked in an `is-waiting` state labelled *"Waiting for your
+   choice…"*, and the spinner returns only if the scan resumes.
+2. **The gate rendered below the fold on a phone** — measured `top: 681px`
+   in an 844px viewport, so on a narrow screen nothing visibly changed on
+   click. It now scrolls itself into view and takes focus. The scroll aligns
+   the panel's **top** (offset by the sticky header): the panel is ~1100px
+   tall at 390px wide, so centring pushed the heading off-screen — the first
+   attempt at this fix measured `top: -127px` and had to be corrected.
+3. **"Allow — hostname only" was styled `btn-primary`**, which read as an
+   option that had already been chosen. All three are now equal-weight
+   option cards; nothing is preselected.
+4. **The options did not explain how they differ**, and none was marked
+   recommended. Each card now carries a plain-language description plus an
+   explicit **Sends:** / **You get:** pair, and hostname-only is labelled
+   **Recommended** — it is enough for almost every header check, because
+   CSP, HSTS, X-Frame-Options and the cookie/isolation family are all set
+   per origin.
+
+**Also changed while there**
+
+- The heading is now a question ("Choose how to read this target's
+  headers") behind an **Action needed** badge, with a lead line stating the
+  scan is paused, rather than a passive status title.
+- Escape declines rather than dismissing ambiguously — the safe default is
+  never to relay.
+- A footer line states that the choice is tab-scoped and forgotten on close,
+  and that relayed values are always labelled `unverified`.
+
+No change to what is disclosed or to the privacy posture: the same four relay
+hosts are named, consent stays `sessionStorage`-scoped, and the
+`python3 server.py` escape hatch is still offered.
+
+**Verification:** 129/129 stdlib tests (12 new gate tests; six deliberate
+mutations — preselected button, missing recommendation, missing Sends/You get,
+no scroll/focus, spinner left running, Escape unhandled — were each confirmed
+to fail them), `node --check` on all fifteen scripts, the Pages asset guard,
+and 297 real-browser checks: the existing 113 layout / 119 dropdown / 48
+overlay checks all still pass, plus a new `tests/browser/relay-gate.js` (17
+checks) covering the gate at six viewports in both themes, each of the three
+choices resolving correctly, Escape declining, and the gate correctly *not*
+appearing when the Python engine is online.
+
+---
+
+## 19. Round 6c — per-element responsiveness audit (2026-08-14)
+
+Requested after the Round 6/6b fixes: verify responsiveness across mobile,
+tablet, laptop and monitor for **every** page and component, not just
+document-level overflow — the reporter's example being that a dropdown opened
+on a phone should be sized for that phone.
+
+**Why the earlier passes were not enough**
+
+`body { overflow-x: clip }` deliberately suppresses document overflow so the
+decorative background blobs never cause a scrollbar. That also means the
+document-level check used in sections 16–18 can report zero overflow while an
+individual panel is still spilling. This round measures every *painted*
+element's bounding rect against `innerWidth`, at seven widths (2560, 1920,
+1366, 1024, 768, 390, 360) in both themes, on static pages, on live reports
+for all four tools, and on the hub suite.
+
+**Verified correct, no change needed**
+
+- The Tools dropdown already sizes to the phone: at 390px the panel spans
+  18→372px inside a 390px viewport, and every item is 337px wide and fully
+  in view (the reporter's specific example).
+- No element spills the viewport on any page, at any of the seven widths, in
+  either theme — including the clickjacking stage, its live iframe and the
+  PoC overlay, the relay gate and its three option cards, and all four
+  report layouts.
+- A deliberately hostile target (400-character unbreakable tokens in CSP,
+  `Set-Cookie`, ACAO and `Server` headers) produced no spill and no
+  horizontal panning at any width on any tool.
+
+**Issues found and fixed**
+
+- **Touch targets under 24px.** The engine chip (23px), scan-history chips
+  (23px), Clear button (20px) and copy-finding button all rendered below the
+  touch minimum at 390px. Given a `min-height: 24px` scoped to
+  `max-width: 860px`, so desktop density is unchanged.
+- **The evidence toggle's `<label>` was 20px tall.** The checkbox itself is
+  13px, so the label *is* the tap target; it now carries the 24px minimum.
+- **Scan-history chips could span the row.** Capped at
+  `min(260px, calc(100vw - 72px))` so a long URL stays tappable.
+- **The demo console bled ~21px past its card at 360px.** Its divider lines
+  are fixed-length box-drawing runs (`─────`) which cannot wrap; they are now
+  clipped to the card.
+- **`.method-table` overflowed its card by 3px at 360px.** The table is now
+  its own scroll container below 420px, rather than clipping a cell or
+  shrinking the type to an unreadable size.
+
+**A note on the first attempt at that last fix**
+
+It used `.card:has(> .method-table) { overflow-x: auto }`. `:has()` is not
+available everywhere, and layout that silently degrades is worse than layout
+that is simply plainer, so it was replaced with `display: block` on the table
+itself. A regression test now asserts `:has(` never appears in the
+stylesheet's real rules.
+
+**False positives worth recording** (documented in DEV-NOTES so the next pass
+does not chase them): closed `<details>` are laid out but not painted, so
+their `scrollWidth` is meaningless; and `scrollWidth > clientWidth` does not
+imply clipped text, because absolutely positioned children legitimately paint
+outside their parent — on `#grade` the naive check fired while the glyph
+ended 19px *inside* the box. The suite compares text extents via a `Range`
+instead.
+
+**Verification:** 135/135 stdlib tests (six new; each confirmed to fail
+against a deliberate regression, including one that reintroduces `:has()`),
+`node --check` on all sixteen scripts, the Pages asset guard, and **507
+real-browser checks** — the new `tests/browser/responsive.js` (210) plus the
+existing layout (113), dropdown (119), overlays (48) and relay-gate (17)
+suites, all passing.

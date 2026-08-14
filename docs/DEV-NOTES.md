@@ -72,6 +72,140 @@ repository history instead:
 - LIVE / CACHED tags are an honesty promise: cached = CI-built demo report
   for a `urls.txt` target, never a fresh scan. Keep them on every result.
 
+## Responsiveness: measure elements, not the document
+
+`body { overflow-x: clip }` is deliberate — decorative blobs must never
+cause a scrollbar. The side effect is that **document-level overflow checks
+are close to useless**: `documentElement.scrollWidth - clientWidth` stays 0
+while an individual panel, menu or table is still spilling off the screen.
+`tests/browser/responsive.js` therefore measures every painted element's
+rect against `innerWidth`.
+
+Traps found writing it, all of which produce false positives:
+
+- **Closed `<details>` are laid out but not painted.** A closed Tools menu
+  reports `clientWidth: 63` vs `scrollWidth: 155` and looks catastrophically
+  clipped. Skip anything matching `details:not([open])`, and use
+  `el.checkVisibility({ contentVisibilityAuto: true, ... })`.
+- **`scrollWidth > clientWidth` does not mean text is cut.** Absolutely
+  positioned children (score gauges, chips, the radar) legitimately paint
+  outside their parent box. Compare the *text* extent instead: take a
+  `Range` over the element's contents and check `range.right > rect.right`.
+  On `#grade` the naive check fired while the glyph ended 19px INSIDE.
+- **The skip link lives at `left: -9999px`** and the ticker marquee is
+  intentionally wider than the viewport. Exclude them explicitly.
+- **A mid-animation `.reveal` reads `opacity < 1`.** Poll until it settles.
+
+Genuine issues this found (all fixed): chips and the engine pill at 20-23px
+on touch screens; the demo console's fixed-length `─────` divider bleeding
+~21px past the card at 360px (box-drawing runs cannot wrap — clip them);
+`.method-table` overflowing its card by 3px at 360px; and the evidence
+toggle's `<label>` — the real tap target for a 13px checkbox — at 20px.
+
+Also: **do not make `:has()` load-bearing.** The first fix for the
+methodology table used `.card:has(> .method-table)`; `display: block` on the
+table itself achieves the same scroll container with no support caveat. A
+test asserts `:has(` never appears in the stylesheet's real rules.
+
+## Real-browser test suites
+
+`test_engines.py` stays stdlib-only so CI can run it anywhere; it can only
+assert that the *rules* are present in the CSS/JS. The things that actually
+broke in Round 6 — stacking contexts, panel geometry, pointer interception —
+are only observable in a real browser, so they live in `tests/browser/`:
+
+    python3 server.py --port 8080 --allow-private        # shell 1
+    npm i puppeteer-core                                 # once
+    CB_CHROME=/path/to/chrome node tests/browser/layout.js
+    CB_CHROME=/path/to/chrome node tests/browser/dropdown.js
+    CB_CHROME=/path/to/chrome node tests/browser/overlays.js
+
+They need a live server and a Chromium binary, so they are not wired into
+the Pages workflow (which must stay dependency-free). Run them by hand
+before a release, and after ANY change to positioning, z-index, grid
+templates or the report markup. Set `CB_TARGET` to point at a scannable
+host; the default assumes a throwaway local one on :8099.
+
+Each suite exits non-zero on the first failure. Assert computed values —
+`getComputedStyle`, `getBoundingClientRect`, `document.elementFromPoint`,
+real navigation — never DOM presence, which is what let the Round 4
+invisible-cards bug ship.
+
+## Round 6 traps — stacking contexts and panel balance
+
+- **`position: static` silently disables `z-index`.** Evidence mode used to
+  set `body.evidence .site-header { position: static }` to un-stick the
+  header for one-shot screenshots. z-index only applies to *positioned*
+  elements, so `z-index: 50` stopped applying, the header's
+  backdrop-filter stacking context painted in source order, and the open
+  Tools menu rendered BEHIND `.report-card` — visible but unclickable.
+  Use `position: relative` when you want "not sticky" but still stacked.
+  If you ever need static again, verify with `elementFromPoint()` over each
+  menu item, not by eye.
+- **Equal z-index resolves by source order.** `.container` and
+  `.site-footer` were both `z-index: 1`, so the footer painted over an open
+  Export panel and ate its clicks. `main.container { z-index: 2 }` breaks
+  the tie. Watch for this whenever a new positioned section is added.
+- **Absolute panels anchored to small controls escape narrow viewports.**
+  A 300px Tools panel on the small `<details>` ran 46px past a 390px
+  viewport; the 268px Export panel started at `left: -122px` at 768px once
+  its button wrapped to a new flex line. Anchor wide panels to a full-width
+  row (`.header-inner`, `.bar`) instead of the button, and re-measure the
+  panel rect against `innerWidth` — not just the page's overflow, because a
+  clipped ancestor can hide the overflow while the panel is still
+  unreachable.
+- **Panels only belong side by side when their content lengths are
+  comparable.** Findings vs Raw headers measured 2735px vs 236px at 1920px:
+  a 2-column grid there is ~2500px of blank gutter. Stack long evidence
+  full width. Use a tool-specific class (`.headers-report-stack`) — do NOT
+  flatten `.grid-2`, which the CSP evidence row, hub scope grid and
+  methodology all depend on. And never force equal heights to "balance" a
+  row; that just makes an artificially empty card.
+- **Testing traps.** A `.reveal` mid-animation reads `opacity < 1` and is
+  not a bug — poll until animations settle before asserting. Likewise
+  `scroll-behavior: smooth` means a menu check right after `scrollTo` can
+  measure a stale header position. Both cost a false-positive round.
+
+## Blocking prompts must not look like progress
+
+The relay-consent gate blocks a scan on a human decision. Reviewers read it
+as "the scan is running, maybe stuck" instead of "answer this". Three
+separate causes, all worth remembering for any future blocking prompt:
+
+- **A spinner that keeps spinning is a lie.** The caller had already run
+  `setLoading(go, true)`, so the Scan button spun while the gate waited.
+  `ensureRelayConsent()` now parks every `.btn.is-loading` into an
+  `is-waiting` state reading "Waiting for your choice…", and restores the
+  spinner only if the scan actually resumes. If you add another gate, park
+  the caller's busy state the same way.
+- **A prompt below the fold does not exist.** The gate rendered at
+  `top: 681px` in an 844px viewport. It now scrolls itself into view and
+  takes focus. Align the **top**, not the centre — the panel is taller than
+  a phone viewport, so `block: "center"` pushes the heading off-screen.
+  Offset by the sticky header or the title hides behind it.
+- **`btn-primary` among sibling choices reads as "already selected".** The
+  old row of three buttons looked like hostname-only was preselected and
+  the scan was merely slow. All three are now equal-weight option cards;
+  the recommendation is an explicit "Recommended" chip, not a colour.
+
+Also: if options differ in ways that matter (privacy, evidence quality),
+say so **in** the option. A tooltip nobody hovers is not documentation —
+each card states what it sends, what you get back, and why you would pick
+it.
+
+## Provenance traps
+
+- **A cache entry inherits the provenance of whatever filled it.** The
+  10-minute header lookup cache used to stamp every hit `cache-lookup`,
+  including entries originally fetched through a third-party relay — so the
+  second scan of a target inside the TTL dropped the `unverified` chip and
+  claimed "this browser" read the headers. `relay-cached` keeps the relay
+  provenance and the flag. If you add another lookup source, decide what it
+  degrades to on a cache hit before you ship it.
+- `unverified` is a provenance label, not an error: it means the values came
+  from a public relay rather than the Python engine or a first-hand CORS
+  read. Never suppress it to make a report look cleaner.
+
 ## Parity contract
 
 `tests/grader_fixtures.json` is the shared contract between the Python

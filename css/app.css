@@ -173,6 +173,11 @@ pre {
 ::selection { background: rgba(62, 224, 194, 0.3); color: var(--ink); }
 
 .container { width: min(1160px, 100% - 40px); margin-inline: auto; position: relative; z-index: 1; }
+/* `.container` and `.site-footer` were both `z-index: 1`, so the footer —
+   later in source order — painted OVER anything escaping main, including
+   the open Export panel (measured: elementFromPoint on the last export item
+   resolved to `.footer-inner`). Main content wins the tie explicitly. */
+main.container { z-index: 2; }
 
 .skip-link {
   position: absolute; left: -9999px; top: 0; z-index: 100;
@@ -204,6 +209,9 @@ pre {
 .header-inner {
   display: flex; align-items: center; gap: 22px;
   padding-block: 14px; flex-wrap: wrap;
+  /* Anchor for the narrow-screen Tools dropdown, which spans the whole
+     header row rather than the small <details> element. */
+  position: relative;
 }
 .brand {
   display: inline-flex; align-items: center; gap: 10px;
@@ -258,6 +266,24 @@ pre {
   to { opacity: 1; transform: none; }
 }
 .nav-menu.up .nav-menu-panel { transform-origin: bottom left; }
+/* Narrow screens: the panel is wider than the small Tools <details> it is
+   anchored to, so a left-anchored absolute panel runs past the right edge
+   of the viewport (and added horizontal overflow). Anchor it to the whole
+   .header-inner row instead — full width, always inside the viewport. */
+@media (max-width: 760px) {
+  .header-inner .nav-menu { position: static; }
+  .header-inner .nav-menu-panel {
+    left: 0; right: 0; width: auto; min-width: 0;
+    top: calc(100% + 8px);
+    max-height: calc(100vh - 132px); overflow-y: auto;
+    transform-origin: top center;
+  }
+  /* Footer menu stays anchored to its own column, but must not overflow. */
+  .site-footer .nav-menu-panel {
+    min-width: 0; width: max-content;
+    max-width: calc(100vw - 40px);
+  }
+}
 .nav-menu-item {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 9px 11px; border-radius: var(--radius-sm);
@@ -453,6 +479,8 @@ html[data-theme="light"] .btn-primary { animation-name: breatheLight; }
 /* Forms */
 .bar, .suite-bar {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+  /* Anchor for the narrow-screen Export panel (see .export-menu-panel). */
+  position: relative;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 20px; padding: 16px; box-shadow: var(--shadow-sm);
 }
@@ -682,7 +710,21 @@ input:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0
    blows the page out horizontally. */
 .grid-2 > *, .poc-grid > *, .suite-grid > *, .arch-split > *, .scope-grid-2 > * { min-width: 0; }
 @media (max-width: 920px) { .grid-2 { grid-template-columns: 1fr; } }
-.raw-headers { max-height: 300px; max-width: 100%; overflow: auto; margin: 0; }
+/* Security Headers report: Findings is several times taller than Raw
+   headers, so a 2-column split left a large blank right column. Stack both
+   panels full report width instead. Tool-specific on purpose — .grid-2 is
+   load-bearing for other sections and must not change globally. */
+.headers-report-stack { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start; }
+/* min-width: 0 keeps a long unbreakable token from expanding the track. */
+.headers-report-stack > * { min-width: 0; grid-column: 1 / -1; }
+
+/* Raw evidence must never expand its track: wrap long unbreakable tokens
+   (session cookies, CSP report URIs) instead of forcing a horizontal
+   scrollbar, and keep `overflow: auto` as the backstop. */
+.raw-headers {
+  max-height: 300px; max-width: 100%; overflow: auto; margin: 0;
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+}
 .raw-toggle { margin-top: 18px; }
 .raw-toggle summary {
   cursor: pointer; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
@@ -739,7 +781,14 @@ body.evidence .bar { padding: 11px 13px; border-radius: 14px; }
 body.evidence .results { margin-top: 14px; }
 body.evidence .report-card { padding: 20px; }
 body.evidence .stage { height: min(52vh, 430px); }
-body.evidence .site-header { position: static; }
+/* Evidence mode un-sticks the header so a single screenshot captures the
+   whole report — but `position: static` also drops the header out of the
+   z-index game (z-index only applies to positioned elements), and its
+   backdrop-filter stacking context then paints in source order, i.e.
+   BEHIND the report card. The Tools dropdown became unclickable as a
+   result. `relative` keeps the non-sticky screenshot behavior while
+   keeping z-index: 50 effective. */
+body.evidence .site-header { position: relative; top: auto; }
 body.evidence .meta-grid { gap: 9px; margin-bottom: 14px; }
 body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 @media (max-width: 920px) {
@@ -761,9 +810,15 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 .export-menu > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .export-menu > summary svg { width: 0.8em; height: 0.8em; transition: transform 0.2s ease; }
 .export-menu[open] > summary svg { transform: rotate(90deg); }
+/* The panel is anchored to the scan bar, not to the small Export button.
+   The button sits in a wrapping flex row, so once it wraps to its own line
+   it can end up near the left edge — a 268px right-anchored panel then
+   started at a negative x (measured left: -122px at 768px, -37px at 390px)
+   and its items fell outside the viewport. Anchoring to `.bar` keeps the
+   panel inside the report width at every tested size. */
 .export-menu-panel {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
-  min-width: 268px; padding: 7px;
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 70;
+  width: min(268px, 100%); padding: 7px;
   background: var(--surface-3); border: 1px solid var(--line-strong);
   border-radius: 14px; box-shadow: var(--shadow-lg);
   animation: fadeUp 0.18s ease backwards;
@@ -779,11 +834,25 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 .export-menu-item span { font-size: 0.71rem; color: var(--faint); font-weight: 400; }
 .export-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
 .export-menu-divider { height: 1px; background: var(--line); margin: 6px 4px; }
+/* Anchor the panel to the whole scan-bar row rather than the Export button,
+   at every width, and clamp its height so a long menu never runs off-screen. */
+.bar .export-menu, .suite-bar .export-menu { position: static; }
+.bar .export-menu-panel, .suite-bar .export-menu-panel {
+  right: 12px; max-height: calc(100vh - 160px); overflow-y: auto;
+}
+@media (max-width: 560px) {
+  .bar .export-menu-panel, .suite-bar .export-menu-panel {
+    left: 12px; right: 12px; width: auto;
+  }
+}
 
 .evidence-toggle {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 0.74rem; color: var(--faint); margin: 10px 2px 0; cursor: pointer;
   user-select: none;
+  /* The <label> is the real tap target for the 13px checkbox inside it, so
+     it carries the 24px touch minimum. */
+  min-height: 24px;
 }
 .evidence-toggle input { accent-color: var(--brand); cursor: pointer; }
 .evidence-toggle:hover { color: var(--muted); }
@@ -821,15 +890,70 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 }
 .privacy-note strong { color: var(--muted); font-weight: 600; }
 
+/* Relay consent gate. This blocks a scan on a human decision, so it has to
+   read as a question — not as a status panel that appeared while a spinner
+   was running. Hence the badge, the "scan is paused" lead, and three equal
+   option cards (no btn-primary, which reviewers read as "already chosen"). */
 .relay-consent {
   border: 1px solid var(--med-line); background: var(--med-bg);
-  border-radius: var(--radius-sm); padding: 15px 17px; margin-top: 16px;
+  border-radius: var(--radius); padding: 17px 19px; margin-top: 16px;
+  box-shadow: var(--shadow-md);
 }
-.relay-consent h3 { margin: 0 0 8px; font-size: 0.94rem; color: var(--ink); }
+.relay-consent:focus { outline: none; }
+.relay-consent:focus-visible { outline: 2px solid var(--med); outline-offset: 3px; }
+.relay-consent-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.relay-consent-badge {
+  font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--med); background: var(--surface-3);
+  border: 1px solid var(--med-line); border-radius: 999px; padding: 3px 9px;
+}
+.relay-consent h3 { margin: 0; font-size: 0.98rem; color: var(--ink); }
 .relay-consent p { margin: 0 0 10px; font-size: 0.84rem; color: var(--ink-2); }
-.relay-consent ul { margin: 0 0 12px; padding-left: 20px; font-size: 0.8rem; color: var(--muted); }
+.relay-consent-lead { color: var(--ink) !important; }
 .relay-consent code { font-size: 0.76rem; }
-.relay-consent-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.relay-consent-foot {
+  margin: 12px 0 0 !important; font-size: 0.74rem; color: var(--muted) !important;
+}
+.relay-consent-foot .unverified-flag { margin-left: 2px; }
+
+.relay-consent-actions {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px;
+}
+@media (max-width: 860px) { .relay-consent-actions { grid-template-columns: 1fr; } }
+/* Each option is a card that states what it sends and what it returns, so
+   the difference is readable without hovering for a tooltip. */
+.relay-option {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  text-align: left; cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.8rem; color: var(--ink-2);
+  background: var(--surface-3); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); padding: 12px 13px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.relay-option:hover { border-color: var(--med-line); background: var(--surface-2); transform: translateY(-1px); }
+.relay-option:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.relay-option-head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.relay-option-label { font-size: 0.86rem; font-weight: 700; color: var(--ink); }
+.relay-option-rec {
+  font-family: var(--font-mono); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--low); background: var(--low-bg);
+  border: 1px solid var(--low-line); border-radius: 999px; padding: 2px 7px;
+}
+.relay-option-what { font-size: 0.78rem; line-height: 1.5; color: var(--ink-2); }
+.relay-option-what em { color: var(--ink); font-style: normal; font-weight: 600; }
+.relay-option-meta {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-size: 0.71rem; color: var(--muted); overflow-wrap: anywhere;
+}
+.relay-option-meta strong { color: var(--faint); font-weight: 600; }
+.relay-option-meta code { font-size: 0.68rem; }
+
+/* A button parked while the relay gate waits for an answer: it must not
+   keep spinning, or the gate looks like a slow scan instead of a question. */
+.btn.is-waiting { opacity: 0.75; cursor: default; font-style: italic; }
 
 .unverified-flag {
   display: inline-block; margin-left: 8px;
@@ -862,6 +986,10 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
 .console .c-prompt { color: #2dd4bf; }
 .console .c-ok { color: #34d399; }
 .console .c-dim { color: #475569; }
+/* The divider lines are fixed-length box-drawing runs (─────) which cannot
+   wrap, so at 360px they painted ~21px past the console edge. Clip them to
+   the card instead of letting them bleed. */
+.console .c-dim { overflow: hidden; text-overflow: clip; white-space: nowrap; }
 .console .c-red { color: #f87171; }
 .console .c-amber { color: #fbbf24; }
 .console .caret {
@@ -1665,6 +1793,15 @@ kbd {
 .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 920px) { .method-grid { grid-template-columns: 1fr; } }
 .method-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+/* At 360px the three-column scoring tables overflow their card by a few px.
+   Give the table its own horizontal scroll rather than clipping a cell or
+   forcing an unreadable font size. */
+@media (max-width: 420px) {
+  /* display:block makes the table its own scroll container without relying
+     on :has() support in the surrounding card. */
+  .method-table { display: block; overflow-x: auto; font-size: 0.8rem; }
+  .method-table th, .method-table td { padding: 9px 6px; }
+}
 .method-table th, .method-table td {
   text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line);
   vertical-align: top;
@@ -1751,6 +1888,24 @@ html.js .reveal.in,
   .report-provenance { display: flex !important; border-top: 1px solid #d0d5dd; color: #475467; }
   .raw-toggle[open] .raw-headers, .raw-toggle .raw-headers { display: block; }
   details.raw-toggle > summary { color: #475467; }
+}
+
+/* Touch tap targets. Measured at 390px, these chips/buttons rendered 20-23px
+   tall — under the 24px minimum, and they are the controls a phone user is
+   most likely to mis-tap. Scoped to touch-sized screens so desktop density
+   is unchanged. The evidence checkbox is deliberately excluded: its <label>
+   wrapper is already a 39px target. */
+@media (max-width: 860px) {
+  .engine-chip, .recent-chip, .recent-clear, .copy-finding, .nav-status {
+    min-height: 24px;
+  }
+  .engine-chip, .recent-chip, .copy-finding {
+    display: inline-flex; align-items: center;
+  }
+  .recent-clear { display: inline-flex; align-items: center; justify-content: center; }
+  /* The scan-history chips can hold a long URL; keep them tappable without
+     letting one chip run the width of the row. */
+  .recent-chip { max-width: min(260px, calc(100vw - 72px)); }
 }
 
 @media (max-width: 760px) {
