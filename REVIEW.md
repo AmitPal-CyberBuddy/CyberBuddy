@@ -753,3 +753,172 @@ reshaped for exactly that reason.
 No scoring code was touched: severity/recommendations are a display layer over
 the existing check statuses, so the Python↔JS parity contract is unchanged
 (89 tests pass, including parity).
+
+---
+
+## 12. Round 3 — real-browser verification, visitor-first UX, internal-notes policy (2026-08-14)
+
+Verified against a real Chromium build (headless, Python engine online).
+
+**Bug found and fixed**
+
+- **Horizontal page blowout on the Headers report** (and any grid card holding
+  a long unbreakable token): the raw-headers JSON line expanded the `.grid-2`
+  track to ~2700px because grid items default to `min-width: auto`. Fixed with
+  `min-width: 0` on all grid children (`grid-2`, `poc-grid`, `suite-grid`,
+  `arch-split`, `scope-grid-2`) + `max-width: 100%` on the raw `<pre>`.
+  Verified: overflow 1772px → 0 at 1440px and 390px.
+
+**Blog / tool cards "not showing"**
+
+Reproduced the question in a real browser: both render (4 tool cards, 2 blog
+posts; 3 tools + 2 posts even with JavaScript disabled). The likely causes on
+the reader's side are a stale Pages deploy or cached HTML — after merging,
+wait for the Pages action (~2 min) and hard-refresh. Defense-in-depth added:
+the tool grid and blog grid now carry static fallback content in the markup,
+so those sections are never empty even if every script fails.
+
+**Visitor-first explanations (the "owner knows, visitor doesn't" pass)**
+
+- The header `engine · …` chip is now a button that opens a proper explainer
+  (dialog semantics, Escape/outside-click/scroll close): what the current
+  state means, all three engine modes in plain language, and a link to the
+  methodology. On phones it renders as a bottom sheet (positioned from
+  `<body>` because the header's backdrop-filter traps `position: fixed`).
+- A visible `?` button in the header opens the existing keyboard-shortcuts
+  dialog (it was only discoverable via a hint in the fine print).
+- Tooltips everywhere jargon appears: LIVE/CACHED tags, `via …` source lines,
+  the source chip, "analyst-attested", OWASP WSTG / CWE badges (tool cards +
+  standards section), every ticker term, the score gauge (band thresholds),
+  "Origin tested from", "Final URL", "HTTP status", "Engine", the PoC overlay
+  button, and evidence mode (rewritten without the word "chrome").
+- "Checked" meta label renamed to "Scanned" (it is a timestamp, not a count).
+
+**Visual structure / space usage (measured, not guessed)**
+
+- Hero: the "does / does not" scope list moved out of the cramped right card
+  into its own two-column section — hero card heights now differ by ~43px
+  instead of 213px, and the scope gets more prominence.
+- Pipeline diagram: 615px → 521px (desktop), 697px → 594px (mobile); the
+  architecture diagram 487px → 417px desktop, 589px → 476px mobile.
+- Header on mobile: 148px → 122px (compact nav, chip, brand).
+- Footer on mobile: 901px → 839px; tap targets bumped (nav links, copy
+  finding ≥ 24px); meta grid pinned to 4 columns (2 on mobile) so 8 items
+  never land in ragged 5+3 rows; section-head margins tightened.
+- Suite summary centres its gauge on phones; the verdict gauge scales down.
+
+**Internal-notes policy**
+
+Notes that used to live in shipped files (visible via view-source) now live
+in `docs/DEV-NOTES.md`, which the Pages workflow never deploys. Moved: the
+CSP-sync comment from six pages, the robots.txt advisory, the humans.txt
+"no last-update line" note, and the CSS font-loading rationale. Shipped files
+keep only comments a curious visitor can read without seeing maintainer
+notes. Future notes-to-self go in `docs/DEV-NOTES.md`.
+
+**Verification:** 89/89 engine tests (incl. Python↔JS parity), node --check
+on all scripts, jsdom boot/smoke of all five pages, Pages-build asset check,
+and a 27-point real-browser interaction suite (popover, shortcuts, suite
+scan, gauge, tags, no-JS fallbacks, mobile overflow) — all passing.
+
+---
+
+## 13. Round 4 — invisible cards fixed, all three tools validated in a real browser (2026-08-14)
+
+**Root cause of the "empty but clickable" cards (finally found):**
+
+The hub's tool cards and blog cards are injected by `renderToolCards` /
+`renderBlog` AFTER `initReveal()` runs. Elements with class `reveal` start
+at `opacity: 0` and only become visible when `.in` is added — the injected
+cards were never observed, and the 2s fallback only covered elements
+captured at init time. Result: cards present in the DOM and clickable, but
+invisible (confirmed in Chromium: `opacity: 0`, no `.in`). The bug predates
+the Round-2 work (present at `b2372d1`); earlier DOM-level checks counted
+elements without checking computed visibility, so it slipped through.
+
+**Fix:** `initReveal()` rewritten to (a) re-query and track every `.reveal`
+at call time, (b) watch for late-injected nodes via MutationObserver, and
+(c) a re-querying 2s safety net (`querySelectorAll(".reveal:not(.in)")`).
+`js/boot.js` now runs `initReveal()` AFTER the page initialisers as
+belt-and-braces. Verified in Chromium: all cards `opacity: 1` with `.in`,
+including the ghost card and the nav dropdown items.
+
+**All three tools validated end-to-end in real Chromium (51 checks):**
+
+- Setup: a loopback-bound `server.py` (the VAPT configuration) so the
+  Python engine path runs for real. Notable: the 0.0.0.0-bound server
+  CORRECTLY refuses loopback targets via the SSRF guard — this is intended
+  behavior, and the tools then fall back to the browser grader (labelled
+  "this browser", as designed).
+- Security Headers: real scan → gauge animated to the real score (offset
+  5px ≈ 95/100, grade A), 10 findings with severity + recommendation (1/1
+  weak rows) + weight bars (9), copy-finding works, raw headers contain
+  real values, engine metadata "python engine", measured duration, UTC
+  stamp, provenance, zero overflow, zero console errors.
+- CORS Validator: probe → RESTRICTIVE verdict, findings + severity +
+  posture, the genuine TWO-ORIGIN python proof
+  (`https://evil.cyberbuddy.test · https://probe.cyberbuddy.test`), HTTP
+  200, engine "python engine", no errors.
+- Clickjacking Validator: live frame renders the target, protection line +
+  risk chip, both framing-control rows with copy buttons, PoC overlay
+  toggles on/off with label updates, no errors.
+- Hub suite: all three results "via python engine", all tagged LIVE,
+  no overflow, no errors.
+- Mobile: headers report fully renders, no overflow, no errors.
+- Regression guards added to the browser test harness: computed-opacity
+  assertions for tool cards, blog posts, ghost card and nav items (DOM
+  presence is not visibility).
+
+**Verification:** 89/89 engine tests (Python↔JS parity), node --check on
+all scripts, jsdom boot/smoke, Pages-build asset check, 51-check tool
+validation suite, 27+4-check interaction suite.
+
+---
+
+## 14. Round 5 — original POC parity, footer fixes, label fixes (2026-08-14)
+
+The original standalone `Clickjacking-Validator/Clickjacking.html` was
+fetched and diffed against the current tool, item by item.
+
+**Adopted from the original POC**
+
+- **`allow-same-origin` on the frame sandbox** (now
+  `allow-scripts allow-forms allow-same-origin`). The old tool framed
+  targets with the same privileges a real attacker's frame has; the current
+  tool's stricter sandbox made sites that need their own storage render
+  blank — a false "blocked" verdict on an evidence tool. Top-level
+  navigation remains sandbox-blocked, and the only same-origin case is
+  scanning CyberBuddy itself (the analyst's own trusted code). The stage
+  note, confirm-prompt hint, and README were updated to match.
+- **Frame-load "peek" evidence line.** The old tool reported what reading
+  `contentDocument` proved. Ported: "Frame loaded — peek: cross-origin
+  (document not readable — expected)" or "document readable — <href>" for
+  same-origin targets. Verified both paths in Chromium.
+
+**Added for accuracy while there**
+
+- Frame `error` listener (fires on policy blocks such as mixed content;
+  verified Chromium instead renders its own error page for refused
+  connections and fires `load`).
+- When the engine reports the target unreachable, the frame status now says
+  so explicitly ("the frame may show the browser's own error page; that is
+  not framing evidence") instead of leaving a generic "Frame loaded" line
+  next to an UNREACHABLE verdict.
+
+**Skipped (already better here):** the old page's compact single-viewport
+layout is covered by Evidence mode; normalize / ?url= / Enter-to-scan /
+PoC toggle / auto-scan all exist in stronger form; the header scan the old
+page proxied through `/api/scan` is the current Security Headers tool.
+
+**Footer fixes (user-reported)**
+
+- `.footer-legal` was a grid item auto-placed into row 2, column 1 of the
+  footer grid — the legal text hugged the left-most column. Fixed with
+  `grid-column: 1 / -1`; verified it spans the full footer width and sits
+  below all columns at 1440 / 920 / 560 / 390 px.
+- Connect column label: "Read the blog · Medium" → "Read My blog · Medium".
+
+**Verification:** 89/89 engine tests, node --check, jsdom smoke, Pages-build
+asset check, 51-check tool validation suite, 31-check interaction suite, and
+the new footer/CJ checks (footer spans at four widths, same-origin and
+cross-origin peeks, unreachable-target path, hub regression) — all passing.

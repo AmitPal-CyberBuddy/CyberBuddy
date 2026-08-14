@@ -10,7 +10,6 @@ window.addEventListener("DOMContentLoaded", function () {
 
   if (typeof renderHeader === "function") renderHeader(page);
   if (typeof renderFooter === "function") renderFooter();
-  if (typeof initReveal === "function") initReveal();
 
   init.forEach(function (name) {
     var fn = window[name];
@@ -18,4 +17,10 @@ window.addEventListener("DOMContentLoaded", function () {
       try { fn(); } catch (err) { /* one bad init must not kill the page */ }
     }
   });
+
+  // AFTER the page initialisers: several of them (renderToolCards,
+  // renderBlog) inject .reveal content. initReveal must run last so those
+  // nodes are tracked — otherwise they stay at opacity: 0, invisible but
+  // clickable. (initReveal also watches for late additions.)
+  if (typeof initReveal === "function") initReveal();
 });

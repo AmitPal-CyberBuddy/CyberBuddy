@@ -3,10 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- GitHub Pages cannot send response headers, so the policy ships as a
-       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
-       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
-       limitations'. Keep this in sync with the CSP in server.py. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
   <meta name="description" content="How CyberBuddy scores clickjacking, security headers, and CORS — engines, grades, and what the hosted site can and cannot prove." />
@@ -150,7 +146,7 @@
   </article>
 
   <div class="section-head reveal">
-    <h2>How the hosted site scans</h2>
+    <h2 id="hosted-scans">How the hosted site scans</h2>
   </div>
   <div class="roadmap">
     <div class="roadmap-item reveal" style="--d: .05s;">

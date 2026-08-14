@@ -3,10 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- GitHub Pages cannot send response headers, so the policy ships as a
-       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
-       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
-       limitations'. Keep this in sync with the CSP in server.py. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src https: http:" />
   <title>Clickjacking Validator — CyberBuddy</title>
   <meta name="description" content="Live clickjacking proof: frame a target and screenshot the result." />
@@ -63,7 +59,7 @@
       <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Validate</button>
-    <button id="togglePoc" type="button" class="btn btn-ghost">Show PoC overlay</button>
+    <button id="togglePoc" type="button" class="btn btn-ghost" title="Adds the red decoy overlay over the framed site — clicks pass through to the target">Show PoC overlay</button>
     <div role="group" aria-label="Export and share">
       <span id="exportMenu"></span>
       <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
@@ -90,19 +86,19 @@
           <span id="mTarget" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Final URL</span>
+          <span class="meta-label" title="Where the target redirected, if it did">Final URL</span>
           <span id="mFinal" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">HTTP status</span>
+          <span class="meta-label" title="HTTP response code from the target">HTTP status</span>
           <span id="mStatus" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Checked</span>
+          <span class="meta-label">Scanned</span>
           <span id="mStamp" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Engine</span>
+          <span class="meta-label" title="Which engine produced this result — hover the source chip for details">Engine</span>
           <span id="mEngine" class="meta-value mono">—</span>
         </div>
         <div class="meta-item">
@@ -125,10 +121,10 @@
       <div class="poc-grid">
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation</h3>
-          <p class="note">A rendered target means the page can be framed. A blank pane usually means it is blocked. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
+          <p class="note">A rendered target means the page can be framed — exactly as it would appear inside an attacker's frame. A blank pane usually means it is blocked (X-Frame-Options / frame-ancestors), though a few sites also blank themselves with frame-busting scripts. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
           <div id="stage" class="stage">
             <div class="overlay">CLICK HERE — decoy overlay</div>
-            <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
+            <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
           </div>
           <p id="frameStatus" class="stage-note"></p>
           <div id="visualConfirm" class="hidden"></div>

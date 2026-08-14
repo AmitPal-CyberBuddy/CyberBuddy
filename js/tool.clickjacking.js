@@ -109,6 +109,9 @@
     if (data && data._unreachable) {
       fillMeta(url, data);
       setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(data));
+      $("frameStatus").textContent =
+        "Target not reachable — " + unreachableDetail(data) +
+        ". The frame above may show the browser's own error page; that is not framing evidence.";
       renderRows(data.findings, url);
       $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
       finish(data);
@@ -151,8 +154,31 @@
     $("frame").addEventListener("load", () => {
       frameLoaded = true;
       $("stage").classList.remove("scanning");
+      // Evidence "peek", kept from the original standalone validator:
+      // reading the framed document proves the load fired and records how
+      // the browser classified the frame. Cross-origin documents are
+      // unreadable by design, so the catch is the expected result.
+      let peek = "cross-origin (document not readable — expected)";
+      try {
+        const doc = $("frame").contentDocument;
+        if (doc && doc.location) peek = "document readable — " + doc.location.href;
+      } catch (_) { /* SecurityError: cross-origin — expected */ }
       $("frameStatus").textContent =
-        "Frame loaded. If the real site UI is visible, treat it as clickjackable.";
+        "Frame loaded — peek: " + peek +
+        ". If the real site UI is visible, treat it as clickjackable.";
+    });
+
+    // Network-level failures fire `error` on iframes (Chromium fires it for
+    // policy blocks such as mixed content; refused connections may instead
+    // render the browser's error page and fire `load` — the engine verdict
+    // covers that case). Surface both honestly instead of leaving the
+    // "Loading frame…" status stuck.
+    $("frame").addEventListener("error", () => {
+      $("stage").classList.remove("scanning");
+      $("frameStatus").textContent =
+        "Frame load failed — the browser blocked or could not reach the target " +
+        "(mixed-content policy, CSP, or connection failure). No framing verdict " +
+        "can be drawn from this attempt; retry or verify the target.";
     });
 
     $("go").addEventListener("click", () => {

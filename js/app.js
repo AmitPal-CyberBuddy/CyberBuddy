@@ -169,9 +169,21 @@ function renderHeader(current) {
     "</nav>" +
     '<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch theme" title="Switch theme">' +
     ICONS.sun + "</button>" +
-    '<span class="engine-chip" id="engineChip" title="Checking scan engine…">' +
+    '<button type="button" id="kbdShortcut" class="kbd-shortcut" aria-label="Keyboard shortcuts" title="Keyboard shortcuts — press ?">?</button>' +
+    '<button type="button" id="engineChip" class="engine-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="enginePopover" title="Checking scan engine — click to learn what this means">' +
     '<span class="engine-dot" id="engineDot"></span>' +
-    '<span id="engineText">engine · …</span></span>' +
+    '<span id="engineText">engine · …</span></button>' +
+    '<div id="enginePopover" class="engine-popover hidden" role="dialog" aria-label="About the scan engine">' +
+    '<p class="ep-title">Scan engine</p>' +
+    '<p class="ep-status" id="enginePopStatus"><span class="engine-dot"></span><span>checking…</span></p>' +
+    '<p class="ep-explain">CyberBuddy runs the same OWASP-aligned checks in three ways, and every report names the one that produced it:</p>' +
+    "<ul>" +
+    "<li><strong>Python engine</strong> — when <code>server.py</code> or the hosted API is online, scans run server-side with complete evidence (two-origin CORS proof, full header reads).</li>" +
+    "<li><strong>In-browser graders</strong> — on this hosted page the same scoring runs in your browser. Reading headers of other sites may use a public relay, only with your consent.</li>" +
+    "<li><strong>Published reports</strong> — demo targets are pre-scanned by CI and served from a cache. Their results are labelled <code>CACHED</code>, never <code>LIVE</code>.</li>" +
+    "</ul>" +
+    '<a class="ep-link" href="' + base + '/methodology/#hosted-scans">How the hosted site scans →</a>' +
+    "</div>" +
     "</div></header>" +
     '<button type="button" id="toTop" class="to-top" aria-label="Back to top" title="Back to top">' +
     ICONS.arrowUp + "</button>";
@@ -184,6 +196,7 @@ function renderHeader(current) {
   initThemeToggle();
   initScrollChrome();
   initKeyboard();
+  initEnginePopover();
 
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.nav-menu[open]").forEach((m) => {
@@ -282,7 +295,7 @@ function renderFooter() {
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
-    ICONS.medium + "Read the blog · Medium</a>" +
+    ICONS.medium + "Read My blog · Medium</a>" +
     "</div>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +
@@ -337,6 +350,23 @@ function renderBlog() {
   }).join("");
 }
 
+/* One-line plain-language descriptions of the methodology IDs, so a
+   visitor who has never heard of WSTG or CWE can hover and learn. */
+const STD_TITLES = {
+  "OWASP WSTG-CLNT-09": "OWASP Web Security Testing Guide — Testing for Clickjacking",
+  "CWE-1021": "CWE-1021 — Improper Restriction of Rendered UI Layers or Frames",
+  "OWASP WSTG-CONF-07": "OWASP Web Security Testing Guide — Testing for Weak Transport Layer Security",
+  "WSTG-CONF-12": "OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses",
+  "CWE-693": "CWE-693 — Protection Mechanism Failure",
+  "OWASP WSTG-CLNT-07": "OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing",
+  "CWE-942": "CWE-942 — Permissive Cross-domain Policy with Untrusted Domains"
+};
+
+function stdBadgeHtml(code) {
+  const t = STD_TITLES[code] ? ' title="' + esc(STD_TITLES[code]) + '"' : "";
+  return '<span class="std-id"' + t + ">" + esc(code) + "</span>";
+}
+
 function renderToolCards() {
   const grid = document.getElementById("toolGrid");
   if (!grid) return;
@@ -347,7 +377,7 @@ function renderToolCards() {
   const cards = TOOLS_MENU.map((t, i) => {
     const icon = ICONS[t.icon] || ICONS.plus;
     const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
-    const std = (t.std || []).map((s) => '<span class="std-id">' + esc(s) + "</span>").join("");
+    const std = (t.std || []).map(stdBadgeHtml).join("");
     const led = t.status === "live" ? "status-led" : "status-led " + t.status;
     return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
       base + t.href + '">' +
@@ -375,6 +405,59 @@ function renderToolCards() {
 
 window.__cbEngine = { mode: "checking" };
 
+/* The chip's popover is how a first-time visitor learns what the cryptic
+   "browser · no engine" state means — every mode gets a plain-language
+   sentence, and the chip stays a button so the explanation is one click
+   away on every page. */
+function setEnginePopStatus(cls, label) {
+  const status = document.getElementById("enginePopStatus");
+  if (!status) return;
+  status.className = "ep-status" + (cls ? " " + cls : "");
+  const text = status.querySelector("span:last-child");
+  if (text) text.textContent = label;
+}
+
+function initEnginePopover() {
+  const chip = document.getElementById("engineChip");
+  const pop = document.getElementById("enginePopover");
+  if (!chip || !pop) return;
+  // Escape the header's backdrop-filter, which would otherwise become the
+  // containing block for position:fixed (breaking the mobile bottom sheet).
+  document.body.appendChild(pop);
+  const close = () => {
+    pop.classList.add("hidden");
+    chip.setAttribute("aria-expanded", "false");
+  };
+  const open = () => {
+    if (window.innerWidth > 760) {
+      const r = chip.getBoundingClientRect();
+      const w = Math.min(420, window.innerWidth - 28);
+      pop.style.cssText = "position:fixed;width:" + w + "px;" +
+        "left:" + Math.max(14, Math.min(r.right - w, window.innerWidth - w - 14)) + "px;" +
+        "top:" + (r.bottom + 8) + "px;";
+    } else {
+      // Small screens: clear inline styles and let the stylesheet's
+      // bottom-sheet media query position it.
+      pop.style.cssText = "";
+    }
+    pop.classList.remove("hidden");
+    chip.setAttribute("aria-expanded", "true");
+  };
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (pop.classList.contains("hidden")) open();
+    else close();
+  });
+  document.addEventListener("click", (e) => {
+    if (!pop.classList.contains("hidden") && !pop.contains(e.target) &&
+        e.target !== chip && !chip.contains(e.target)) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+  window.addEventListener("scroll", close, { passive: true, capture: true });
+}
+
 async function detectEngine() {
   const chip = document.getElementById("engineChip");
   const dot = document.getElementById("engineDot");
@@ -393,10 +476,11 @@ async function detectEngine() {
         const data = await res.json();
         if (data && data.ok === true) {
           window.__cbEngine = { mode: "python" };
-          chip.title = "Python engine online — scans run on this host";
+          chip.title = "Python engine online — scans run on this host. Click for details.";
           chip.classList.add("is-on");
           dot.classList.add("on");
           text.textContent = "python · online";
+          setEnginePopStatus("is-on", "python engine online — same-origin scans on this host, complete evidence");
           return { online: true, reason: "python" };
         }
       }
@@ -410,10 +494,11 @@ async function detectEngine() {
   chip.title =
     "No Python engine detected. Graders run in this browser; reading " +
     "cross-origin headers needs your consent to use a public relay. " +
-    "Run server.py locally for a same-origin scan.";
+    "Run server.py locally for a same-origin scan. Click for details.";
   chip.classList.add("is-live");
   dot.classList.add("on", "live");
   text.textContent = "browser · no engine";
+  setEnginePopStatus("is-live", "in-browser graders — no python engine detected; header reads for other sites may use public relays after your consent");
   return { online: false, reason: "live" };
 }
 
@@ -689,7 +774,8 @@ function gaugeHtml(score, grade, filled) {
   const g = String(grade || gradeLetter(s)).toLowerCase();
   const offset = filled ? String(100 - s) : "100";
   return '<div class="score-gauge gauge-' + g + '" role="img" aria-label="Score ' + s +
-    " out of 100 — " + gaugeBand(s) + '">' +
+    " out of 100 — " + gaugeBand(s) + '"' +
+    ' title="Security headers score out of 100. Grade bands: A ≥ 90 · B ≥ 75 · C ≥ 60 · D ≥ 45 · F below.">' +
     '<svg viewBox="0 0 120 120" aria-hidden="true">' +
     '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
     '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" ' +
@@ -735,7 +821,7 @@ function renderProvenance(data, toolName) {
   ];
   if (data && data.confirmation === "manual") {
     bits.push('<span class="prov-sep">|</span>',
-      '<span class="prov-manual">analyst-attested</span>');
+      '<span class="prov-manual" title="Recorded from your visual confirmation of the frame — not a measured header value">analyst-attested</span>');
   }
   if (isUnverified(data)) {
     bits.push('<span class="prov-sep">|</span>',
@@ -775,9 +861,9 @@ function initEvidenceToggle() {
   const wrap = document.getElementById("evidenceToggle");
   if (!wrap) return;
   wrap.innerHTML =
-    '<label class="evidence-toggle">' +
+    '<label class="evidence-toggle" title="After a scan, collapses the page sections around the report so the whole result fits one screenshot">' +
     '<input type="checkbox" id="evidenceChk"' + (evidenceEnabled() ? " checked" : "") + " /> " +
-    "Evidence mode — collapse page chrome after a scan so the report fits one screenshot" +
+    "Evidence mode — after a scan, collapse the page around the report so it fits one screenshot" +
     "</label>";
   const chk = document.getElementById("evidenceChk");
   chk.addEventListener("change", () => {
@@ -867,27 +953,52 @@ function initStats() {
 }
 
 function initReveal() {
-  const els = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
-  if (!els.length) return;
   const inView = (el) => {
     const r = el.getBoundingClientRect();
     return r.top < window.innerHeight && r.bottom > 0;
   };
-  if (!("IntersectionObserver" in window)) {
-    els.forEach((el) => el.classList.add("in"));
-    return;
+  let io = null;
+  if ("IntersectionObserver" in window) {
+    io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("in");
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.05 });
   }
-  els.forEach((el) => { if (inView(el)) el.classList.add("in"); });
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add("in");
-        io.unobserve(e.target);
+  const track = (root) => {
+    if (!root || root.nodeType !== 1 && root.nodeType !== 9) return;
+    const list = Array.prototype.slice.call(root.querySelectorAll(".reveal"));
+    if (root.classList && root.classList.contains("reveal")) list.push(root);
+    list.forEach((el) => {
+      if (el.classList.contains("in")) return;
+      if (io) {
+        if (inView(el)) el.classList.add("in");
+        else io.observe(el);
+      } else {
+        el.classList.add("in");
       }
     });
-  }, { threshold: 0.05 });
-  els.forEach((el) => io.observe(el));
-  setTimeout(() => { els.forEach((el) => el.classList.add("in")); }, 2000);
+  };
+  track(document);
+  // The hub injects its tool cards and blog grid AFTER boot
+  // (renderToolCards / renderBlog). Without this watch, those .reveal nodes
+  // stay at opacity: 0 forever — present and clickable, but invisible.
+  if (window.MutationObserver) {
+    const mo = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        m.addedNodes.forEach((n) => { if (n.nodeType === 1) track(n); });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  // Safety net: re-query at fire time so anything the observers missed
+  // (including late-injected content) is visible after 2s, guaranteed.
+  setTimeout(() => {
+    document.querySelectorAll(".reveal:not(.in)").forEach((el) => el.classList.add("in"));
+  }, 2000);
 }
 
 function exportReport() {
@@ -2381,7 +2492,7 @@ function suiteCard(title, data, listKey, href) {
       '<span class="suite-tags">' + scanTag(data) +
       '<span class="risk unreachable">UNREACHABLE</span></span></div>' +
       '<p class="verdict-text">Target did not respond — ' + esc(unreachableDetail(data)) + '</p>' +
-      '<p class="suite-src">via ' + esc(sourceLabel(data)) + '</p>' +
+      '<p class="suite-src" title="' + esc(sourceExplain(data)) + '">via ' + esc(sourceLabel(data)) + '</p>' +
       '<a class="tool-card-open" href="' + href + '">Open full report ' + ICONS.chevron + '</a></article>';
   }
   const risk = (data.risk || "unknown").toLowerCase();
@@ -2396,16 +2507,31 @@ function suiteCard(title, data, listKey, href) {
     '<div class="suite-card-body">' + grade +
     '<p class="verdict-text">' + esc(data.summary || "") + "</p></div>" +
     (items ? "<ul class=\"suite-list\">" + items + "</ul>" : "") +
-    '<p class="suite-src">via ' + esc(sourceLabel(data)) + "</p>" +
+    '<p class="suite-src" title="' + esc(sourceExplain(data)) + '">via ' + esc(sourceLabel(data)) + "</p>" +
     '<a class="tool-card-open" href="' + href + '">Open full report ' + ICONS.chevron + "</a></article>";
 }
 
 /* ---------- Tool chrome ------------------------------------------------- */
 
+const SOURCE_EXPLAIN = {
+  python: "The Python engine answered — server-side scan with complete evidence.",
+  cache: "Pre-scanned demo target served from the CI-built cache — not a fresh scan.",
+  relay: "Header values proxied by a third-party relay — not independently verified.",
+  browser: "Graded in this browser from a direct read of the target.",
+  "cache-lookup": "Reused this browser's 10-minute header cache from an earlier scan.",
+  none: "No engine answered this scan."
+};
+
+function sourceExplain(data) {
+  const s = data && data._source;
+  return SOURCE_EXPLAIN[s] || "Where this result came from.";
+}
+
 function setSourceChip(data) {
   const el = document.getElementById("sourceChip");
   if (!el) return;
   el.textContent = "via " + sourceLabel(data);
+  el.title = sourceExplain(data);
   el.classList.remove("hidden");
 }
 
@@ -2512,9 +2638,9 @@ function renderConfirmPrompt(hostId, suggestion, onChoose) {
     "Blank / refused → framing blocked</button>" +
     "</div>" +
     '<span class="confirm-hint">Recorded as <strong>analyst-attested</strong>, not as a ' +
-    "measured header value. Note: this frame runs sandboxed without " +
-    "<code>allow-same-origin</code>, so a few sites render blank because they need " +
-    "same-origin storage — not because of framing headers. Confirm manually if unsure." +
+    "measured header value. Note: a few sites render blank because they need " +
+    "third-party cookies or storage, or run frame-busting scripts — not because " +
+    "of framing headers. Confirm manually if unsure." +
     (suggestion
       ? " Highlighted button is CyberBuddy's guess from the frame's load behaviour."
       : "") +
@@ -2728,6 +2854,8 @@ function trapHelpFocus(e) {
 
 function initKeyboard() {
   if (document.getElementById("kbdHelp")) return;
+  const shortcutBtn = document.getElementById("kbdShortcut");
+  if (shortcutBtn) shortcutBtn.addEventListener("click", toggleHelp);
   const html =
     '<div id="kbdHelp" class="kbd-help hidden" role="dialog" aria-modal="true" aria-labelledby="kbdHelpTitle" aria-hidden="true">' +
     '<div class="kbd-help-panel">' +
