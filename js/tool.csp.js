@@ -103,10 +103,10 @@
   }
 
   window.initCsp = function initCsp() {
+    initUrlInput($("url"));
     $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
+      const url = validateUrlField($("url"));
+      if (!url) return;
       pushUrlParam(url);
       addRecentScan(url);
       audit(url);
@@ -121,9 +121,9 @@
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
-      const url = normalizeUrl(initial);
-      $("url").value = url;
-      audit(url);
+      $("url").value = initial;
+      const url = validateUrlField($("url"), false);
+      if (url) audit(url);
     }
   };
 })();

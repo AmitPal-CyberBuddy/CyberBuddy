@@ -136,7 +136,74 @@ async function runScan(page, path) {
     }
   }
 
-  /* ---- 3. Real reports for all four tools ------------------------------- */
+  /* ---- 3. Invalid URLs produce visible, announced feedback -------------- */
+  for (const [name, path, input, button, error] of [
+    ["hub", "/", "#suiteUrl", "#suiteGo", "#suiteUrlError"],
+    ["clickjacking", "/tools/clickjacking/", "#url", "#go", "#urlError"],
+    ["headers", "/tools/headers/", "#url", "#go", "#urlError"],
+    ["cors", "/tools/cors/", "#url", "#go", "#urlError"],
+    ["csp", "/tools/csp/", "#url", "#go", "#urlError"]
+  ]) {
+    const page = await newPage(browser, { w: 390, h: 844 });
+    await page.goto(BASE + path, { waitUntil: "networkidle2" });
+    await page.type(input, "looks like a search term");
+    await page.click(button);
+    await sleep(100);
+    const m = await page.evaluate((inputSelector, errorSelector) => {
+      const field = document.querySelector(inputSelector);
+      const feedback = document.querySelector(errorSelector);
+      const rect = feedback.getBoundingClientRect();
+      return {
+        visible: getComputedStyle(feedback).display !== "none" &&
+          getComputedStyle(feedback).visibility !== "hidden" && rect.height > 0,
+        text: feedback.textContent.trim(),
+        invalid: field.getAttribute("aria-invalid"),
+        describedBy: field.getAttribute("aria-describedby"),
+        focused: document.activeElement === field
+      };
+    }, input, error);
+    r.check(
+      m.visible && /search term/i.test(m.text) && m.invalid === "true" &&
+      m.describedBy === error.slice(1) && m.focused,
+      `url-feedback ${name} ${JSON.stringify(m)}`
+    );
+    await page.close();
+  }
+
+  /* ---- 4. PoC attacker layer leaves the target at full opacity ---------- */
+  {
+    const page = await newPage(browser, { w: 1366, h: 768 });
+    await runScan(page, "/tools/clickjacking/");
+    await page.click("#togglePoc");
+    await page.$eval("#pocOpacity", (slider) => {
+      slider.value = "5";
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.$eval("#stage", (stage) => stage.scrollIntoView({ block: "center" }));
+    await sleep(300); // allow the 160ms opacity transition + smooth scroll to settle
+    const m = await page.evaluate(() => {
+      const stage = document.getElementById("stage");
+      const overlay = document.getElementById("pocOverlay");
+      const frame = document.getElementById("frame");
+      const rect = overlay.getBoundingClientRect();
+      const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return {
+        frameOpacity: getComputedStyle(frame).opacity,
+        overlayOpacity: getComputedStyle(overlay).opacity,
+        pointerEvents: getComputedStyle(overlay).pointerEvents,
+        controlsVisible: !document.getElementById("pocControls").classList.contains("hidden"),
+        clickPassesThrough: top === frame
+      };
+    });
+    r.check(
+      m.frameOpacity === "1" && Math.abs(Number(m.overlayOpacity) - 0.05) < 0.001 &&
+      m.pointerEvents === "none" && m.controlsVisible && m.clickPassesThrough,
+      `poc-composite ${JSON.stringify(m)}`
+    );
+    await page.close();
+  }
+
+  /* ---- 5. Real reports for all four tools ------------------------------- */
   for (const [tn, path] of TOOLS) {
     for (const [vn, w, h] of [["desktop", 1920, 1080], ["phone", 390, 844]]) {
       for (const theme of ["dark", "light"]) {
@@ -204,7 +271,7 @@ async function runScan(page, path) {
     }
   }
 
-  /* ---- 4. Print / PDF evidence layout ----------------------------------- */
+  /* ---- 6. Print / PDF evidence layout ----------------------------------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
     await runScan(page, "/tools/headers/");

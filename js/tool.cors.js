@@ -102,10 +102,10 @@
   }
 
   window.initCors = function initCors() {
+    initUrlInput($("url"));
     $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
+      const url = validateUrlField($("url"));
+      if (!url) return;
       pushUrlParam(url);
       addRecentScan(url);
       probe(url);
@@ -120,8 +120,9 @@
 
     const initial = new URLSearchParams(location.search).get("url");
     if (initial) {
-      $("url").value = normalizeUrl(initial);
-      probe(normalizeUrl(initial));
+      $("url").value = initial;
+      const url = validateUrlField($("url"), false);
+      if (url) probe(url);
     }
   };
 })();

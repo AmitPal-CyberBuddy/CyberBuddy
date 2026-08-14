@@ -174,16 +174,29 @@ def scan_cors(
             evidence=f"Vary: {vary or '(absent)'}",
         ))
 
-    is_weak = any(c.status == "weak" for c in checks)
-    if is_weak:
-        risk = "high" if reflected and creds else "medium"
-        summary = "Permissive CORS detected. See findings — do not treat a single-origin browser probe as proof of reflection."
+    # Headline risk follows the observed access outcome, not a secondary
+    # cache-hardening finding. A fixed ACAO without Vary: Origin still needs
+    # remediation, but two different attacker Origins were *not* reflected;
+    # that recommendation must not turn a restrictive result into MEDIUM.
+    if reflected and creds:
+        risk = "high"
+        summary = "Arbitrary Origin reflection with credentials was confirmed across two probe Origins."
+    elif reflected:
+        risk = "medium"
+        summary = "Arbitrary Origin reflection was confirmed across two probe Origins. Safe only for intentionally public data."
+    elif wildcard:
+        risk = "medium" if creds else "low"
+        summary = (
+            "Wildcard ACAO with credentials is misconfigured (browsers reject credentialed wildcard reads)."
+            if creds else
+            "Wildcard ACAO allows unauthenticated cross-origin reads. Confirm this resource is intentionally public."
+        )
     elif both_absent:
         risk = "low"
         summary = "No usable CORS headers for the probe origins. Cross-origin reads are blocked."
     else:
         risk = "low"
-        summary = "No arbitrary-origin reflection detected across two probe Origins."
+        summary = "No arbitrary-origin reflection detected across two probe Origins. Review any cache-hardening recommendation separately."
 
     interesting = {}
     for key in (

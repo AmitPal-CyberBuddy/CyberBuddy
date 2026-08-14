@@ -1281,3 +1281,92 @@ against a deliberate regression, including one that reintroduces `:has()`),
 real-browser checks** — the new `tests/browser/responsive.js` (210) plus the
 existing layout (113), dropdown (119), overlays (48) and relay-gate (17)
 suites, all passing.
+
+---
+
+## 20. Outcome-first evidence, realistic PoC, and URL feedback (2026-08-14)
+
+Work began from `origin/main` at merge commit `ea5d498` (PR #19). Sections
+11–19 and `docs/DEV-NOTES.md` were read first; rounds 3–6c were verified in the
+merged tree and were not reapplied. Baseline before behavior changed: 135/135
+stdlib tests, all sixteen JavaScript files passed `node --check`, and all 507
+real-browser checks passed in Chromium 149 (including the responsive stress
+fixture).
+
+**Clickjacking PoC now models the real attack direction**
+
+- The framed target remains at full opacity. A full-stage fake rewards page is
+  composited above it as the attacker layer instead of dimming the target and
+  drawing one fixed red box.
+- An opacity slider sweeps the attacker page from 100% explanatory view down to
+  5% victim view. The entire layer retains `pointer-events: none`; a Chromium
+  hit-test confirms the iframe receives the point beneath it.
+- The note explicitly says placement is stage-relative and illustrative — a
+  cross-origin target cannot be inspected or pixel-aligned. The attacker layer
+  remains printable evidence, and stage/frame/overlay geometry is still checked
+  at all seven responsive widths.
+- Frame load/error, safe cross-origin peek text, analyst rendering attestation
+  (when needed), and overlay state are attached to the current result for the
+  evidence card. A mere iframe `load` is not called proof that target pixels
+  painted.
+
+**Exports answer each tool's actual question**
+
+- Removed the `getDisplayMedia` “Download PoC image” path, permission prompt,
+  disabled unsupported-browser state, code branch, styling and documentation.
+  Evidence mode plus the analyst's normal screenshot tool remains the honest way
+  to capture a live cross-origin frame.
+- `buildEvidenceCardSpec()` now supplies one shared canvas renderer with
+  per-tool evidence: Clickjacking leads with enabled/partial/not-enabled,
+  observed frame outcome, peek and both framing controls; CORS foregrounds probe
+  coverage, tested origins and ACAO/ACAC/Vary; CSP includes enforced and
+  Report-Only policy text, parsed directives and directive findings. Security
+  Headers keeps the proven score/check layout.
+- Credential-bearing URLs are rejected before scanning, and export/provenance
+  sanitisation independently removes userinfo from imported scan data.
+
+**Risk follows observed outcome, not the worst secondary row**
+
+- Effective `DENY`/`SAMEORIGIN` XFO now returns LOW even without
+  `frame-ancestors`; the summary keeps CSP as modern defense-in-depth.
+  Permissive `frame-ancestors *` still wins over XFO and remains HIGH. Python,
+  JavaScript and the shared golden fixture changed atomically.
+- The two-origin CORS engine now assigns HIGH to reflection + credentials,
+  MEDIUM to confirmed reflection, and LOW when the two Origins were not
+  reflected. A fixed allowlist with missing `Vary: Origin` keeps its weak cache
+  finding but no longer becomes a false MEDIUM headline. The one-origin browser
+  probe likewise does not claim reflection from a Vary gap.
+- CSP was audited and already excludes Report-Only/reporting information from
+  risk. Security Headers' optional hardening deductions alone leave an
+  otherwise-protected baseline at B/LOW. Regression tests pin both no-change
+  conclusions; display severity/recommendation mappings were not used to alter
+  a score.
+
+**URL validation now fails visibly on all five entry points**
+
+- The hub and four tools share specific visible/announced feedback for empty,
+  malformed, unsupported-scheme, search-like, invalid-label and implausible-TLD
+  input. `aria-invalid` and `aria-describedby` point to a nearby `role=alert`,
+  and invalid submit returns focus to the field.
+- Public names require a dot and plausible TLD; empty labels and leading/trailing
+  hyphens are rejected. Bare domains still gain HTTPS. Localhost/loopback with a
+  port gains HTTP for the documented `server.py` workflow; bare localhost and
+  IPs remain accepted. Paste cleanup handles whitespace, wrapping quotes and a
+  sentence-ending period.
+- Blur/paste visibly normalise accepted input. Server-side target, redirect and
+  connect-time guards remain authoritative.
+- A real-browser-only trap appeared during the regression test: showing an error
+  on blur moved the Scan button between pointer-down and pointer-up, cancelling
+  the click. The field now reserves an absolutely positioned feedback region
+  and aligns sibling controls above it, so the actual click completes.
+
+**Regression proof and verification**
+
+The new unit/static contract was copied onto the untouched pre-fix tree and run
+there: 15 assertions failed, including XFO scoring, fixed-allowlist CORS,
+per-tool cards, screen-capture removal, overlay direction and every URL entry
+point. The updated tree passes **146/146** stdlib tests and `node --check` on all
+sixteen scripts. The Pages assembly guard resolves all 66 asset references and
+confirms `docs/`, `tests/` and `REVIEW.md` are absent. Chromium 149 passes **513
+real-browser checks**: layout 119, dropdown 119, overlays 48, relay gate 17 and
+responsive 210 (including the 28 long-header stress combinations).

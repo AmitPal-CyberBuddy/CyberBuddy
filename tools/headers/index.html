@@ -57,7 +57,8 @@
   <div class="bar reveal" style="--d: .14s;">
     <div class="field">
       <label for="url">Target URL</label>
-      <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
+      <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required aria-describedby="urlError" />
+      <p id="urlError" class="field-error hidden" role="alert"></p>
     </div>
     <button id="go" type="button" class="btn btn-primary">Scan</button>
     <div role="group" aria-label="Export and share">

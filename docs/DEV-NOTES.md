@@ -236,6 +236,63 @@ must stay that way.
   published cache, direct CORS read, then opt-in relay. Keep `csp` in the cache
   builder and retain the fallback that derives it from older `headers` entries.
 
+## Outcome rollups: primary evidence beats secondary gaps
+
+A headline risk answers the tool's primary question; it is not automatically the
+worst colour in the findings table. `X-Frame-Options: DENY` prevents framing even
+when modern CSP `frame-ancestors` is absent, so that absence is a
+modernisation recommendation on a LOW/protected outcome. Likewise, a two-origin
+CORS probe that sees a fixed ACAO remains LOW even when `Vary: Origin` is
+missing; the cache finding stays visible but does not rewrite the measured
+reflection result. Keep the exception ordering explicit: permissive CSP
+`frame-ancestors *` overrides XFO in current browsers, and confirmed CORS
+reflection with credentials remains HIGH.
+
+Do not implement an outcome fix in `findingSeverity` or chip CSS. Those are
+presentation over status. For any Python grader with a browser twin, change the
+Python function, browser function, and golden fixture in the same commit.
+
+The parallel audit found CSP and Security Headers already obey this rule:
+Report-Only/reporting gaps are informational and excluded from CSP risk, while
+the optional header weights alone leave a protected baseline at B/LOW. Keep
+regression cases for those no-change conclusions too.
+
+## URL feedback traps
+
+- Client URL validation is UX, never the security boundary. Server-side
+  `validate_target()` plus redirect/connect-time SSRF checks remain
+  authoritative.
+- A `host:port` string can match the grammar for a URI scheme. Recognise only a
+  narrow hostname + **numeric** port shape before rejecting unsupported schemes,
+  or `localhost:8080` is mistaken for `localhost:` while loosening the check can
+  re-admit `javascript:` and `data:`.
+- Error text inserted on input blur can move an adjacent button between
+  pointer-down and pointer-up, causing the browser to cancel the click. The URL
+  field reserves an absolutely positioned feedback line and gives the sibling
+  controls the same bottom margin. Real-browser tests must click the button and
+  check the announced message; calling the validator directly misses this bug.
+- Reject credential-bearing URLs instead of silently stripping credentials and
+  scanning a different target. Export sanitisation is still defense-in-depth:
+  Markdown, JSON, provenance and PNG specs remove `user:password@` from imported
+  result objects.
+- Normalise on blur/paste so scheme insertion is visible. Keep bare public
+  domains, localhost and IP workflows, but require a dotted hostname with a
+  plausible TLD for public names.
+
+## Clickjacking visual evidence
+
+A real clickjacking target remains at full opacity. The attacker's page is the
+layer whose opacity changes; dimming the iframe demonstrates the inverse of the
+attack. Keep `pointer-events: none` on the entire attacker subtree and test
+`elementFromPoint()` over it, not only the declared CSS.
+
+Cross-origin iframe pixels and DOM are unavailable to the evidence-card canvas.
+Record the iframe event, the safe frame-load peek and any analyst attestation in
+words. Never draw a fake screenshot or label a `load` event as proof that the
+real target UI painted — Chromium may fire `load` for its own connection-error
+page. Per-tool card specs should select evidence; the canvas drawing engine
+should remain shared.
+
 ## Round 5 traps
 
 - **Grid items with `width:100%` do not span grid rows** — `.footer-legal`

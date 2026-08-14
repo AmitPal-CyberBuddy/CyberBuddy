@@ -743,21 +743,200 @@ function esc(s) {
   }[c]));
 }
 
+function cleanPastedUrl(raw) {
+  let value = String(raw == null ? "" : raw).trim();
+  // Chat, email and spreadsheets commonly wrap pasted URLs in straight or
+  // curly quotes. They are presentation punctuation, not part of the URL.
+  value = value.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  // A sentence-ending full stop is another common paste artefact. Strip it,
+  // then make a second quote pass for input copied as `"example.com".`.
+  value = value.replace(/\.$/, "");
+  value = value.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  return value;
+}
+
+function looksLikeHostPort(value) {
+  // A domain/localhost followed by a numeric port is an authority, not an
+  // unknown scheme. Keep this narrow so javascript:, data:, ftp: and typos
+  // such as httpss:// still hit the unsupported-scheme guard below.
+  return /^(?:localhost|(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)):\d+(?:[/?#]|$)/i.test(value);
+}
+
 function normalizeUrl(raw) {
-  raw = (raw || "").trim();
-  if (!raw) return "";
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) && !/^https?:\/\//i.test(raw)) return "";
-  if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
-  return raw;
+  let value = cleanPastedUrl(raw);
+  if (!value) return "";
+  const hasHttp = /^https?:\/\//i.test(value);
+  const scheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+  if (scheme && !hasHttp && !looksLikeHostPort(value)) return "";
+  if (!hasHttp) {
+    // server.py is an HTTP development server. Default loopback names to
+    // HTTP so the documented localhost workflow works without manual edits;
+    // public hostnames continue to default to HTTPS.
+    const local = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:[/?#]|$)/i.test(value);
+    value = (local ? "http://" : "https://") + value;
+  }
+  return value;
+}
+
+function urlValidation(raw) {
+  const cleaned = cleanPastedUrl(raw);
+  if (!cleaned) {
+    return { valid: false, url: "", code: "empty", message: "Enter a URL to scan." };
+  }
+  if (/\s/.test(cleaned) && !/^https?:\/\//i.test(cleaned)) {
+    return {
+      valid: false, url: "", code: "search",
+      message: "This looks like a search term. Enter a hostname such as example.com."
+    };
+  }
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(cleaned);
+  if (scheme && !/^https?:\/\//i.test(cleaned) && !looksLikeHostPort(cleaned)) {
+    return {
+      valid: false, url: "", code: "scheme",
+      message: "Only http:// and https:// URLs can be scanned."
+    };
+  }
+
+  const normalized = normalizeUrl(cleaned);
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch (_) {
+    return {
+      valid: false, url: "", code: "malformed",
+      message: "Enter a valid URL, such as https://example.com."
+    };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return {
+      valid: false, url: "", code: "scheme",
+      message: "Only http:// and https:// URLs can be scanned."
+    };
+  }
+  if (parsed.username || parsed.password) {
+    return {
+      valid: false, url: "", code: "credentials",
+      message: "Remove the username and password from the URL before scanning."
+    };
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (!hostname) {
+    return {
+      valid: false, url: "", code: "hostname",
+      message: "The URL needs a hostname."
+    };
+  }
+  const isIpv6 = hostname.startsWith("[") && hostname.endsWith("]");
+  const ipv4Parts = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+    ? hostname.split(".").map(Number) : null;
+  const isIpv4 = !!(ipv4Parts && ipv4Parts.every((part) => part >= 0 && part <= 255));
+  const isLocalhost = hostname === "localhost";
+
+  if (!isIpv4 && !isIpv6 && !isLocalhost) {
+    const labels = hostname.replace(/\.$/, "").split(".");
+    if (labels.some((label) => !label)) {
+      return {
+        valid: false, url: "", code: "empty-label",
+        message: "Hostname labels cannot be empty (for example, a..b is invalid)."
+      };
+    }
+    if (labels.length < 2) {
+      return {
+        valid: false, url: "", code: "public-tld",
+        message: "Public hostnames need a dot and a plausible TLD (for example, example.com)."
+      };
+    }
+    if (hostname.length > 253 || labels.some((label) =>
+      label.length > 63 || !/^[a-z0-9-]+$/i.test(label))) {
+      return {
+        valid: false, url: "", code: "hostname",
+        message: "The hostname contains an invalid label."
+      };
+    }
+    if (labels.some((label) => label.startsWith("-") || label.endsWith("-"))) {
+      return {
+        valid: false, url: "", code: "hyphen",
+        message: "Hostname labels cannot start or end with a hyphen."
+      };
+    }
+    const tld = labels[labels.length - 1];
+    if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})$/i.test(tld)) {
+      return {
+        valid: false, url: "", code: "public-tld",
+        message: "Public hostnames need a plausible TLD, such as .com or .org."
+      };
+    }
+  }
+
+  return { valid: true, url: normalized, code: "ok", message: "" };
 }
 
 function validUrl(raw) {
-  try {
-    const u = new URL(normalizeUrl(raw));
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch (_) {
-    return false;
+  return urlValidation(raw).valid;
+}
+
+function urlErrorElement(input) {
+  if (!input) return null;
+  const id = input.id + "Error";
+  let error = document.getElementById(id);
+  if (!error) {
+    error = document.createElement("p");
+    error.id = id;
+    error.className = "field-error hidden";
+    error.setAttribute("role", "alert");
+    input.insertAdjacentElement("afterend", error);
   }
+  const described = (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+  if (!described.includes(id)) described.push(id);
+  input.setAttribute("aria-describedby", described.join(" "));
+  return error;
+}
+
+function clearUrlError(input) {
+  const error = urlErrorElement(input);
+  if (error) {
+    error.textContent = "";
+    error.classList.add("hidden");
+  }
+  input.removeAttribute("aria-invalid");
+}
+
+function showUrlError(input, message) {
+  const error = urlErrorElement(input);
+  if (error) {
+    error.classList.remove("hidden");
+    error.textContent = message;
+  }
+  input.setAttribute("aria-invalid", "true");
+}
+
+function validateUrlField(input, focusOnError) {
+  if (!input) return "";
+  const result = urlValidation(input.value);
+  if (!result.valid) {
+    showUrlError(input, result.message);
+    if (focusOnError !== false) input.focus();
+    return "";
+  }
+  input.value = result.url;
+  clearUrlError(input);
+  return result.url;
+}
+
+function initUrlInput(input) {
+  if (!input || input.dataset.urlValidationBound === "1") return;
+  input.dataset.urlValidationBound = "1";
+  urlErrorElement(input);
+  input.addEventListener("input", () => clearUrlError(input));
+  input.addEventListener("blur", () => {
+    if (cleanPastedUrl(input.value)) validateUrlField(input, false);
+  });
+  input.addEventListener("paste", () => {
+    setTimeout(() => {
+      if (cleanPastedUrl(input.value)) validateUrlField(input, false);
+    }, 0);
+  });
 }
 
 function gradeFor(score) {
@@ -858,7 +1037,7 @@ function renderProvenance(data, toolName) {
   const bits = [
     '<span class="prov-brand">CyberBuddy · ' + esc(toolName) + "</span>",
     '<span class="prov-sep">|</span>',
-    "<span>" + esc((data && data.url) || "—") + "</span>",
+    "<span>" + esc(redactUrlCredentials((data && data.url) || "—")) + "</span>",
     '<span class="prov-sep">|</span>',
     "<span>" + esc(fmtStampUtc()) + "</span>",
     '<span class="prov-sep">|</span>',
@@ -1051,20 +1230,8 @@ function exportReport() {
 }
 
 /* ==========================================================================
-   Export menu — print, PoC image, evidence card, clipboard
+   Export menu — print, evidence card, clipboard
    ========================================================================== */
-
-/* Screen capture is the ONLY way to get the framed target into an image:
-   a cross-origin iframe cannot be rasterised (html2canvas explicitly does
-   not render iframes, and any canvas touching cross-origin pixels is
-   tainted, so toDataURL throws). getDisplayMedia captures real screen
-   pixels, so the frame is included. Desktop Chrome/Edge can share a single
-   tab; Firefox/Safari offer window or screen only; iOS has no support. */
-function canCapturePoc() {
-  return !!(navigator.mediaDevices &&
-    typeof navigator.mediaDevices.getDisplayMedia === "function" &&
-    window.isSecureContext);
-}
 
 function downloadBlob(blob, filename) {
   const href = URL.createObjectURL(blob);
@@ -1077,9 +1244,38 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(href), 4000);
 }
 
+function redactUrlCredentials(raw) {
+  const value = String(raw == null ? "" : raw);
+  try {
+    const parsed = new URL(value);
+    if (!parsed.username && !parsed.password) return value;
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch (_) {
+    // Defensive fallback for malformed imported scan data. User-entered
+    // credential URLs are rejected before a scan, but exports must still
+    // never echo a pasted password.
+    return value.replace(/^(https?:\/\/)[^/@\s]+@/i, "$1");
+  }
+}
+
+function reportSafeCopy(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) return data.map(reportSafeCopy);
+  const out = {};
+  Object.keys(data).forEach((key) => {
+    const value = data[key];
+    out[key] = (key === "url" || key === "final_url")
+      ? redactUrlCredentials(value)
+      : reportSafeCopy(value);
+  });
+  return out;
+}
+
 function safeSlug(url) {
   try {
-    return (new URL(url).hostname || "target").replace(/[^a-z0-9.-]/gi, "-");
+    return (new URL(redactUrlCredentials(url)).hostname || "target").replace(/[^a-z0-9.-]/gi, "-");
   } catch (_) {
     return "target";
   }
@@ -1090,92 +1286,212 @@ function stampName(prefix, url, ext) {
   return prefix + "-" + safeSlug(url) + "-" + t + "." + ext;
 }
 
-async function downloadPocImage(data, btn) {
-  if (!canCapturePoc()) return false;
-  let stream = null;
-  try {
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { displaySurface: "browser" },
-      audio: false,
-      preferCurrentTab: true,
-      selfBrowserSurface: "include"
-    });
-    const track = stream.getVideoTracks()[0];
-    // Give the compositor a frame to settle before grabbing.
-    await new Promise((r) => setTimeout(r, 350));
-
-    const settings = track.getSettings();
-    const width = settings.width || 1280;
-    const height = settings.height || 720;
-
-    const video = document.createElement("video");
-    video.srcObject = stream;
-    video.muted = true;
-    await video.play();
-    await new Promise((r) => setTimeout(r, 220));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext("2d").drawImage(video, 0, 0, width, height);
-    video.pause();
-    video.srcObject = null;
-
-    const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
-    if (!blob) throw new Error("encode failed");
-    downloadBlob(blob, stampName("cyberbuddy-poc", (data && data.url) || "", "png"));
-    if (btn) flashBtn(btn, true, "PoC image saved ✓");
-    return true;
-  } catch (err) {
-    if (btn) flashBtn(btn, false, "Capture cancelled");
-    return false;
-  } finally {
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-  }
-}
-
 /* Deterministic, dependency-free evidence card drawn from the scan JSON.
    Same-origin canvas only, so it never taints and always downloads — the
    trade-off is that it cannot show the live framed site. */
+function evidenceCardKind(data, toolName) {
+  const name = String(toolName || "").toLowerCase();
+  if (name.includes("clickjack") || Array.isArray(data && data.findings)) return "clickjacking";
+  if (name.includes("cors") || (data && Array.isArray(data.origins_tested))) return "cors";
+  if (name.includes("csp") || (data && Object.prototype.hasOwnProperty.call(data, "policy"))) return "csp";
+  if (name.includes("header") || (data && data.grade)) return "headers";
+  return "generic";
+}
+
+/* A small per-tool specification keeps the canvas renderer shared while each
+   card leads with the evidence that actually answers that tool's question. */
+function buildEvidenceCardSpec(data, toolName) {
+  data = data || {};
+  const kind = evidenceCardKind(data, toolName);
+  const risk = String(data.risk || "unknown").toLowerCase();
+  const target = redactUrlCredentials(data.url || "—");
+  const finalUrl = redactUrlCredentials(data.final_url || data.url || "—");
+  const commonMeta = [
+    ["Target", target],
+    ["Final URL", finalUrl],
+    ["HTTP status", data.status_code != null ? String(data.status_code) : "—"],
+    ["Source", sourceLabel(data)],
+    ["Generated", fmtStampUtc()]
+  ];
+  const caveats = [];
+  if (data.confirmation === "manual") caveats.push(["Confirmation", "analyst-attested visual observation"]);
+  if (isUnverified(data)) caveats.push(["Caveat", "relay data — not independently verified"]);
+
+  if (kind === "clickjacking") {
+    const protection = risk === "low" ? "PROTECTION ENABLED"
+      : risk === "medium" ? "PROTECTION PARTIAL"
+      : risk === "high" ? "PROTECTION NOT ENABLED"
+      : "MANUAL FRAME CHECK";
+    const observed = data.frame_observation || {};
+    let rendered = "NOT YET OBSERVED";
+    if (observed.rendered === true) {
+      rendered = "YES — target UI rendered (analyst-attested)";
+    } else if (observed.rendered === false && data.confirmation === "manual") {
+      rendered = "NO — blank or refused (analyst-attested)";
+    } else if (observed.event === "error") {
+      rendered = "NO RENDER OBSERVED — frame error event fired";
+    } else if (observed.event === "load") {
+      rendered = "NOT MACHINE-VERIFIABLE — iframe load event fired; inspect the live stage";
+    }
+    const overlay = data.poc_overlay || {};
+    const context = [
+      {
+        name: "Observed frame rendering", status: observed.rendered === true ? "weak" : "info",
+        detail: rendered,
+        evidence: data.confirmation === "manual" ? "Manual visual confirmation" : "Cross-origin pixels are not readable by this page"
+      },
+      {
+        name: "Frame-load peek", status: "info",
+        detail: observed.peek || "No frame-load observation was recorded.",
+        evidence: "A cross-origin document is intentionally unreadable"
+      },
+      {
+        name: "PoC evidence", status: "info",
+        detail: "The live cross-origin frame cannot be drawn to canvas. This card records the observed outcome in words rather than implying a captured frame.",
+        evidence: overlay.visible
+          ? "Illustrative attacker layer shown at " + (overlay.opacity_percent || 72) + "% opacity"
+          : "Illustrative attacker layer was not shown when this card was generated"
+      }
+    ];
+    return {
+      kind: kind,
+      title: "CLICKJACKING VALIDATOR",
+      hero: protection + " · " + risk.toUpperCase(),
+      risk: risk,
+      meta: commonMeta.concat(caveats),
+      summary: data.summary || "",
+      contextTitle: "FRAME OUTCOME",
+      context: context,
+      rowsTitle: "FRAMING CONTROLS",
+      rows: data.findings || []
+    };
+  }
+
+  if (kind === "cors") {
+    const headers = data.headers || {};
+    const origins = data.origins_tested || [];
+    const genuineProof = origins.length >= 2;
+    const outcome = risk === "high" ? "REFLECTION + CREDENTIALS CONFIRMED"
+      : risk === "medium" ? "PERMISSIVE CORS OUTCOME"
+      : "NO ARBITRARY-ORIGIN REFLECTION OBSERVED";
+    return {
+      kind: kind,
+      title: "CORS VALIDATOR",
+      hero: outcome + " · " + risk.toUpperCase(),
+      risk: risk,
+      meta: commonMeta.concat([
+        ["Probe coverage", genuineProof
+          ? "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)"
+          : "SINGLE-ORIGIN BROWSER PROBE (not proof of reflection)"],
+        ["Origins tested", origins.length ? origins.join(" · ") : "—"]
+      ], caveats),
+      summary: data.summary || "",
+      contextTitle: "CORS RESPONSE TRIPLE",
+      context: [
+        { name: "ACAO", status: "info", detail: headers["access-control-allow-origin"] || "(absent)", evidence: "Access-Control-Allow-Origin" },
+        { name: "ACAC", status: "info", detail: headers["access-control-allow-credentials"] || "(absent)", evidence: "Access-Control-Allow-Credentials" },
+        { name: "Vary", status: "info", detail: headers.vary || "(absent)", evidence: "Expected token for origin-specific responses: Origin" }
+      ],
+      rowsTitle: "PROBE FINDINGS",
+      rows: data.checks || []
+    };
+  }
+
+  if (kind === "csp") {
+    const directives = Object.keys(data.directives || {}).sort();
+    return {
+      kind: kind,
+      title: "CSP POLICY AUDITOR",
+      hero: (risk === "low" ? "ENFORCED POLICY IS RESTRICTIVE" : "POLICY NEEDS ATTENTION") + " · " + risk.toUpperCase(),
+      risk: risk,
+      meta: commonMeta.concat(caveats),
+      summary: data.summary || "",
+      contextTitle: "POLICY EVIDENCE",
+      context: [
+        {
+          name: "Enforced policy", status: data.policy ? "ok" : "missing",
+          detail: data.policy || "(not present)",
+          evidence: data.policy ? "Content-Security-Policy response header" : "No enforced policy was returned"
+        },
+        {
+          name: "Report-only policy", status: "info",
+          detail: data.report_only_policy || "(not present)",
+          evidence: "Report-Only records violations but does not enforce them"
+        },
+        {
+          name: "Directives evaluated", status: "info",
+          detail: directives.length ? directives.join(", ") : "(none)",
+          evidence: directives.length + " parsed directive" + (directives.length === 1 ? "" : "s")
+        }
+      ],
+      rowsTitle: "DIRECTIVE FINDINGS",
+      rows: data.checks || []
+    };
+  }
+
+  const grade = data.grade
+    ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100 · "
+    : "";
+  return {
+    kind: kind,
+    title: kind === "headers" ? "SECURITY HEADERS" : String(toolName || "CYBERBUDDY").toUpperCase(),
+    hero: grade + risk.toUpperCase(),
+    risk: risk,
+    meta: commonMeta.concat(caveats),
+    summary: data.summary || "",
+    contextTitle: "",
+    context: [],
+    rowsTitle: "HEADER CHECKS",
+    rows: data.checks || data.findings || []
+  };
+}
+
 function buildEvidenceCard(data, toolName) {
   const W = 1200;
   const pad = 48;
-  const rows = (data.checks || data.findings || []);
   const lineH = 21;
-
   const canvas = document.createElement("canvas");
+  canvas.width = W;
   const ctx = canvas.getContext("2d");
   const mono = '13px "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
+  const spec = buildEvidenceCardSpec(data, toolName);
 
-  // Measure first so the canvas is exactly tall enough.
   ctx.font = mono;
   const wrapText = (text, maxW) => {
-    const words = String(text || "").split(/\s+/);
+    const source = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+    if (!source) return [];
+    const words = source.split(" ");
     const out = [];
     let line = "";
-    words.forEach((w) => {
-      const t = line ? line + " " + w : w;
-      if (ctx.measureText(t).width > maxW && line) {
+    words.forEach((word) => {
+      const next = line ? line + " " + word : word;
+      if (ctx.measureText(next).width > maxW && line) {
         out.push(line);
-        line = w;
+        line = word;
       } else {
-        line = t;
+        line = next;
       }
     });
     if (line) out.push(line);
     return out;
   };
 
-  const measured = rows.map((c) => ({
-    row: c,
-    detail: wrapText(c.detail, W - pad * 2 - 200),
-    evidence: c.evidence ? wrapText(c.evidence, W - pad * 2 - 200).slice(0, 3) : []
+  const measureRows = (rows) => (rows || []).map((row) => ({
+    row: row,
+    detail: wrapText(row.detail, W - pad * 2 - 210),
+    evidence: row.evidence ? wrapText(row.evidence, W - pad * 2 - 210).slice(0, 5) : []
   }));
-  const bodyH = measured.reduce(
-    (n, m) => n + lineH * (1 + m.detail.length + m.evidence.length) + 14, 0
-  );
-  const H = 300 + bodyH + 70;
-  canvas.width = W;
+  const measuredContext = measureRows(spec.context);
+  const measuredRows = measureRows(spec.rows);
+  const meta = spec.meta.map(([key, value]) => ({ key: key, lines: wrapText(value, W - pad * 2 - 160) }));
+  const summary = wrapText(spec.summary, W - pad * 2);
+  const rowsHeight = (items) => items.reduce((height, item) =>
+    height + lineH * (1 + Math.max(1, item.detail.length) + item.evidence.length) + 15, 0);
+  const H = Math.max(430,
+    205 + meta.reduce((height, item) => height + lineH * Math.max(1, item.lines.length), 0) +
+    (summary.length ? summary.length * lineH + 34 : 0) +
+    (measuredContext.length ? 35 + rowsHeight(measuredContext) : 0) +
+    (measuredRows.length ? 35 + rowsHeight(measuredRows) : 0) + 78);
   canvas.height = H;
 
   const C = {
@@ -1183,10 +1499,10 @@ function buildEvidenceCard(data, toolName) {
     ink2: "#c5ced8", faint: "#7d8798", brand: "#3ee0c2",
     high: "#ff6b7a", med: "#ffc857", low: "#3ee0a6", info: "#7aa2ff"
   };
-  const statusColour = (s) => ({
+  const statusColour = (status) => ({
     ok: C.low, protected: C.low, missing: C.high, error: C.high,
     weak: C.med, info: C.info
-  }[s] || C.faint);
+  }[status] || C.faint);
 
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, W, H);
@@ -1198,36 +1514,26 @@ function buildEvidenceCard(data, toolName) {
   let y = pad + 12;
   ctx.fillStyle = C.brand;
   ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace';
-  ctx.fillText("CYBERBUDDY · " + toolName.toUpperCase(), pad, y);
+  ctx.fillText("CYBERBUDDY · " + spec.title, pad, y);
   y += 34;
-
   ctx.fillStyle = C.ink;
-  ctx.font = '700 26px "Sora", system-ui, sans-serif';
-  const risk = (data.risk || "unknown").toUpperCase();
-  const gradeTxt = data.grade ? "  ·  Grade " + data.grade.toUpperCase() +
-    " (" + (data.score != null ? data.score : "?") + "/100)" : "";
-  ctx.fillText(risk + gradeTxt, pad, y);
-  ctx.fillStyle = risk === "HIGH" ? C.high : risk === "MEDIUM" ? C.med
-    : risk === "LOW" ? C.low : C.info;
-  ctx.fillRect(pad, y + 10, ctx.measureText(risk + gradeTxt).width, 3);
-  y += 40;
+  ctx.font = '700 25px "Sora", system-ui, sans-serif';
+  ctx.fillText(spec.hero, pad, y);
+  ctx.fillStyle = spec.risk === "high" ? C.high : spec.risk === "medium" ? C.med
+    : spec.risk === "low" ? C.low : C.info;
+  ctx.fillRect(pad, y + 10, Math.min(W - pad * 2, ctx.measureText(spec.hero).width), 3);
+  y += 41;
 
   ctx.font = mono;
-  const meta = [
-    ["Target", data.url || "—"],
-    ["Final URL", data.final_url || data.url || "—"],
-    ["HTTP status", data.status_code != null ? String(data.status_code) : "—"],
-    ["Generated", fmtStampUtc()],
-    ["Source", sourceLabel(data)]
-  ];
-  if (data.confirmation === "manual") meta.push(["Confirmation", "analyst-attested (visual)"]);
-  if (isUnverified(data)) meta.push(["Caveat", "relay data — not independently verified"]);
-  meta.forEach(([k, v]) => {
+  meta.forEach((item) => {
     ctx.fillStyle = C.faint;
-    ctx.fillText(k, pad, y);
+    ctx.fillText(item.key, pad, y);
     ctx.fillStyle = C.ink2;
-    ctx.fillText(String(v).slice(0, 110), pad + 130, y);
-    y += lineH;
+    const lines = item.lines.length ? item.lines : ["—"];
+    lines.forEach((line, index) => {
+      ctx.fillText(line, pad + 150, y + index * lineH);
+    });
+    y += lineH * lines.length;
   });
 
   y += 12;
@@ -1236,38 +1542,51 @@ function buildEvidenceCard(data, toolName) {
   ctx.moveTo(pad, y);
   ctx.lineTo(W - pad, y);
   ctx.stroke();
-  y += 26;
+  y += 25;
 
-  if (data.summary) {
-    ctx.fillStyle = C.ink2;
-    wrapText(data.summary, W - pad * 2).slice(0, 3).forEach((l) => {
-      ctx.fillText(l, pad, y);
-      y += lineH;
-    });
-    y += 14;
-  }
-
-  measured.forEach((m) => {
-    const s = m.row.status || "info";
-    ctx.fillStyle = statusColour(s);
-    ctx.font = '700 11px "IBM Plex Mono", ui-monospace, monospace';
-    ctx.fillText(s.toUpperCase(), pad, y);
-    ctx.fillStyle = C.ink;
-    ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace';
-    ctx.fillText(String(m.row.name || ""), pad + 96, y);
-    y += lineH;
+  if (summary.length) {
     ctx.font = mono;
     ctx.fillStyle = C.ink2;
-    m.detail.forEach((l) => { ctx.fillText(l, pad + 96, y); y += lineH; });
+    summary.forEach((line) => { ctx.fillText(line, pad, y); y += lineH; });
+    y += 13;
+  }
+
+  const drawRows = (title, items) => {
+    if (!items.length) return;
     ctx.fillStyle = C.faint;
-    m.evidence.forEach((l) => { ctx.fillText(l, pad + 96, y); y += lineH; });
-    y += 14;
-  });
+    ctx.font = '700 11px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.fillText(title, pad, y);
+    y += 25;
+    items.forEach((item) => {
+      const status = item.row.status || "info";
+      ctx.fillStyle = statusColour(status);
+      ctx.font = '700 11px "IBM Plex Mono", ui-monospace, monospace';
+      ctx.fillText(String(status).toUpperCase(), pad, y);
+      ctx.fillStyle = C.ink;
+      ctx.font = '600 13px "IBM Plex Mono", ui-monospace, monospace';
+      ctx.fillText(String(item.row.name || ""), pad + 110, y);
+      y += lineH;
+      ctx.font = mono;
+      ctx.fillStyle = C.ink2;
+      (item.detail.length ? item.detail : ["—"]).forEach((line) => {
+        ctx.fillText(line, pad + 110, y);
+        y += lineH;
+      });
+      ctx.fillStyle = C.faint;
+      item.evidence.forEach((line) => {
+        ctx.fillText(line, pad + 110, y);
+        y += lineH;
+      });
+      y += 15;
+    });
+  };
+
+  drawRows(spec.contextTitle, measuredContext);
+  drawRows(spec.rowsTitle, measuredRows);
 
   ctx.fillStyle = C.faint;
   ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace';
   ctx.fillText("Authorized testing only. Read-only GET. Results are advisory.", pad, H - pad + 6);
-
   return canvas;
 }
 
@@ -1291,22 +1610,14 @@ async function downloadEvidenceCard(data, toolName, btn) {
 function initExportMenu(toolName, getData) {
   const wrap = document.getElementById("exportMenu");
   if (!wrap) return;
-  const capture = canCapturePoc();
   wrap.innerHTML =
     '<details class="export-menu" id="exportDetails">' +
     '<summary aria-haspopup="menu">Export ' + ICONS.chevron + "</summary>" +
     '<div class="export-menu-panel" role="menu">' +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="print">' +
     "Print / Save as PDF<span>Full report card, paper layout</span></button>" +
-    '<button type="button" class="export-menu-item" role="menuitem" data-act="poc"' +
-    (capture ? "" : " disabled") + ">" +
-    "Download PoC image (PNG)<span>" +
-    (capture
-      ? "Screen capture — includes the framed target"
-      : "Unavailable in this browser — use your OS snipping tool") +
-    "</span></button>" +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="card">' +
-    "Download evidence card (PNG)<span>Drawn from scan data — no live frame</span></button>" +
+    "Download evidence card (PNG)<span>Tool-specific evidence drawn from scan data</span></button>" +
     '<div class="export-menu-divider"></div>' +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="md">' +
     "Copy report (Markdown)<span>Paste into your report</span></button>" +
@@ -1324,7 +1635,6 @@ function initExportMenu(toolName, getData) {
         return;
       }
       if (act === "print") { details.removeAttribute("open"); exportReport(); return; }
-      if (act === "poc") { await downloadPocImage(data, item); return; }
       if (act === "card") { await downloadEvidenceCard(data, toolName, item); return; }
       if (act === "md") { await copyMarkdown(data, item); return; }
       if (act === "json") { await copyJsonReport(data, item); return; }
@@ -1373,8 +1683,8 @@ function toMarkdown(data) {
   const lines = [
     "# CyberBuddy — " + title + " Report",
     "",
-    "- **Target:** " + mdCell(data.url),
-    "- **Final URL:** " + mdCell(data.final_url || data.url),
+    "- **Target:** " + mdCell(redactUrlCredentials(data.url)),
+    "- **Final URL:** " + mdCell(redactUrlCredentials(data.final_url || data.url)),
     "- **HTTP status:** " + (data.status_code != null ? data.status_code : "—"),
     "- **Risk:** " + risk + grade,
     "- **Source:** " + sourceLabel(data),
@@ -1448,7 +1758,7 @@ async function copyMarkdown(data, btn) {
 
 async function copyJsonReport(data, btn) {
   if (!data) return false;
-  const ok = await copyText(JSON.stringify(data, null, 2));
+  const ok = await copyText(JSON.stringify(reportSafeCopy(data), null, 2));
   flashBtn(btn, ok, "JSON copied ✓");
   return ok;
 }
@@ -2395,7 +2705,9 @@ function scoreClickjacking(findings) {
     return ["high", "frame-ancestors is too permissive (e.g. *). Modern browsers honour CSP over X-Frame-Options, so the page can be framed by untrusted origins."];
   }
   if (cspOk) return ["low", "Modern CSP frame-ancestors is in force. Residual risk is low for standard browsers."];
-  if (xfoOk) return ["medium", "Only X-Frame-Options protects the page. Add CSP frame-ancestors for modern, consistent coverage."];
+  if (xfoOk) {
+    return ["low", "Framing is prevented by X-Frame-Options in current browsers. Add CSP frame-ancestors as modern defense-in-depth, but its absence does not make this protected response a medium-risk outcome."];
+  }
   return ["high", "No effective framing protection detected. The page is likely clickjackable."];
 }
 
@@ -2665,6 +2977,13 @@ async function gradeClickjackingLive(url) {
   return gradeClickjackingFromMap(url, looked.status_code, looked.final_url || url, looked.headers, looked.source);
 }
 
+function browserCorsRisk(acao, acac) {
+  // A single browser Origin cannot establish reflection. The only measured
+  // misconfiguration promoted here is the invalid wildcard+credentials pair.
+  return acao === "*" && String(acac || "").trim().toLowerCase() === "true"
+    ? "medium" : "low";
+}
+
 async function probeCorsLive(url) {
   const origin = (window.location && window.location.origin) || "null";
   const checks = [];
@@ -2690,13 +3009,19 @@ async function probeCorsLive(url) {
     } else if (/origin/i.test(vary)) {
       checks.push(check("Vary: Origin", "ok", "Cached responses are partitioned by caller origin.", "Vary: " + vary, 0));
     }
-    const weak = checks.some((c) => c.status === "weak");
+    // One browser Origin cannot prove arbitrary reflection. Keep a missing
+    // Vary recommendation on its own row, but do not promote that secondary
+    // cache gap into a measured MEDIUM CORS outcome.
     return {
       url: url, final_url: res.url || url, status_code: status,
       checks: checks,
-      risk: weak ? "medium" : "low",
-      summary: "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe — use server.py for two-origin reflection proof.",
-      headers: {},
+      risk: browserCorsRisk(acao, acac),
+      summary: "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe only — use server.py for a genuine two-origin reflection proof.",
+      headers: {
+        "access-control-allow-origin": acao || "",
+        "access-control-allow-credentials": acac || "",
+        "vary": vary || ""
+      },
       origins_tested: [origin],
       _source: "browser"
     };
@@ -2721,6 +3046,7 @@ function initSuite() {
   const go = document.getElementById("suiteGo");
   const out = document.getElementById("suiteResults");
   if (!input || !go || !out) return;
+  initUrlInput(input);
 
   let lastSuite = null;
   const toolbar = document.getElementById("suiteToolbar");
@@ -2728,9 +3054,8 @@ function initSuite() {
   const copyBtn = document.getElementById("suiteCopy");
 
   async function run() {
-    const url = normalizeUrl(input.value);
-    if (!url || !validUrl(url)) { input.focus(); return; }
-    input.value = url;
+    const url = validateUrlField(input);
+    if (!url) return;
     pushUrlParam(url);
     addRecentScan(url);
     renderRecentScans();
@@ -2853,8 +3178,8 @@ function initSuite() {
   initSuggestedTargets();
   const initial = new URLSearchParams(location.search).get("url");
   if (initial) {
-    input.value = normalizeUrl(initial);
-    run();
+    input.value = initial;
+    if (validateUrlField(input, false)) run();
   }
 }
 

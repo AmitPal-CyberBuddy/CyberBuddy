@@ -56,10 +56,11 @@
   <div class="bar reveal" style="--d: .14s;">
     <div class="field">
       <label for="url">Target URL</label>
-      <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
+      <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required aria-describedby="urlError" />
+      <p id="urlError" class="field-error hidden" role="alert"></p>
     </div>
     <button id="go" type="button" class="btn btn-primary">Validate</button>
-    <button id="togglePoc" type="button" class="btn btn-ghost" title="Adds the red decoy overlay over the framed site — clicks pass through to the target">Show PoC overlay</button>
+    <button id="togglePoc" type="button" class="btn btn-ghost" title="Composites an illustrative attacker page over the full-opacity target — clicks still pass through">Show PoC overlay</button>
     <div role="group" aria-label="Export and share">
       <span id="exportMenu"></span>
       <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
@@ -121,11 +122,28 @@
       <div class="poc-grid">
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation</h3>
-          <p class="note">A rendered target means the page can be framed — exactly as it would appear inside an attacker's frame. A blank pane usually means it is blocked (X-Frame-Options / frame-ancestors), though a few sites also blank themselves with frame-busting scripts. Use the PoC overlay button to add the red decoy for a screenshot (clicks pass through).</p>
+          <p class="note">A rendered target means the page can be framed — exactly as it would appear inside an attacker's frame. A blank pane usually means it is blocked (X-Frame-Options / frame-ancestors), though a few sites also blank themselves with frame-busting scripts. Turn on the attacker layer, then lower its opacity to see why the victim may not notice it.</p>
           <div id="stage" class="stage">
-            <div class="overlay">CLICK HERE — decoy overlay</div>
             <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
+            <div id="pocOverlay" class="overlay" aria-hidden="true">
+              <div class="decoy-app">
+                <div class="decoy-nav"><span>Northstar Rewards</span><span>Help&nbsp;&nbsp; Account</span></div>
+                <div class="decoy-content">
+                  <p class="decoy-kicker">Member benefit</p>
+                  <p class="decoy-title">Your security reward is ready</p>
+                  <p class="decoy-copy">Confirm once to add the bonus to your account.</p>
+                  <span class="decoy-cta">Claim reward</span>
+                  <span class="decoy-target">Illustrative click target · passes through</span>
+                </div>
+              </div>
+            </div>
           </div>
+          <div id="pocControls" class="poc-controls hidden">
+            <label for="pocOpacity">Attacker layer opacity <output id="pocOpacityValue" for="pocOpacity">72%</output></label>
+            <input id="pocOpacity" type="range" min="5" max="100" value="72" step="1" />
+            <div class="poc-scale"><span>Victim view · near-invisible</span><span>Attacker view · explanatory</span></div>
+          </div>
+          <p class="stage-note">The decoy is positioned relative to this stage only. CyberBuddy cannot inspect the cross-origin frame or claim pixel-accurate alignment. The entire attacker layer has <code>pointer-events: none</code>, so clicks reach the framed target.</p>
           <p id="frameStatus" class="stage-note"></p>
           <div id="visualConfirm" class="hidden"></div>
         </article>
