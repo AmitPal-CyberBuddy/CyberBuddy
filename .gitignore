@@ -8,3 +8,6 @@ __pycache__/
 # Delivery artifacts for manual GitHub upload (not part of the product)
 /cyberbuddy-final/
 /cyberbuddy-final.zip
+
+# Local dry-run of the Pages build (tools/… or workflow steps)
+/_site/

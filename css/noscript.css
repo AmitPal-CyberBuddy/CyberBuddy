@@ -1,0 +1,2 @@
+/* Without JS the reveal animation never runs — show the content. */
+.reveal { opacity: 1 !important; }

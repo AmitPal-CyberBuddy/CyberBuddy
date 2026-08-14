@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- GitHub Pages cannot send response headers, so the policy ships as a
+       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
+       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
+       limitations'. Keep this in sync with the CSP in server.py. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src https: http:" />
   <title>Clickjacking Validator — CyberBuddy</title>
   <meta name="description" content="Live clickjacking proof: frame a target and screenshot the result." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
@@ -32,31 +37,16 @@
   <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Cpath d='M10 12h12M10 20h8'/%3E%3C/g%3E%3C/svg%3E" />
-  <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <script>
-    (function () {
-      try {
-        var s = localStorage.getItem("cb-theme");
-        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
-        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
-      } catch (_) {}
-    })();
-  </script>
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
-  <script src="../../js/app.js?v=20260814c" defer></script>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      renderHeader("/tools/clickjacking/");
-      renderFooter();
-      initReveal();
-      initClickjacking();
-      initShareButton();
-    });
-  </script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814d" />
+  <script src="../../js/app.js?v=20260814d" defer></script>
+  <script src="../../js/boot.js?v=20260814d" defer></script>
 </head>
-<body>
+<body data-page="/tools/clickjacking/" data-init="initClickjacking initShareButton">
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 01</p>
@@ -74,17 +64,19 @@
     </div>
     <button id="go" type="button" class="btn btn-primary">Validate</button>
     <button id="togglePoc" type="button" class="btn btn-ghost">Show PoC overlay</button>
-    <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
-    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
-    <button id="copyJson" type="button" class="btn btn-ghost" onclick="copyJson()">Copy JSON</button>
-    <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    <div role="group" aria-label="Export and share">
+      <span id="exportMenu"></span>
+      <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    </div>
   </div>
+  <div id="evidenceToggle"></div>
+  <div id="relayGate" class="hidden"></div>
 
   <section id="results" class="results hidden">
     <article class="card report-card poc-sheet">
       <div class="report-head">
         <div>
-          <h2>Clickjacking proof</h2>
+          <h2>Clickjacking proof<span id="reportTitleFlag"></span></h2>
         </div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
@@ -127,6 +119,7 @@
             <iframe id="frame" sandbox="allow-scripts allow-forms" title="Target frame"></iframe>
           </div>
           <p id="frameStatus" class="stage-note"></p>
+          <div id="visualConfirm" class="hidden"></div>
         </article>
 
         <article class="card inset-card">
@@ -143,6 +136,8 @@
         <summary>Raw headers</summary>
         <pre id="headers" class="raw-headers">{}</pre>
       </details>
+
+      <div id="reportProvenance" class="report-provenance"></div>
     </article>
   </section>
 
@@ -153,135 +148,6 @@
 
 </main>
 
-<script>
-  "use strict";
-
-  let cbLastData = null;
-  function copyReport() {
-    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
-  }
-  function copyJson() {
-    if (cbLastData) copyJsonReport(cbLastData, document.getElementById("copyJson"));
-  }
-
-  async function initClickjacking() {
-    const $ = (id) => document.getElementById(id);
-
-    function protectionLabel(risk) {
-      const r = (risk || "").toLowerCase();
-      if (r === "low") return { text: "Clickjacking protection: ENABLED", cls: "low" };
-      if (r === "medium") return { text: "Clickjacking protection: PARTIAL", cls: "medium" };
-      if (r === "high") return { text: "Clickjacking protection: NOT ENABLED", cls: "high" };
-      return { text: "Clickjacking protection: MANUAL CHECK", cls: "unknown" };
-    }
-
-    function setVerdict(risk, text) {
-      $("risk").textContent = risk;
-      $("risk").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-      bump($("risk"));
-      $("summary").textContent = text;
-      $("verdict").className = "verdict-banner " +
-        (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-      const p = protectionLabel(risk);
-      $("protection").textContent = p.text;
-      $("protection").className = "protection-line " + p.cls;
-    }
-
-    function fillMeta(url, data) {
-      $("mTarget").textContent = url;
-      $("mFinal").textContent = data && data.final_url ? data.final_url : url;
-      $("mStatus").textContent = data && data.status_code != null ? String(data.status_code) : "—";
-      $("mStamp").textContent = fmtStamp();
-    }
-
-    function row(name, status, detail, evidence) {
-      const ev = evidence
-        ? "<code class='f-evidence'>" + esc(evidence) + "</code>"
-        : "";
-      return "<tr><td class='k'>" + esc(name) + "</td><td>" +
-        "<span class='f-status " + esc(status) + "'>" + esc(status) + "</span>" +
-        "<div class='f-detail'>" + esc(detail) + "</div>" + ev + "</td></tr>";
-    }
-
-    async function scan(url) {
-      $("results").classList.remove("hidden");
-      // Overlay is opt-in: the frame loads plainly by default.
-      $("stage").classList.remove("poc");
-      $("togglePoc").textContent = "Show PoC overlay";
-      $("frame").src = url;
-      $("frameStatus").textContent = "Loading frame…";
-      $("stage").classList.add("scanning");
-      setLoading($("go"), true);
-      fillMeta(url, null);
-
-      const data = await apiScan(url);
-      cbLastData = data || null;
-      setLoading($("go"), false);
-      setSourceChip(data || { _source: "browser" });
-
-      if (isEngineDown(data) || (data && data.error && !data.findings)) {
-        setVerdict("FRAME ONLY",
-          "If you can see the real site in the frame, it is clickjackable in this browser.");
-        $("findings").querySelector("tbody").innerHTML = row(
-          "Frame test",
-          "info",
-          "Visual proof only. Header values are not available from this host.",
-          ""
-        );
-        $("headers").textContent = "{}";
-        return;
-      }
-
-      if (data && data._unreachable) {
-        fillMeta(url, data);
-        setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(data));
-        $("findings").querySelector("tbody").innerHTML = (data.findings || [])
-          .map((f) => row(f.name, f.status, f.detail, f.evidence))
-          .join("");
-        $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
-        return;
-      }
-
-      fillMeta(url, data);
-      setVerdict((data.risk || "unknown").toUpperCase(), data.summary ||
-        "If you can see the real site in the frame, it is clickjackable.");
-      $("findings").querySelector("tbody").innerHTML = (data.findings || [])
-        .map((f) => row(f.name, f.status, f.detail, f.evidence))
-        .join("");
-      $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
-    }
-
-    $("frame").addEventListener("load", () => {
-      $("stage").classList.remove("scanning");
-      $("frameStatus").textContent =
-        "Frame loaded. If the real site UI is visible, treat it as clickjackable.";
-    });
-
-    $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
-      pushUrlParam(url);
-      addRecentScan(url);
-      scan(url);
-    });
-
-    $("url").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("go").click();
-    });
-
-    $("togglePoc").addEventListener("click", () => {
-      $("stage").classList.toggle("poc");
-      const on = $("stage").classList.contains("poc");
-      $("togglePoc").textContent = on ? "Hide PoC overlay" : "Show PoC overlay";
-    });
-
-    const initial = new URLSearchParams(location.search).get("url");
-    if (initial) {
-      $("url").value = normalizeUrl(initial);
-      scan(normalizeUrl(initial));
-    }
-  }
-</script>
+<script src="../../js/tool.clickjacking.js?v=20260814d" defer></script>
 </body>
 </html>

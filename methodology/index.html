@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- GitHub Pages cannot send response headers, so the policy ships as a
+       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
+       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
+       limitations'. Keep this in sync with the CSP in server.py. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
   <meta name="description" content="How CyberBuddy scores clickjacking, security headers, and CORS — engines, grades, and what the hosted site can and cannot prove." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
@@ -32,19 +37,12 @@
   <link rel="icon" type="image/png" sizes="512x512" href="../icon-512.png" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
-  <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <script>
-    (function () {
-      try {
-        var s = localStorage.getItem("cb-theme");
-        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
-        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
-      } catch (_) {}
-    })();
-  </script>
+  <noscript><link rel="stylesheet" href="../css/noscript.css" /></noscript>
+  <script src="../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../css/app.css?v=20260814c" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../css/app.css?v=20260814d" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -55,16 +53,10 @@
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../js/app.js?v=20260814c" defer></script>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      renderHeader("/methodology/");
-      renderFooter();
-      initReveal();
-    });
-  </script>
+  <script src="../js/app.js?v=20260814d" defer></script>
+  <script src="../js/boot.js?v=20260814d" defer></script>
 </head>
-<body>
+<body data-page="/methodology/">
 <main id="main" class="container page-hero prose">
 
   <p class="kicker reveal">How it scores</p>
@@ -166,14 +158,50 @@
       <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin CORS.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .12s;">
-      <div class="rm-title">02 · Cached report</div>
-      <p>GitHub Actions pre-scans the URLs in <code>urls.txt</code> every six hours. Fresh reports (under 48 hours) are served same-origin as <code>cache/&lt;host&gt;.json</code> and labelled <em>via cached report</em>.</p>
+      <div class="rm-title">02 · Published report</div>
+      <p>GitHub Actions pre-scans the demo targets in <code>urls.txt</code> every six hours and publishes them as <code>cache/&lt;host&gt;.json</code>. Fresh reports (under 48 hours) are served same-origin and labelled <em>via published report</em>. These cover the demo targets only — your scans are never uploaded or cached server-side.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .19s;">
-      <div class="rm-title">03 · Live fallback</div>
-      <p>Otherwise the browser grades headers through a public read-only lookup (10-minute local cache) and probes CORS from this origin only. The source chip says so.</p>
+      <div class="rm-title">03 · Direct, then relay</div>
+      <p>The browser first tries to read the target directly (works only when the target sends permissive CORS — no third party involved). If that fails, header reads can be proxied by public relays, but <strong>only after you agree</strong>. CORS is probed from this origin only. The source chip always names the layer that ran.</p>
     </div>
   </div>
+
+  <div class="section-head reveal">
+    <h2 id="privacy">Privacy — what leaves your browser</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      <strong>Scan history is local.</strong> Recent targets and the 10-minute
+      header cache live in this browser's <code>localStorage</code> and expire
+      after 24 hours. They are never uploaded, never shared between users, and
+      are not visible to anyone else. <em>Clear</em> on the hub wipes both the
+      recent list and the cached response headers immediately.
+    </p>
+    <p>
+      <strong>Published reports are not your scans.</strong>
+      <code>cache/&lt;host&gt;.json</code> is built in CI from the fixed demo
+      list in <code>urls.txt</code>. Nothing a visitor types is ever written
+      there.
+    </p>
+    <p>
+      <strong>Third-party relays are opt-in.</strong> Browsers cannot read
+      cross-origin response headers, so with no Python engine available the
+      hosted site must proxy the request. That discloses the target — and your
+      IP — to the relay operator, which many assessment NDAs prohibit. So
+      CyberBuddy asks first, defaults to sending only the
+      <em>hostname</em> (not the path or query string, which is where tokens
+      and tenant IDs live), and marks anything a relay returns as
+      <span class="unverified-flag">unverified</span>. Relays used:
+      <code>hackertarget.com</code>, <code>allorigins.win</code>,
+      <code>corsproxy.io</code>, <code>codetabs.com</code>.
+    </p>
+    <p>
+      For a scan where nothing leaves your machine, run
+      <code>python3 server.py</code> locally — the same graders, same-origin,
+      no relays.
+    </p>
+  </article>
 
   <div class="section-head reveal">
     <h2>Authorized testing</h2>

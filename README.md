@@ -15,8 +15,8 @@ responsible for having permission to test them. All checks are read-only GETs.
 
 | Tool | What it does | Mode |
 | --- | --- | --- |
-| **Clickjacking Validator** | Live iframe frame-test + PoC overlay; header scoring of X-Frame-Options / CSP frame-ancestors | iframe always; headers via Python API or live lookup |
-| **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; live lookup on GitHub Pages |
+| **Clickjacking Validator** | Live iframe frame-test + PoC overlay; header scoring of X-Frame-Options / CSP frame-ancestors; analyst visual-confirmation fallback | iframe always; headers via Python API or opt-in lookup |
+| **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; opt-in lookup on GitHub Pages |
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 
 More tools slot in later — add one entry to `TOOLS_MENU` in `js/app.js` and it
@@ -51,13 +51,26 @@ index.html                      # hub (includes #methodology scoring notes)
 404.html                        # hosted 404 + repair for old tool URLs
 methodology/index.html          # full methodology page (also published to Pages)
 css/app.css                     # shared design system
-js/app.js                       # shared helpers (nav, footer, icons, API)
+css/noscript.css                # no-JS fallback (reveal animations off)
+css/404.css                     # standalone styles for 404.html
+js/app.js                       # shared helpers (nav, footer, icons, API, export)
+js/boot.js                      # reads <body data-page/data-init> and boots a page
+js/theme-boot.js                # pre-paint theme (no inline script -> strict CSP)
+js/hub.js                       # hub-only console animation
+js/tool.clickjacking.js         # clickjacking page controller
+js/tool.headers.js              # headers page controller
+js/tool.cors.js                 # CORS page controller
+js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   clickjacking/index.html       # iframe + PoC overlay + ?url= sharing
   headers/index.html            # header report UI
   cors/index.html               # CORS probe + roadmap
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
-urls.txt                        # targets pre-scanned for the hosted cache
+LICENSE                         # Apache-2.0
+tests/grader_fixtures.json      # shared Python<->JS scoring contract
+docs/performance.md             # engine performance notes
+docs/pages-workflow-patch.md    # REQUIRED manual edit to pages.yml
+urls.txt                        # demo targets pre-scanned for the published cache
 humans.txt                      # who built it
 llms.txt                        # machine-readable project summary
 api/                            # optional hosted Python API (Vercel)
@@ -85,6 +98,7 @@ python3 clickjacking_validator.py https://a.example https://b.example --json
 
 python3 security_headers.py https://example.com
 python3 security_headers.py -f urls.txt --json
+python3 security_headers.py -f urls.txt --workers 8   # parallel batch scan
 
 python3 cors_validator.py https://example.com/api
 ```
@@ -96,6 +110,14 @@ Exit code `1` when any target scores high risk (handy in CI), `2` for usage erro
 ```bash
 python3 -m unittest test_engines.py
 ```
+
+`tests/grader_fixtures.json` is the **shared scoring contract**. CyberBuddy
+implements the graders twice — stdlib Python for `server.py`/CLI, and a browser
+port in `js/app.js` so GitHub Pages can grade without a server. Both are run
+against those fixtures, and a third test compares the two engines directly, so
+the same target can never get a different grade depending on where it was
+scanned. Add a case to the JSON and both engines are checked against it
+automatically (node required for the JS side; skipped if absent).
 
 ## Making the hosted site full-strength
 
@@ -145,22 +167,120 @@ layers make the hosted site as close to `server.py` as possible:
    run exactly as before — with a dedup + 10-minute lookup cache so repeated
    or suite-wide scans stop hammering the public relays.
 
+## Evidence and export
+
+Every tool renders a self-contained **report card** — target, final URL, HTTP
+status, UTC timestamp, verdict, per-finding evidence, and a provenance strip
+naming the tool, engine and time so a cropped screenshot is still
+self-identifying.
+
+**Evidence mode** (on by default, toggle under the scan bar) collapses the page
+chrome once results render, so the whole card fits one viewport and an OS
+snipping tool captures it in a single shot.
+
+The **Export** menu offers:
+
+| Option | What you get | Availability |
+| --- | --- | --- |
+| Print / Save as PDF | Full card, paper layout, colours and the PoC overlay preserved | everywhere |
+| Download PoC image (PNG) | Screen capture **including the framed target** | desktop Chrome/Edge (tab capture); Firefox/Safari share a window or screen; not on iOS |
+| Download evidence card (PNG) | Card drawn from the scan data — no live frame | everywhere |
+| Copy report (Markdown) | Paste-ready findings table | everywhere |
+| Copy JSON | Raw result object | everywhere |
+
+A cross-origin iframe **cannot** be rasterised in JavaScript (canvas taints, and
+`html2canvas` does not render iframes at all), so the PoC image uses
+`getDisplayMedia` screen capture. Where that is unavailable the menu item is
+disabled and points you at your OS snipping tool. No third-party JS is used for
+either path.
+
+### Clickjacking without header data
+
+When no engine or lookup can supply header values, the frame is still evidence.
+CyberBuddy asks what you see and records your answer as **analyst-attested**
+(`"confirmation": "manual"` in the JSON, called out in the Markdown and on the
+provenance strip) — never as a measured header result. It pre-selects the likely
+answer from the frame's load behaviour. Note the frame is sandboxed without
+`allow-same-origin`, so a few sites render blank for storage reasons unrelated to
+framing headers.
+
+## Privacy
+
+- **Scan history is local.** Recent targets and the 10-minute header cache live
+  in `localStorage`, expire after 24 hours, and are never uploaded or shared
+  between users. *Clear* wipes both the recent list and the cached headers.
+- **Published reports are not user scans.** `cache/<host>.json` is built in CI
+  from the fixed demo list in `urls.txt`. Nothing a visitor types is written
+  there. The UI labels these *via published report*.
+- **Third-party relays are opt-in.** Browsers cannot read cross-origin response
+  headers, so with no Python engine the hosted site must proxy the request —
+  disclosing the target and your IP to the relay operator. CyberBuddy asks
+  first, defaults to sending only the **hostname** (not path or query, where
+  tokens and tenant IDs live), and flags relayed findings **unverified** in the
+  UI and in every export. Relays: `hackertarget.com`, `allorigins.win`,
+  `corsproxy.io`, `codetabs.com`.
+- A direct same-origin/CORS read is always attempted first — it involves no
+  third party. `server.py` avoids relays entirely.
+
 ## Notes
 
-- Every tool renders results as a self-contained **report card** — target, final
-  URL, HTTP status, generated timestamp, verdict, and per-finding evidence —
-  ready to screenshot or export via **Export / Print**, **Copy report**
-  (Markdown), or **Copy JSON**.
 - Keyboard: `/` focuses the URL field, `t` toggles theme, `?` opens shortcuts.
   Scoring notes live on the hub under
-  [`#methodology`](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology).
-- On GitHub Pages the Python process is not running (Pages is static). The UI
-  still grades headers and framing by looking up response headers through a
-  public read-only relay, and CORS is probed from the `github.io` origin.
-  `server.py` is preferred whenever it is reachable — same scores, no relay.
+  [`#methodology`](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology),
+  with the full page at [`/methodology/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/).
+- **CyberBuddy scores A (95/100) against itself.** No page uses inline scripts —
+  every controller is a file under `js/`, so `server.py` ships
+  `script-src 'self'` with no `'unsafe-inline'`, plus `Permissions-Policy`,
+  COOP/COEP/CORP and `frame-ancestors 'self'`. The remaining 5 points are the
+  plain-HTTP transport warning on a loopback bind.
 - The scan APIs refuse cross-origin browser requests (Origin / Referer check)
   and never fetch cloud-metadata or link-local addresses. Treat a `0.0.0.0`
   bind as an explicit choice, not the default.
+- **DNS rebinding is guarded at connect time.** `validate_target()` resolves a
+  hostname to decide whether it is allowed, but urllib resolves again when it
+  actually connects — a hostile resolver can answer public for the check and
+  private for the fetch. The pooled openers therefore re-validate every
+  resolved address inside `connect()`, so the policy applies to the address
+  the socket really uses.
+- The optional hosted `api/` rate limit is **per function instance** and is
+  best-effort on serverless (lost on cold start, one counter per concurrent
+  instance). Use shared KV storage or the platform WAF if you need a hard
+  quota — see the note in `apilib.py`.
+- `robots.txt` and `.well-known/security.txt` only take effect at a **domain
+  root**. On a project Pages site they live under `/CyberBuddy/`, so crawlers
+  will not read them until the project moves to a custom domain.
+
+## Hosted site limitations (GitHub Pages)
+
+Pages serves static files and **cannot send response headers**, which has real
+consequences for a tool that grades response headers:
+
+- The policy ships as a `<meta http-equiv="Content-Security-Policy">` on every
+  page instead. That covers `script-src`, `object-src`, `base-uri`,
+  `frame-src` and friends.
+- **`frame-ancestors` and `X-Frame-Options` cannot be set this way** — a meta
+  CSP ignores `frame-ancestors` by specification, and XFO is header-only. So
+  *the hosted site itself can be framed*, and scanning it with CyberBuddy will
+  (correctly) report missing framing protection. `server.py` sets both properly.
+  Fixing this on the hosted site requires a host that can send headers
+  (Cloudflare Pages `_headers`, Netlify, Vercel) or a custom domain behind a
+  proxy.
+- HSTS is likewise header-only; `github.io` is HSTS-preloaded at the domain
+  level, so this is covered in practice but not by anything in this repo.
+- Because of the above, **the hosted site will not score A against itself even
+  though `server.py` does.** That is a hosting limit, not a scoring bug — say
+  so if anyone asks.
+- Only `/tools/clickjacking/` is allowed to frame arbitrary targets
+  (`frame-src https: http:`); every other page is `frame-src 'none'`.
+
+- Asset cache-busting (`?v=…`) is stamped with the commit SHA by the Pages
+  workflow — do not hand-maintain those strings.
+
+## License
+
+[Apache-2.0](LICENSE) © 2026 Amit Pal. Permissive, with an explicit patent
+grant — you may use, modify and redistribute it, including commercially, as
+long as you keep the notice and state your changes.
 
 ## Contact
 

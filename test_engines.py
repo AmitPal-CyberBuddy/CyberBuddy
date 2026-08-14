@@ -6,10 +6,12 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
 import unittest
+import urllib.request
 from urllib.parse import quote
 from email.message import Message
 from http.server import ThreadingHTTPServer
@@ -330,7 +332,11 @@ class AppBaseJsTests(unittest.TestCase):
             self.assertIn("js/app.js", text)
 
     def test_four_oh_four_repairs_old_hosted_urls(self):
-        text = (ROOT / "404.html").read_text(encoding="utf-8")
+        # The repair logic lives in js/404-boot.js (externalised so the site
+        # can ship a CSP without 'unsafe-inline'); 404.html must load it.
+        page = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn("js/404-boot.js", page)
+        text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
 
@@ -541,6 +547,372 @@ class HostedSiteTests(unittest.TestCase):
         text = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="methodology"', text)
         self.assertIn("/tools/clickjacking/", (ROOT / "sitemap.xml").read_text(encoding="utf-8"))
+
+
+class GraderParityTests(unittest.TestCase):
+    """Python and JS graders must agree, check for check.
+
+    CyberBuddy ships the scoring twice — stdlib Python for server.py/CLI, and
+    a browser port in js/app.js so GitHub Pages can grade without a server.
+    Two implementations of one spec drift silently, and when they do the same
+    target gets a different grade depending on where it was scanned, which is
+    exactly the kind of inconsistency that gets a finding disputed. These
+    fixtures are the shared contract.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        path = ROOT / "tests" / "grader_fixtures.json"
+        cls.fixtures = json.loads(path.read_text(encoding="utf-8"))["cases"]
+
+    def test_python_grader_matches_fixtures(self):
+        from clickjacking_validator import grade_clickjacking_from_map
+        from security_headers import grade_headers_from_map
+
+        for case in self.fixtures:
+            with self.subTest(case=case["name"]):
+                res = grade_headers_from_map(
+                    case["url"], case["status_code"], case["final_url"], case["headers"]
+                )
+                exp = case["expect"]
+                if "score" in exp:
+                    self.assertEqual(res.score, exp["score"])
+                if "grade" in exp:
+                    self.assertEqual(res.grade, exp["grade"])
+                if "risk" in exp:
+                    self.assertEqual(res.risk, exp["risk"])
+                by_name = {c.name: c.status for c in res.checks}
+                for name, status in exp.get("statuses", {}).items():
+                    self.assertIn(name, by_name, f"{name} missing from checks")
+                    self.assertEqual(by_name[name], status, f"{name} status")
+                if "clickjacking_risk" in exp:
+                    cj = grade_clickjacking_from_map(
+                        case["url"], case["status_code"], case["final_url"], case["headers"]
+                    )
+                    self.assertEqual(cj.risk, exp["clickjacking_risk"])
+
+    def test_js_grader_matches_fixtures(self):
+        """Run the same fixtures through js/app.js under node."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        harness = r"""
+const fixtures = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8")).cases;
+const out = [];
+for (const c of fixtures) {
+  const r = gradeHeadersFromMap(c.url, c.status_code, c.final_url, c.headers, "test");
+  const cj = gradeClickjackingFromMap(c.url, c.status_code, c.final_url, c.headers, "test");
+  const statuses = {};
+  r.checks.forEach((x) => { statuses[x.name] = x.status; });
+  out.push({ name: c.name, score: r.score, grade: r.grade, risk: r.risk,
+             clickjacking_risk: cj.risk, statuses: statuses });
+}
+console.log(JSON.stringify(out));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path, str(ROOT / "tests" / "grader_fixtures.json")],
+                cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        results = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(len(results), len(self.fixtures))
+
+        for case, got in zip(self.fixtures, results):
+            with self.subTest(case=case["name"]):
+                exp = case["expect"]
+                if "score" in exp:
+                    self.assertEqual(got["score"], exp["score"])
+                if "grade" in exp:
+                    self.assertEqual(got["grade"], exp["grade"])
+                if "risk" in exp:
+                    self.assertEqual(got["risk"], exp["risk"])
+                if "clickjacking_risk" in exp:
+                    self.assertEqual(got["clickjacking_risk"], exp["clickjacking_risk"])
+                for name, status in exp.get("statuses", {}).items():
+                    self.assertIn(name, got["statuses"], f"{name} missing from JS checks")
+                    self.assertEqual(got["statuses"][name], status, f"{name} status")
+
+    def test_python_and_js_agree_exactly(self):
+        """Belt and braces: compare the two engines directly, not just to expectations."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        from clickjacking_validator import grade_clickjacking_from_map
+        from security_headers import grade_headers_from_map
+        import tempfile
+
+        harness = r"""
+const fixtures = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8")).cases;
+const out = fixtures.map((c) => {
+  const r = gradeHeadersFromMap(c.url, c.status_code, c.final_url, c.headers, "test");
+  const cj = gradeClickjackingFromMap(c.url, c.status_code, c.final_url, c.headers, "test");
+  const statuses = {};
+  r.checks.forEach((x) => { statuses[x.name] = x.status; });
+  return { score: r.score, grade: r.grade, risk: r.risk,
+           clickjacking_risk: cj.risk, statuses: statuses };
+});
+console.log(JSON.stringify(out));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path, str(ROOT / "tests" / "grader_fixtures.json")],
+                cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        js_results = json.loads(proc.stdout.strip().splitlines()[-1])
+
+        for case, js in zip(self.fixtures, js_results):
+            with self.subTest(case=case["name"]):
+                py = grade_headers_from_map(
+                    case["url"], case["status_code"], case["final_url"], case["headers"]
+                )
+                pycj = grade_clickjacking_from_map(
+                    case["url"], case["status_code"], case["final_url"], case["headers"]
+                )
+                self.assertEqual(py.score, js["score"], "score drift")
+                self.assertEqual(py.grade, js["grade"], "grade drift")
+                self.assertEqual(py.risk, js["risk"], "risk drift")
+                self.assertEqual(pycj.risk, js["clickjacking_risk"], "clickjacking drift")
+                py_statuses = {c.name: c.status for c in py.checks}
+                self.assertEqual(py_statuses, js["statuses"], "per-check status drift")
+
+
+class SessionPoolTests(unittest.TestCase):
+    """The opener cache must not leak one caller's allow_private policy.
+
+    Each opener bakes in a SafeRedirect handler that closes over
+    allow_private. If the cache key ignores it, the first caller in the
+    process decides the redirect policy for everyone — meaning an
+    allow_private=False scan could follow a redirect into RFC1918.
+    """
+
+    def setUp(self):
+        from http_session import get_session_pool
+
+        self.pool = get_session_pool()
+        self.pool.clear()
+
+    def tearDown(self):
+        self.pool.clear()
+
+    def test_same_key_reuses_opener(self):
+        a = self.pool.get_opener(insecure=False, allow_private=True)
+        b = self.pool.get_opener(insecure=False, allow_private=True)
+        self.assertIs(a, b)
+
+    def test_allow_private_is_part_of_the_cache_key(self):
+        public = self.pool.get_opener(insecure=False, allow_private=False)
+        private = self.pool.get_opener(insecure=False, allow_private=True)
+        self.assertIsNot(public, private)
+
+    def test_insecure_is_part_of_the_cache_key(self):
+        secure = self.pool.get_opener(insecure=False, allow_private=False)
+        insecure = self.pool.get_opener(insecure=True, allow_private=False)
+        self.assertIsNot(secure, insecure)
+
+    def test_public_opener_refuses_private_redirect(self):
+        """The allow_private=False opener's redirect guard must reject RFC1918."""
+        opener = self.pool.get_opener(insecure=False, allow_private=False)
+        handler = next(
+            h for h in opener.handlers
+            if type(h).__name__ == "SafeRedirect"
+        )
+        req = urllib.request.Request("https://example.com/")
+        msg = Message()
+        with self.assertRaises(ValueError):
+            handler.redirect_request(
+                req, None, 302, "Found", msg, "http://127.0.0.1:8080/"
+            )
+
+    def test_connect_time_guard_blocks_private_ip(self):
+        """DNS TOCTOU: the guard must apply to the address actually connected to.
+
+        validate_target() resolves once to decide, then urllib resolves again
+        independently — a hostile resolver can answer public for the check and
+        private for the fetch. Here we bypass the pre-check entirely and
+        confirm the connect-time validation still refuses loopback.
+        """
+        from http_session import _check_connect_ip
+
+        with self.assertRaises(ValueError):
+            _check_connect_ip("127.0.0.1", allow_private=False)
+        with self.assertRaises(ValueError):
+            _check_connect_ip("::1", allow_private=False)
+        with self.assertRaises(ValueError):
+            _check_connect_ip("10.0.0.5", allow_private=False)
+        # Link-local / metadata is refused regardless of allow_private.
+        with self.assertRaises(ValueError):
+            _check_connect_ip("169.254.169.254", allow_private=True)
+        # Loopback is fine when private targets are permitted (the VAPT case).
+        _check_connect_ip("127.0.0.1", allow_private=True)
+        _check_connect_ip("93.184.216.34", allow_private=False)
+
+    def test_openers_install_pinned_handlers(self):
+        from http_session import _PinnedHTTPHandler, _PinnedHTTPSHandler
+
+        opener = self.pool.get_opener(insecure=False, allow_private=False)
+        kinds = {type(h) for h in opener.handlers}
+        self.assertTrue(any(issubclass(k, _PinnedHTTPHandler) for k in kinds))
+        self.assertTrue(any(issubclass(k, _PinnedHTTPSHandler) for k in kinds))
+
+    def test_private_opener_allows_private_redirect(self):
+        opener = self.pool.get_opener(insecure=False, allow_private=True)
+        handler = next(
+            h for h in opener.handlers
+            if type(h).__name__ == "SafeRedirect"
+        )
+        req = urllib.request.Request("http://127.0.0.1:8080/")
+        msg = Message()
+        # Should not raise — loopback is permitted for this policy.
+        handler.redirect_request(
+            req, None, 302, "Found", msg, "http://127.0.0.1:8080/next"
+        )
+
+
+class HostedCspTests(unittest.TestCase):
+    """GitHub Pages cannot send response headers, so the policy ships as a
+    <meta> tag. A header-grading tool that ships no policy on its own hosted
+    site is a credibility problem, so keep these locked in."""
+
+    PAGES = [
+        "index.html",
+        "404.html",
+        "methodology/index.html",
+        "tools/clickjacking/index.html",
+        "tools/headers/index.html",
+        "tools/cors/index.html",
+    ]
+
+    def _csp(self, page: str) -> str:
+        text = (ROOT / page).read_text(encoding="utf-8")
+        m = re.search(
+            r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', text
+        )
+        self.assertIsNotNone(m, f"{page} has no meta CSP")
+        return m.group(1)
+
+    def test_every_page_ships_a_meta_csp(self):
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                self.assertIn("default-src 'self'", csp)
+                self.assertIn("object-src 'none'", csp)
+                self.assertIn("base-uri 'self'", csp)
+
+    def test_no_unsafe_inline_script_anywhere(self):
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                script = re.search(r"script-src ([^;]+)", csp).group(1)
+                self.assertNotIn("unsafe-inline", script)
+                self.assertNotIn("unsafe-eval", script)
+
+    def test_only_clickjacking_tool_may_frame_targets(self):
+        """Least privilege: the framing capability is the whole point of one
+        tool and a liability on every other page."""
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                csp = self._csp(page)
+                if page == "tools/clickjacking/index.html":
+                    self.assertIn("frame-src https:", csp)
+                else:
+                    self.assertIn("frame-src 'none'", csp)
+
+    def test_exports_are_not_blocked(self):
+        """The evidence-card / PoC-image download builds a canvas blob."""
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                self.assertIn("blob:", re.search(r"img-src ([^;]+)", self._csp(page)).group(1))
+
+    def test_fonts_are_not_render_blocking_imports(self):
+        """@import inside app.css serializes the font fetch behind the CSS
+        download+parse, which defeats the preconnect hints."""
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertNotIn("@import url(", css)
+        for page in ["index.html", "tools/headers/index.html"]:
+            text = (ROOT / page).read_text(encoding="utf-8")
+            self.assertIn("fonts.googleapis.com/css2", text)
+
+    def test_hub_can_offer_relay_consent(self):
+        """Without #relayGate the hub silently degrades to 'no header data'
+        on the hosted site with no way for the analyst to opt in."""
+        self.assertIn('id="relayGate"', (ROOT / "index.html").read_text(encoding="utf-8"))
+
+
+class ClearRecentScansTests(unittest.TestCase):
+    """Clearing scan history must also drop the cached response headers."""
+
+    def test_clear_removes_header_lookup_cache(self):
+        text = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = text.index("function clearRecentScans()")
+        body = text[start:start + 400]
+        self.assertIn("RECENT_KEY", body)
+        self.assertIn("HEADER_CACHE_KEY", body)
+
+
+class PrintStylesheetTests(unittest.TestCase):
+    """The exported PDF must keep the evidence the screen shows."""
+
+    def _print_block(self) -> str:
+        """The @media print body, with /* comments */ stripped."""
+        text = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        start = text.index("@media print")
+        block = text[start:text.index("@media (max-width: 760px)", start)]
+        return re.sub(r"/\*.*?\*/", "", block, flags=re.S)
+
+    def _print_hide_rule(self) -> str:
+        """Just the selector list of the `display: none !important` rule."""
+        block = self._print_block()
+        end = block.index("display: none !important")
+        # Back up to the start of that rule's selector list.
+        return block[block.rindex("}", 0, end) + 1:end]
+
+    def test_poc_overlay_is_not_hidden_in_print(self):
+        # .overlay is the red decoy — it IS the clickjacking evidence.
+        self.assertNotIn(".overlay", self._print_hide_rule())
+
+    def test_notice_is_not_hidden_in_print(self):
+        self.assertNotIn(".notice", self._print_hide_rule())
+
+    def test_chrome_is_still_hidden_in_print(self):
+        rule = self._print_hide_rule()
+        for sel in (".site-header", ".site-footer", ".btn", ".aurora"):
+            self.assertIn(sel, rule)
+
+    def test_print_forces_colour_adjust(self):
+        block = self._print_block()
+        self.assertIn("print-color-adjust: exact", block)
 
 
 if __name__ == "__main__":

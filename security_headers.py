@@ -443,39 +443,25 @@ def summarize(grade: str, missing: list[str]) -> str:
     return "Critical posture. Key protections are absent — treat the site as exposed until fixed." + extra
 
 
-def scan_headers(
+def grade_headers_from_map(
     url: str,
-    timeout: float = 15.0,
-    insecure: bool = False,
-    allow_private: bool = True,
+    status_code: int | None,
+    final_url: str,
+    headers: dict[str, str],
 ) -> HeadersResult:
-    try:
-        url = normalize_url(url)
-        validate_target(url, allow_private=allow_private)
-    except ValueError as exc:
-        return HeadersResult(
-            url=url, final_url=url, status_code=None,
-            checks=[Check("request", "error", str(exc))],
-            grade="F", risk="unknown", summary=str(exc),
-        )
+    """Grade an already-fetched header map.
 
-    try:
-        code, final_url, headers = fetch_headers(
-            url, timeout=timeout, insecure=insecure, allow_private=allow_private,
-        )
-    except Exception as exc:  # noqa: BLE001 — surface network errors
-        return HeadersResult(
-            url=url, final_url=url, status_code=None,
-            checks=[Check("request", "error", f"Request failed: {exc}")],
-            grade="F", risk="unknown", summary=f"Request failed: {exc}",
-        )
-
-    is_https = urlparse(final_url).scheme == "https"
+    Pure function: no network. This is the scoring contract shared with the
+    browser port in js/app.js (``gradeHeadersFromMap``) — both are exercised
+    against tests/grader_fixtures.json so the two engines cannot drift.
+    """
+    headers = headers or {}
+    is_https = urlparse(final_url or url).scheme == "https"
     csp_value = headers.get("content-security-policy")
     fa_ok = frame_ancestors_restricts(csp_value)
 
     checks: list[Check] = [
-        check_transport(final_url),
+        check_transport(final_url or url),
         check_csp(csp_value),
         check_xfo(headers.get("x-frame-options"), fa_ok),
         check_hsts(headers.get("strict-transport-security"), is_https),
@@ -517,8 +503,8 @@ def scan_headers(
     }
     return HeadersResult(
         url=url,
-        final_url=final_url,
-        status_code=code,
+        final_url=final_url or url,
+        status_code=status_code,
         checks=checks,
         score=score,
         grade=grade,
@@ -526,6 +512,36 @@ def scan_headers(
         summary=summarize(grade, missing),
         headers=interesting,
     )
+
+
+def scan_headers(
+    url: str,
+    timeout: float = 15.0,
+    insecure: bool = False,
+    allow_private: bool = True,
+) -> HeadersResult:
+    try:
+        url = normalize_url(url)
+        validate_target(url, allow_private=allow_private)
+    except ValueError as exc:
+        return HeadersResult(
+            url=url, final_url=url, status_code=None,
+            checks=[Check("request", "error", str(exc))],
+            grade="F", risk="unknown", summary=str(exc),
+        )
+
+    try:
+        code, final_url, headers = fetch_headers(
+            url, timeout=timeout, insecure=insecure, allow_private=allow_private,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface network errors
+        return HeadersResult(
+            url=url, final_url=url, status_code=None,
+            checks=[Check("request", "error", f"Request failed: {exc}")],
+            grade="F", risk="unknown", summary=f"Request failed: {exc}",
+        )
+
+    return grade_headers_from_map(url, code, final_url, headers)
 
 
 def print_human(result: HeadersResult) -> None:
@@ -555,6 +571,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Refuse loopback / RFC1918 / link-local targets (default: allow private, block metadata).",
     )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel workers for multi-URL scans (default: 4, 1 = sequential).",
+    )
     return p.parse_args(argv)
 
 
@@ -579,10 +601,23 @@ def main(argv: list[str] | None = None) -> int:
         print("Provide at least one URL or --file.", file=sys.stderr)
         return 2
     allow_private = not args.public_only
-    results = [
-        scan_headers(u, timeout=args.timeout, insecure=args.insecure, allow_private=allow_private)
-        for u in urls
-    ]
+
+    def scan_one(u: str):
+        return scan_headers(
+            u, timeout=args.timeout, insecure=args.insecure, allow_private=allow_private
+        )
+
+    # Batch scans run in parallel — the engines are I/O bound and the session
+    # pool is thread-safe. A single URL skips the executor entirely.
+    if len(urls) > 1 and args.workers > 1:
+        from concurrent_scanner import scan_urls_concurrent
+
+        results = scan_urls_concurrent(
+            urls, scan_one, max_workers=args.workers, show_progress=not args.json
+        )
+        results = [r for r in results if r is not None]
+    else:
+        results = [scan_one(u) for u in urls]
     if args.json:
         print(json.dumps([r.to_dict() for r in results], indent=2))
     else:

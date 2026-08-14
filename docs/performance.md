@@ -1,8 +1,14 @@
-# CyberBuddy Performance Optimization Report
+# CyberBuddy — performance notes
 
 ## Summary
 
-This document outlines the performance optimizations implemented in the **performance-optimization** branch to address bottlenecks identified in the original codebase.
+Reference notes on the performance work in the scan engines: HTTP connection
+pooling, DNS caching, and concurrent batch scanning. All of it is merged and
+shipping — this file documents *why* the code looks the way it does, it is not
+a changelog for an open branch.
+
+See also `http_session.py` (pool + DNS cache) and `concurrent_scanner.py`
+(used by `tools/build_cache.py` and by `security_headers.py --workers`).
 
 ---
 

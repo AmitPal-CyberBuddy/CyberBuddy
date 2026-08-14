@@ -1,0 +1,274 @@
+{
+  "_comment": [
+    "Golden fixtures shared by the Python graders (security_headers.py,",
+    "clickjacking_validator.py) and their browser port (js/app.js).",
+    "CyberBuddy maintains two implementations of the same scoring so the",
+    "hosted site can grade without a server; these fixtures are the contract",
+    "that stops them drifting. Same target must never get a different grade",
+    "on GitHub Pages than it does under server.py.",
+    "",
+    "Consumed by test_engines.py::GraderParityTests (Python side + a Node",
+    "subprocess for the JS side). Add a case here and BOTH engines are",
+    "checked against it automatically."
+  ],
+  "cases": [
+    {
+      "name": "fully hardened https",
+      "url": "https://secure.example",
+      "final_url": "https://secure.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "permissions-policy": "camera=(), microphone=()",
+        "cross-origin-opener-policy": "same-origin",
+        "cross-origin-embedder-policy": "require-corp",
+        "cross-origin-resource-policy": "same-origin"
+      },
+      "expect": {
+        "score": 100,
+        "grade": "A",
+        "risk": "low",
+        "clickjacking_risk": "low",
+        "statuses": {
+          "Content-Security-Policy": "ok",
+          "X-Frame-Options": "ok",
+          "Strict-Transport-Security": "ok",
+          "X-Content-Type-Options": "ok",
+          "Referrer-Policy": "ok",
+          "Permissions-Policy": "ok",
+          "Cross-Origin-Opener-Policy": "ok",
+          "Cross-Origin-Embedder-Policy": "ok",
+          "Cross-Origin-Resource-Policy": "ok"
+        }
+      }
+    },
+    {
+      "name": "bare https, no security headers",
+      "url": "https://bare.example",
+      "final_url": "https://bare.example",
+      "status_code": 200,
+      "headers": {},
+      "_note": "Weights total 95 (CSP 25 + XFO 15 + HSTS 15 + nosniff 10 + Referrer 10 + PP 5 + COOP/COEP/CORP 5 each), so a bare HTTPS site floors at 5, not 0.",
+      "expect": {
+        "score": 5,
+        "grade": "F",
+        "risk": "high",
+        "clickjacking_risk": "high",
+        "statuses": {
+          "Content-Security-Policy": "missing",
+          "X-Frame-Options": "missing",
+          "Strict-Transport-Security": "missing",
+          "X-Content-Type-Options": "missing",
+          "Referrer-Policy": "missing",
+          "Permissions-Policy": "missing",
+          "Cross-Origin-Opener-Policy": "missing",
+          "Cross-Origin-Embedder-Policy": "missing",
+          "Cross-Origin-Resource-Policy": "missing"
+        }
+      }
+    },
+    {
+      "name": "frame-ancestors wildcard is high clickjacking risk",
+      "url": "https://framable.example",
+      "final_url": "https://framable.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors *",
+        "x-frame-options": "SAMEORIGIN",
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer"
+      },
+      "expect": {
+        "clickjacking_risk": "high",
+        "statuses": {
+          "X-Frame-Options": "ok",
+          "Content-Security-Policy": "ok"
+        }
+      }
+    },
+    {
+      "name": "XFO only (no CSP) is medium clickjacking risk",
+      "url": "https://xfo-only.example",
+      "final_url": "https://xfo-only.example",
+      "status_code": 200,
+      "headers": {
+        "x-frame-options": "SAMEORIGIN"
+      },
+      "expect": {
+        "clickjacking_risk": "medium",
+        "statuses": {
+          "X-Frame-Options": "ok",
+          "Content-Security-Policy": "missing"
+        }
+      }
+    },
+    {
+      "name": "obsolete ALLOW-FROM is ineffective",
+      "url": "https://allowfrom.example",
+      "final_url": "https://allowfrom.example",
+      "status_code": 200,
+      "headers": {
+        "x-frame-options": "ALLOW-FROM https://partner.example"
+      },
+      "expect": {
+        "clickjacking_risk": "high",
+        "statuses": {
+          "X-Frame-Options": "weak"
+        }
+      }
+    },
+    {
+      "name": "weak CSP: unsafe-inline + wildcard",
+      "url": "https://weakcsp.example",
+      "final_url": "https://weakcsp.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src *; script-src 'unsafe-inline' 'unsafe-eval' *",
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "same-origin"
+      },
+      "expect": {
+        "statuses": {
+          "Content-Security-Policy": "weak",
+          "X-Frame-Options": "missing"
+        }
+      }
+    },
+    {
+      "name": "hsts max-age=0 disables protection",
+      "url": "https://hsts0.example",
+      "final_url": "https://hsts0.example",
+      "status_code": 200,
+      "headers": {
+        "strict-transport-security": "max-age=0",
+        "x-content-type-options": "nosniff"
+      },
+      "expect": {
+        "statuses": {
+          "Strict-Transport-Security": "missing"
+        }
+      }
+    },
+    {
+      "name": "short hsts max-age is weak",
+      "url": "https://hstsshort.example",
+      "final_url": "https://hstsshort.example",
+      "status_code": 200,
+      "headers": {
+        "strict-transport-security": "max-age=3600; includeSubDomains"
+      },
+      "expect": {
+        "statuses": {
+          "Strict-Transport-Security": "weak"
+        }
+      }
+    },
+    {
+      "name": "http target: transport weak, hsts not applicable",
+      "url": "http://plain.example",
+      "final_url": "http://plain.example",
+      "status_code": 200,
+      "headers": {
+        "x-content-type-options": "nosniff"
+      },
+      "expect": {
+        "statuses": {
+          "Transport": "weak",
+          "Strict-Transport-Security": "info"
+        }
+      }
+    },
+    {
+      "name": "cookie flags missing",
+      "url": "https://cookies.example",
+      "final_url": "https://cookies.example",
+      "status_code": 200,
+      "headers": {
+        "set-cookie": "sid=abc123; Path=/"
+      },
+      "expect": {
+        "statuses": {
+          "Set-Cookie flags": "weak"
+        }
+      }
+    },
+    {
+      "name": "cookie flags complete",
+      "url": "https://goodcookies.example",
+      "final_url": "https://goodcookies.example",
+      "status_code": 200,
+      "headers": {
+        "set-cookie": "sid=abc123; Path=/; Secure; HttpOnly; SameSite=Lax"
+      },
+      "expect": {
+        "statuses": {
+          "Set-Cookie flags": "ok"
+        }
+      }
+    },
+    {
+      "name": "referrer-policy unsafe-url leaks",
+      "url": "https://leaky.example",
+      "final_url": "https://leaky.example",
+      "status_code": 200,
+      "headers": {
+        "referrer-policy": "unsafe-url"
+      },
+      "expect": {
+        "statuses": {
+          "Referrer-Policy": "weak"
+        }
+      }
+    },
+    {
+      "name": "report-only CSP does not enforce",
+      "url": "https://reportonly.example",
+      "final_url": "https://reportonly.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy-report-only": "default-src 'self'"
+      },
+      "expect": {
+        "statuses": {
+          "Content-Security-Policy": "missing",
+          "CSP-Report-Only": "info"
+        }
+      }
+    },
+    {
+      "name": "permissions-policy wildcard is weak",
+      "url": "https://ppwild.example",
+      "final_url": "https://ppwild.example",
+      "status_code": 200,
+      "headers": {
+        "permissions-policy": "geolocation=*"
+      },
+      "expect": {
+        "statuses": {
+          "Permissions-Policy": "weak"
+        }
+      }
+    },
+    {
+      "name": "frame-ancestors self with no XFO still protected",
+      "url": "https://faself.example",
+      "final_url": "https://faself.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "frame-ancestors 'self'"
+      },
+      "expect": {
+        "clickjacking_risk": "low",
+        "statuses": {
+          "X-Frame-Options": "missing"
+        }
+      }
+    }
+  ]
+}

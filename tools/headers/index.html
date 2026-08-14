@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- GitHub Pages cannot send response headers, so the policy ships as a
+       meta tag. Note frame-ancestors / X-Frame-Options CANNOT be set this
+       way (meta CSP ignores frame-ancestors) — see README 'Hosted site
+       limitations'. Keep this in sync with the CSP in server.py. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Security Headers — CyberBuddy</title>
   <meta name="description" content="Grade a URL's security headers into an A–F score." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
@@ -32,31 +37,17 @@
   <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Cpath d='M10 12h12M10 20h8'/%3E%3C/g%3E%3C/svg%3E" />
-  <noscript><style>.reveal{opacity:1!important}</style></noscript>
-  <script>
-    (function () {
-      try {
-        var s = localStorage.getItem("cb-theme");
-        if (s === "light") document.documentElement.setAttribute("data-theme", "light");
-        else if (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme", "light");
-      } catch (_) {}
-    })();
-  </script>
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814c" />
-  <script src="../../js/app.js?v=20260814c" defer></script>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      renderHeader("/tools/headers/");
-      renderFooter();
-      initReveal();
-      initHeaders();
-      initShareButton();
-    });
-  </script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814d" />
+  <script src="../../js/app.js?v=20260814d" defer></script>
+  <script src="../../js/tool.headers.js?v=20260814d" defer></script>
+  <script src="../../js/boot.js?v=20260814d" defer></script>
 </head>
-<body>
+<body data-page="/tools/headers/" data-init="initHeaders initShareButton">
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 02</p>
@@ -73,17 +64,19 @@
       <input id="url" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" required />
     </div>
     <button id="go" type="button" class="btn btn-primary">Scan</button>
-    <button type="button" class="btn btn-ghost" onclick="exportReport()">Export / Print</button>
-    <button id="copyReport" type="button" class="btn btn-ghost" onclick="copyReport()">Copy report</button>
-    <button id="copyJson" type="button" class="btn btn-ghost" onclick="copyJson()">Copy JSON</button>
-    <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    <div role="group" aria-label="Export and share">
+      <span id="exportMenu"></span>
+      <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    </div>
   </div>
+  <div id="evidenceToggle"></div>
+  <div id="relayGate" class="hidden"></div>
 
   <section id="results" class="results hidden">
     <article class="card report-card">
       <div class="report-head">
         <div>
-          <h2>Header posture</h2>
+          <h2>Header posture<span id="reportTitleFlag"></span></h2>
         </div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
@@ -137,14 +130,18 @@
           <pre id="headers" class="raw-headers">{}</pre>
         </article>
       </div>
+
+      <div id="reportProvenance" class="report-provenance"></div>
     </article>
   </section>
 
   <div id="staticNotice" class="notice hidden">
     <h3>Could not read headers</h3>
     <p>
-      The live lookup did not return header data for this target. Run
-      <code>python3 server.py</code> locally for a same-origin scan, then retry.
+      No header data was returned for this target. It may be unreachable, or
+      the lookup may have been blocked or rate-limited. Run
+      <code>python3 server.py</code> locally for a same-origin scan that never
+      leaves your machine, then retry.
     </p>
   </div>
 
@@ -155,109 +152,5 @@
 
 </main>
 
-<script>
-  "use strict";
-
-  let cbLastData = null;
-  function copyReport() {
-    if (cbLastData) copyMarkdown(cbLastData, document.getElementById("copyReport"));
-  }
-  function copyJson() {
-    if (cbLastData) copyJsonReport(cbLastData, document.getElementById("copyJson"));
-  }
-
-  async function initHeaders() {
-    const $ = (id) => document.getElementById(id);
-
-    function render(data) {
-      cbLastData = data;
-      $("results").classList.remove("hidden");
-      setSourceChip(data);
-
-      const score = data.score ?? 0;
-      const grade = (data.grade || "F").toUpperCase();
-      const risk = (data.risk || "unknown").toUpperCase();
-
-      $("grade").textContent = grade;
-      $("grade").className = "grade " + (gradeFor(score) || grade.toLowerCase());
-      bump($("grade"));
-
-      $("risk").textContent = risk;
-      $("risk").className = "risk " + (data.risk || "unknown");
-      bump($("risk"));
-
-      countUp($("score"), score, "/100");
-      $("scoreFill").style.width = score + "%";
-      $("verdict").className = "verdict-banner " + (data.risk || "unknown");
-
-      $("mTarget").textContent = data.url || "—";
-      $("mFinal").textContent = data.final_url || "—";
-      $("mStatus").textContent = data.status_code != null ? String(data.status_code) : "—";
-      $("mStamp").textContent = fmtStamp();
-      $("summary").textContent = data.summary || "";
-
-      $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
-      $("checks").querySelector("tbody").innerHTML = (data.checks || []).map((c) => {
-        const ev = c.evidence
-          ? "<code class='f-evidence'>" + esc(c.evidence) + "</code>"
-          : "";
-        return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
-          "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-          "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + "</td></tr>";
-      }).join("");
-    }
-
-    async function scan(url) {
-      setLoading($("go"), true);
-      const data = await apiHeaders(url);
-      setLoading($("go"), false);
-      if (data && data._unreachable) {
-        $("staticNotice").classList.remove("hidden");
-        $("staticNotice").innerHTML =
-          "<h3>Target not reachable</h3>" +
-          "<p>CyberBuddy's engine got no response from this target — the host may be " +
-          "down, timing out, or refusing connections. Detail: " +
-          "<code>" + esc(unreachableDetail(data)) + "</code></p>";
-        render(data);
-        return;
-      }
-      if (isEngineDown(data) || (data && data._source === "none")) {
-        if (data && data.checks) {
-          $("staticNotice").classList.add("hidden");
-          render(data);
-        } else {
-          $("staticNotice").innerHTML =
-            "<h3>Could not read headers</h3>" +
-            "<p>The live lookup did not return header data for this target. Run " +
-            "<code>python3 server.py</code> locally for a same-origin scan, then retry.</p>";
-          $("staticNotice").classList.remove("hidden");
-          $("results").classList.add("hidden");
-        }
-        return;
-      }
-      $("staticNotice").classList.add("hidden");
-      render(data);
-    }
-
-    $("go").addEventListener("click", () => {
-      const url = normalizeUrl($("url").value);
-      if (!url || !validUrl(url)) { $("url").focus(); return; }
-      $("url").value = url;
-      pushUrlParam(url);
-      addRecentScan(url);
-      scan(url);
-    });
-
-    $("url").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("go").click();
-    });
-
-    const initial = new URLSearchParams(location.search).get("url");
-    if (initial) {
-      $("url").value = normalizeUrl(initial);
-      scan(normalizeUrl(initial));
-    }
-  }
-</script>
 </body>
 </html>

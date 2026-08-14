@@ -417,6 +417,48 @@ def score(findings: Iterable[Finding]) -> tuple[str, str]:
     return "high", "No effective framing protection detected. The page is likely clickjackable."
 
 
+def grade_clickjacking_from_map(
+    url: str,
+    status_code: int | None,
+    final_url: str,
+    headers: dict[str, str],
+) -> ScanResult:
+    """Grade an already-fetched header map for framing protections.
+
+    Pure function: no network. Mirrors ``gradeClickjackingFromMap`` in
+    js/app.js; both are exercised against tests/grader_fixtures.json.
+
+    Clickjacking is specifically about *framing*, so the findings table keeps
+    to the two framing controls (X-Frame-Options + CSP frame-ancestors)
+    rather than mixing in Transport / cookies / Permissions-Policy, which
+    belong to the Security Headers tool.
+    """
+    headers = headers or {}
+    findings = [
+        assess_xfo(headers.get("x-frame-options")),
+        assess_frame_ancestors(headers.get("content-security-policy")),
+    ]
+    risk, summary = score(findings)
+    interesting = {
+        k: headers[k]
+        for k in (
+            "x-frame-options",
+            "content-security-policy",
+            "content-security-policy-report-only",
+        )
+        if k in headers
+    }
+    return ScanResult(
+        url=url,
+        final_url=final_url or url,
+        status_code=status_code,
+        findings=findings,
+        risk=risk,
+        summary=summary,
+        headers=interesting,
+    )
+
+
 def scan_url(
     url: str,
     timeout: float,
@@ -445,34 +487,7 @@ def scan_url(
             summary=f"Request failed: {exc}",
         )
 
-    # Clickjacking is specifically about *framing*. Keep the findings table to
-    # the two framing controls (X-Frame-Options + CSP frame-ancestors) rather
-    # than mixing in Transport / cookies / Permissions-Policy, which belong to
-    # the Security Headers tool.
-    findings = [
-        assess_xfo(headers.get("x-frame-options")),
-        assess_frame_ancestors(headers.get("content-security-policy")),
-    ]
-
-    risk, summary = score(findings)
-    interesting = {
-        k: headers[k]
-        for k in (
-            "x-frame-options",
-            "content-security-policy",
-            "content-security-policy-report-only",
-        )
-        if k in headers
-    }
-    return ScanResult(
-        url=url,
-        final_url=final_url,
-        status_code=code,
-        findings=findings,
-        risk=risk,
-        summary=summary,
-        headers=interesting,
-    )
+    return grade_clickjacking_from_map(url, code, final_url, headers)
 
 
 def print_human(result: ScanResult) -> None:

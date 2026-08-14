@@ -2,15 +2,19 @@
   "name": "CyberBuddy",
   "short_name": "CyberBuddy",
   "description": "Browser security assessment suite — clickjacking, security headers, and CORS checks with evidence-grade output.",
-  "id": "/CyberBuddy/",
-  "start_url": "/CyberBuddy/",
-  "scope": "/CyberBuddy/",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "lang": "en",
   "dir": "ltr",
   "background_color": "#07090d",
   "theme_color": "#07090d",
-  "categories": ["security", "developer", "utilities"],
+  "categories": [
+    "security",
+    "developer",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "icon-192.png",
@@ -30,29 +34,49 @@
       "name": "Clickjacking Validator",
       "short_name": "Clickjacking",
       "description": "Live iframe frame-test and framing-header score",
-      "url": "/CyberBuddy/tools/clickjacking/",
-      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+      "url": "./tools/clickjacking/",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Security Headers",
       "short_name": "Headers",
       "description": "Grade CSP, HSTS, COOP/COEP and cookie flags — A–F",
-      "url": "/CyberBuddy/tools/headers/",
-      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+      "url": "./tools/headers/",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "CORS Validator",
       "short_name": "CORS",
       "description": "Origin reflection, credentials, and Vary: Origin",
-      "url": "/CyberBuddy/tools/cors/",
-      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+      "url": "./tools/cors/",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Methodology",
       "short_name": "Method",
       "description": "How CyberBuddy scores findings",
-      "url": "/CyberBuddy/#methodology",
-      "icons": [{"src": "icon-192.png", "sizes": "192x192"}]
+      "url": "./#methodology",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
