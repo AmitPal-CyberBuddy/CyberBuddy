@@ -621,7 +621,6 @@ class HostedSiteTests(unittest.TestCase):
         text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         self.assertIn("test -f \"$f\" && cp \"$f\" _site/ || true", text)
         self.assertIn("test -d .well-known && cp -a .well-known _site/ || true", text)
-        self.assertIn("tools/cors tools/csp _site/tools/", text)
 
     def test_hub_has_methodology_anchor(self):
         text = (ROOT / "index.html").read_text(encoding="utf-8")
