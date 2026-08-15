@@ -386,7 +386,7 @@ function renderFooter() {
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
-    ICONS.medium + "Read My blog · Medium</a>" +
+    ICONS.medium + "Read My Blog · Medium</a>" +
     "</span></div></div>" +
     // Scalable footer: category links, not a growing per-tool list. New tools
     // appear here automatically via the catalog — no footer edit needed.
@@ -2314,7 +2314,7 @@ function findingRowHtml(c, opts) {
   const needsFix = c.status === "missing" || c.status === "weak" || c.status === "error";
   const recommendation = c.recommendation || FINDING_FIX[c.name] || "";
   const fix = needsFix && recommendation
-    ? '<p class="f-fix"><strong>Recommendation</strong>' + esc(recommendation) + "</p>"
+    ? '<div class="f-fix"><strong>Recommendation</strong>' + esc(recommendation) + "</div>"
     : "";
   const w = WEIGHTS[c.name] || 0;
   let weight = "";
@@ -2328,9 +2328,9 @@ function findingRowHtml(c, opts) {
     ? '<button type="button" class="copy-finding" data-i="' + (opts.index || 0) +
       '" title="Copy this finding as report text">Copy finding</button>'
     : "";
-  return "<tr><td class='k'>" + esc(c.name) + "</td><td>" +
-    "<span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-    '<span class="f-severity sev-' + sev.key + '">' + sev.label + "</span>" +
+  return "<tr class='finding-row'><td class='k'>" + esc(c.name) + "</td><td>" +
+    "<div class='f-row-header'><span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
+    '<span class="f-severity sev-' + sev.key + '">' + sev.label + "</span></div>" +
     "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + fix + weight + copy + "</td></tr>";
 }
 
@@ -2370,22 +2370,58 @@ function bindFindingCopy(container, rows, toolName, target) {
   });
 }
 
-/* Posture rollup: severity-band counts straight from the check statuses. */
+/* Posture rollup: severity-band counts straight from the check statuses,
+   plus badged header/directive names so missing/present items are immediately
+   visible by name in the summary section (missing in red, present in green). */
 function postureHtml(checks) {
+  if (!checks || !checks.length) {
+    return '<div class="posture-counts"><span class="posture-label">Findings</span><span class="posture-chip info">No checks</span></div>';
+  }
   const roll = { missing: 0, weak: 0, error: 0, ok: 0, protected: 0, info: 0 };
-  (checks || []).forEach((c) => {
+  checks.forEach((c) => {
     const s = c && c.status;
     if (roll[s] != null) roll[s]++;
     else roll.info++;
   });
   const chip = (key, label, cls) =>
     roll[key] ? '<span class="posture-chip ' + cls + '">' + label + " · " + roll[key] + "</span>" : "";
-  const html =
+  const countHtml =
     chip("missing", "Missing", "high") + chip("weak", "Weak", "medium") +
     chip("error", "Error", "high") + chip("ok", "OK", "low") +
     chip("protected", "Protected", "low") + chip("info", "Info", "info");
-  return '<span class="posture-label">Findings</span>' +
-    (html || '<span class="posture-chip info">No checks</span>');
+
+  const tagStatusCls = (status) => {
+    if (status === "missing" || status === "error") return "tag-missing";
+    if (status === "weak") return "tag-weak";
+    if (status === "ok" || status === "protected") return "tag-ok";
+    return "tag-info";
+  };
+
+  const tagIcon = (status) => {
+    if (status === "missing" || status === "error") return "✕";
+    if (status === "weak") return "⚠";
+    if (status === "ok" || status === "protected") return "✓";
+    return "ℹ";
+  };
+
+  // Group: missing/error first, then weak, then ok/protected, then info
+  const sortedChecks = checks.slice().sort((a, b) => {
+    const order = { missing: 0, error: 0, weak: 1, ok: 2, protected: 2, info: 3 };
+    return (order[a.status] ?? 4) - (order[b.status] ?? 4);
+  });
+
+  const tagsHtml = sortedChecks.map((c) => {
+    const cls = tagStatusCls(c.status);
+    const icon = tagIcon(c.status);
+    return '<span class="posture-tag ' + cls + '" title="' +
+      esc((c.status || "").toUpperCase() + ": " + (c.detail || c.name)) + '">' +
+      '<span class="tag-icon" aria-hidden="true">' + icon + "</span>" +
+      esc(c.name) + "</span>";
+  }).join("");
+
+  return '<div class="posture-counts"><span class="posture-label">Findings</span>' +
+    (countHtml || '<span class="posture-chip info">No checks</span>') + '</div>' +
+    '<div class="posture-tags" aria-label="Header check tags">' + tagsHtml + '</div>';
 }
 
 /* Every result carries a LIVE / CACHED tag. The hosted site serves CI-built
@@ -3779,7 +3815,9 @@ function recentScanSummary(s) {
 function suiteToolChip(label, data, withScore) {
   if (!data) return '<span class="suite-tool-chip unknown">' + esc(label) + " —</span>";
   const risk = (data.risk || "unknown").toLowerCase();
-  let text = esc(label) + " · <b>" + esc((data.risk || "unknown").toUpperCase()) + "</b>";
+  const isCorsPass = label === "CORS" && risk === "low";
+  const displayRisk = isCorsPass ? "PASS" : (data.risk || "unknown").toUpperCase();
+  let text = esc(label) + " · <b>" + esc(displayRisk) + "</b>";
   if (withScore && data.score != null) text += " · <b>" + esc(String(data.score)) + "/100</b>";
   if (data.grade) text += " · <b>" + esc(String(data.grade).toUpperCase()) + "</b>";
   return '<span class="suite-tool-chip ' + esc(risk) + '">' + text + "</span>";
@@ -3835,6 +3873,8 @@ function suiteCard(title, data, listKey, href) {
       '<a class="tool-card-open" href="' + href + '">Open full report ' + ICONS.chevron + '</a></article>';
   }
   const risk = (data.risk || "unknown").toLowerCase();
+  const isCorsPass = title === "CORS" && risk === "low";
+  const displayRisk = isCorsPass ? "PASS" : (data.risk || "unknown").toUpperCase();
   const grade = data.grade ? '<span class="grade ' + gradeFor(data.score) + '">' + esc(data.grade) + "</span>" : "";
   const items = (data[listKey] || []).slice(0, 3).map((c) =>
     '<li><span class="f-status ' + esc(c.status) + '">' + esc(c.status) + "</span> " + esc(c.name) + "</li>"
@@ -3842,7 +3882,7 @@ function suiteCard(title, data, listKey, href) {
   return '<article class="card suite-card">' +
     '<div class="suite-card-top"><p class="card-title">' + esc(title) + '</p>' +
     '<span class="suite-tags">' + scanTag(data) +
-    '<span class="risk ' + esc(risk) + '">' + esc((data.risk || "unknown").toUpperCase()) + "</span></span></div>" +
+    '<span class="risk ' + esc(risk) + '">' + esc(displayRisk) + "</span></span></div>" +
     '<div class="suite-card-body">' + grade +
     '<p class="verdict-text">' + esc(data.summary || "") + "</p></div>" +
     (items ? "<ul class=\"suite-list\">" + items + "</ul>" : "") +

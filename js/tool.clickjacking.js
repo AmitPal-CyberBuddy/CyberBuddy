@@ -66,6 +66,8 @@
       findingRowHtml(f, { copy: true, index: i })
     ).join("");
     bindFindingCopy(tbody, list || [], "Clickjacking Validator", url);
+    const posture = $("posture");
+    if (posture) posture.innerHTML = postureHtml(list);
   }
 
   function finish(data, toolTitle) {

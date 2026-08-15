@@ -117,13 +117,14 @@
         <div class="verdict-main">
           <p id="protection" class="protection-line">Run a scan to assess clickjacking protection.</p>
           <p id="summary" class="verdict-text">If the site UI is visible in the frame, treat it as clickjackable.</p>
+          <div id="posture" class="posture-strip" aria-label="Finding rollup"></div>
         </div>
       </div>
 
       <div class="poc-grid">
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation</h3>
-          <p class="note">A rendered target means the page can be framed — exactly as it would appear inside an attacker's frame. A blank pane usually means it is blocked (X-Frame-Options / frame-ancestors), though a few sites also blank themselves with frame-busting scripts. Turn on the attacker layer, then lower its opacity to see why the victim may not notice it.</p>
+          <p class="note">A rendered UI confirms the page is frameable in this browser. A blank pane indicates framing is blocked by <code>X-Frame-Options</code> or CSP <code>frame-ancestors</code>.</p>
           <div id="stage" class="stage">
             <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
             <div id="pocOverlay" class="overlay" aria-hidden="true">
@@ -144,14 +145,14 @@
             <input id="pocOpacity" type="range" min="5" max="100" value="72" step="1" />
             <div class="poc-scale"><span>Victim view · near-invisible</span><span>Attacker view · explanatory</span></div>
           </div>
-          <p class="stage-note">The decoy is positioned relative to this stage only. CyberBuddy cannot inspect the cross-origin frame or claim pixel-accurate alignment. The entire attacker layer has <code>pointer-events: none</code>, so clicks reach the framed target.</p>
+          <p class="stage-note">Decoy overlay demonstrates click passthrough with <code>pointer-events: none</code>.</p>
           <p id="frameStatus" class="stage-note"></p>
           <div id="visualConfirm" class="hidden"></div>
         </article>
 
         <article class="card inset-card">
           <h3 class="card-title">Framing controls</h3>
-          <p class="note">The two headers that decide whether the page can be framed by a hostile origin.</p>
+          <p class="note">Framing protection directives and header evaluation.</p>
           <table id="findings" class="findings" aria-label="Framing control findings">
             <thead><tr><th scope="col">Control</th><th scope="col">Assessment</th></tr></thead>
             <tbody></tbody>
