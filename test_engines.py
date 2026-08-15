@@ -2192,7 +2192,7 @@ class GuidesTests(unittest.TestCase):
 
     def test_pilot_stays_short(self):
         """Concise by design: the pilot is a few minutes of reading, not a
-        long-form article (that is what Medium is for)."""
+        long-form article."""
         text = re.sub(r"<[^>]+>", " ", self._pilot())
         words = len(text.split())
         self.assertLess(words, 1200, words)
@@ -2207,13 +2207,50 @@ class GuidesTests(unittest.TestCase):
         tool = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
         self.assertIn('href="../../guides/clickjacking/"', tool)
 
-    def test_guides_link_out_to_medium_for_depth(self):
-        """Depth lives on the maintainer's blog. The profile root is used
-        deliberately — there is no clickjacking-specific article to deep-link,
-        and inventing one would ship a dead link."""
-        for page in (self._index(), self._pilot()):
-            self.assertIn("https://amitpxl.medium.com/", page)
-            self.assertIn('rel="noopener noreferrer"', page)
+    def test_guides_never_sell_the_blog_as_a_per_tool_deep_dive(self):
+        """Only two Medium posts exist (request smuggling vs pipelining, and
+        client-side encryption). Neither is about clickjacking, so pointing a
+        guide's "Go deeper" at the profile root promises a write-up that is
+        not there. A blog link belongs in a guide only when a post on that
+        exact topic exists."""
+        for name, page in (("index", self._index()), ("pilot", self._pilot())):
+            with self.subTest(page=name):
+                self.assertNotIn("medium.com", page)
+
+    def test_pilot_goes_deeper_via_real_primary_references(self):
+        """The "Go deeper" block must cite sources that actually document this
+        weakness, each opened safely in a new tab."""
+        pilot = self._pilot()
+        for url in (
+            "https://owasp.org/www-project-web-security-testing-guide/latest"
+            "/4-Web_Application_Security_Testing/11-Client-side_Testing"
+            "/09-Testing_for_Clickjacking",
+            "https://cwe.mitre.org/data/definitions/1021.html",
+            "https://cheatsheetseries.owasp.org/cheatsheets/"
+            "Clickjacking_Defense_Cheat_Sheet.html",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+            "/Headers/Content-Security-Policy/frame-ancestors",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+            "/Headers/X-Frame-Options",
+            "https://w3c.github.io/webappsec-csp/",
+            "https://portswigger.net/web-security/clickjacking",
+        ):
+            with self.subTest(url=url):
+                self.assertIn(url, pilot)
+        for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', pilot):
+            with self.subTest(link=external):
+                self.assertIn('href="' + external + '" target="_blank" '
+                              'rel="noopener noreferrer"', pilot)
+
+    def test_guides_are_written_in_first_person_not_as_a_narrator(self):
+        """These are the author's own notes. Copy that refers to "the
+        maintainer" reads like an assistant describing someone else's site."""
+        for name, page in (("index", self._index()), ("pilot", self._pilot())):
+            prose = re.sub(r"<[^>]+>", " ", page)
+            with self.subTest(page=name):
+                for tell in ("maintainer", "the author's", "this website's owner"):
+                    self.assertNotIn(tell, prose.lower(), tell)
+                self.assertRegex(prose, r"\bI\b")
 
     def test_guide_points_at_the_scoring_methodology(self):
         self.assertIn('href="../../methodology/"', self._pilot())

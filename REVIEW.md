@@ -1592,7 +1592,7 @@ one guide.
 
 - **`guides/index.html`** — the section hub. One live guide card
   (Clickjacking: read time, paired tool, OWASP/CWE mapping), one honest
-  “more coming” card that points at Medium in the meantime, and a short
+  “more coming” card that points at the tools catalog in the meantime, and a short
   *How these guides work* panel stating the contract: a guide states the
   weakness, the evidence that settles it and the fix, then hands off.
 - **`guides/clickjacking/index.html`** — the pilot, ~4 minutes: the attack in
@@ -1600,7 +1600,7 @@ one guide.
   contrasting `X-Frame-Options` with CSP `frame-ancestors` including the
   override trap and the report-only trap, a five-step *confirm it with the
   validator* walkthrough ending at the exportable report card, the fix as a
-  copyable two-header block, and a *go deeper* handoff to Medium.
+  copyable two-header block, and a *go deeper* list of primary references.
 - **Navigation** — `js/app.js` gained a single **Guides** entry in the header
   nav and one in the footer's *Learn* column. The footer stays category-based:
   a section link, never one link per guide.
@@ -1617,10 +1617,24 @@ one guide.
 
 ### Honest scope notes
 
-- **The Medium links point at the profile root**, not a topic-specific
-  article. The maintainer has published two posts (HTTP request smuggling vs
+- **“Go deeper” cites primary sources, not the blog.** An earlier draft of
+  this section pointed every guide at the Medium profile root as its
+  deep-dive. That was wrong: only two posts exist (HTTP request smuggling vs
   pipelining; breaking client-side encryption) and neither is about
-  clickjacking. Fabricating a slug would have shipped a dead “read more”.
+  clickjacking, so the link promised a write-up that was not there —
+  fabricating a topic slug would have been worse still. The pilot now closes
+  with OWASP WSTG-CLNT-09, CWE-1021, the OWASP Clickjacking Defense Cheat
+  Sheet, MDN (`frame-ancestors`, `X-Frame-Options`), CSP Level 3 and the
+  PortSwigger labs. Every URL was fetched and confirmed to resolve before
+  commit, and `test_pilot_goes_deeper_via_real_primary_references` pins them
+  (plus `target="_blank" rel="noopener noreferrer"` on each). A blog link
+  returns only when a matching post exists — the in-progress CORS article is
+  the first candidate, for the eventual CORS guide.
+- **The prose is first person.** Guide copy reads as Amit writing, not as a
+  narrator describing “the maintainer's blog” to a visitor — the register the
+  hub's `BLOG_POSTS` excerpts already set.
+  `test_guides_are_written_in_first_person_not_as_a_narrator` keeps it that
+  way.
 - **Exactly one guide ships.** `test_scope_is_one_pilot_guide` asserts the
   `guides/` directory contains exactly one guide directory, so the non-goal
   (“no full Guides library”) is enforced, not just promised.
@@ -1630,14 +1644,17 @@ one guide.
 
 ### Tests and verification
 
-- **Stdlib:** `python3 -m unittest test_engines.py` — **201/201 OK** (+24).
-  New `GuidesTests` (21) covers the required *navigation + content presence*
+- **Stdlib:** `python3 -m unittest test_engines.py` — **203/203 OK** (+26).
+  New `GuidesTests` (23) covers the required *navigation + content presence*
   criteria in both directions: header/footer/hub/404 links in, the tool
   backlink, the tool and methodology links out, both framing controls and the
   standards line present in the pilot, the authorization boundary on both
   pages, canonical/OG/Twitter metadata, the shared shell and `frame-src 'none'`,
-  sitemap/`llms.txt`/README/`server.py` registration, plus the two scope
-  guards above. Plus `ServerRouteTests.test_guides_pages` (six route
+  sitemap/`llms.txt`/README/`server.py` registration, the “Go deeper”
+  reference URLs and link hygiene, the first-person voice guard, plus the two
+  scope guards above. Each new guard was mutation-checked (reinstating a
+  `medium.com` link, reintroducing “the maintainer”, and dropping a `rel` on an
+  external link each fail the suite). Plus `ServerRouteTests.test_guides_pages` (six route
   assertions) and the two `PagesExclusionTests` described earlier.
 - **Live server crawl:** with `server.py` running, `/guides` and
   `/guides/clickjacking` 301 to their slash forms, `/guides/`,

@@ -405,15 +405,31 @@ should remain shared.
 
 - **A guide is only useful if it is connected.** The contract for every guide
   is three links: *up* to `/guides/`, *across* to the tool that confirms the
-  finding (`../../tools/<slug>/`), and *out* to Medium for depth. The tool page
-  links back (`../../guides/<slug>/`). Break one of those and the guide becomes
-  an orphaned article — which is exactly what the roadmap says Guides must not
-  be. `GuidesTests` pins all four directions.
-- **Link out to the profile, not to invented article URLs.** The maintainer's
-  Medium has two posts (request smuggling, client-side encryption) and no
-  clickjacking article. The guides therefore link `https://amitpxl.medium.com/`
-  (profile root). Never deep-link a topic-specific Medium slug unless the post
-  actually exists — a dead “read more” is worse than no link.
+  finding (`../../tools/<slug>/`), and *out* to the primary references for
+  depth. The tool page links back (`../../guides/<slug>/`). Break one of those
+  and the guide becomes an orphaned article — which is exactly what the roadmap
+  says Guides must not be. `GuidesTests` pins all four directions.
+- **“Go deeper” means real references, never the Medium profile root.**
+  Superseded rule (do not reinstate): guides used to link
+  `https://amitpxl.medium.com/` as the deep-dive for every topic. There are
+  only two posts (request smuggling vs pipelining; client-side encryption) and
+  neither is about clickjacking, so that link promised a write-up that does not
+  exist. Every guide now closes with primary sources — OWASP WSTG, CWE, the
+  OWASP cheat sheet, MDN, the W3C spec, PortSwigger. A blog link may appear in
+  a guide **only** when a post on that exact topic is published; the CORS
+  article (“Understanding CORS — from browser security to real world impact”)
+  is in progress, so the CORS guide may add one once it ships, as its own
+  subsection separate from the references. `test_guides_never_sell_the_blog_as_
+  a_per_tool_deep_dive` asserts no `medium.com` in `guides/`. Never invent a
+  topic slug — a dead “read more” is worse than no link. Verify every external
+  URL resolves before committing (note MDN moved HTTP headers under
+  `/Web/HTTP/Reference/Headers/…`; the pre-`/Reference/` paths only redirect).
+- **Write as the author, in first person.** These are Amit's notes, not an
+  assistant's description of someone else's site. No “the maintainer's blog”,
+  no narrator voice addressing a visitor — the hub's `BLOG_POSTS` excerpts set
+  the register (“I walk through how I separate…”).
+  `test_guides_are_written_in_first_person_not_as_a_narrator` bans
+  “maintainer”/“the author's” in guide prose and requires a first-person “I”.
 - **Concise is a tested property, not a wish.** `test_pilot_stays_short` caps
   the pilot's visible word count. GUIDES-02/03 must copy the pilot's shape
   (attack in one paragraph → the controls → confirm with the tool → the fix →

@@ -21,7 +21,7 @@ handoff” for the state at the end of that session.
 | Latest merged feature/PR | **IA-01 — scalable tool information architecture** (PR #22, merge commit `2956801`). Verified present in `origin/main` before this session; not re-applied. |
 | Live tools | 5 — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator |
 | Public sections | Hub · Tools catalog (`/tools/`) · Methodology · **Guides (`/guides/`, new this session)** |
-| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **201** after GUIDES-01 |
+| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **203** after GUIDES-01 |
 | JavaScript file total | **18** (11 under `js/`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout 131 · dropdown 132 · overlays 48 · relay-gate 17 · responsive 224 · csrf 22 — **574 checks** (Chromium) plus IA-01's catalog checks; not runnable in the Arena sandbox |
 | Pages assembly result | Hub, 404, methodology, catalog and five tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. **`guides/` is not copied yet** — see the maintainer follow-up in §5. |
@@ -100,12 +100,12 @@ PR.
 - **Goal:** A Guides section with exactly one concise pilot guide
   (Clickjacking), connected to the Clickjacking Validator.
 - **Scope:** Guides foundation + one pilot guide. Guides are **concise and
-  connected to CyberBuddy tools**, not full articles — detailed writing links
-  out to the maintainer’s Medium articles.
+  connected to CyberBuddy tools**, not full articles — depth is delegated to
+  primary references (OWASP, CWE, MDN, specs).
 - **Non-goals:** No full Guides library; no long-form articles.
 - **Dependencies:** IA-01 merged.
 - **Acceptance criteria:** One pilot guide, linked from the tool, linking out
-  to Medium for depth.
+  to verified primary references for depth.
 - **Required tests:** navigation + content presence checks.
 - **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (see the PR for
   the final commit).
@@ -113,10 +113,13 @@ PR.
   (pilot); header nav and footer *Learn* column now carry a single **Guides**
   entry; the 404 page offers a Guides card; the Clickjacking Validator links
   back to the guide. Routes (`/guides`, `/guides/`, `/CyberBuddy/guides/…`),
-  `sitemap.xml`, `llms.txt` and README updated. Medium links point at the
-  profile root — there is no clickjacking article to deep-link. New stdlib
-  `GuidesTests` (21 checks) covers navigation + content presence; the pilot's
-  brevity is asserted, not assumed. The Pages workflow still copies named
+  `sitemap.xml`, `llms.txt` and README updated. “Go deeper” cites verified
+  primary sources (OWASP WSTG-CLNT-09, CWE-1021, the OWASP Clickjacking
+  Defense Cheat Sheet, MDN, CSP L3, PortSwigger) — **not** the Medium profile,
+  which has no clickjacking post; guide prose is first person throughout. New
+  stdlib `GuidesTests` (23 checks) covers navigation + content presence, pins
+  each reference URL, and guards the voice; the pilot's brevity is asserted,
+  not assumed. The Pages workflow still copies named
   directories only, so `cp -a guides _site/` is carried in
   `docs/pages-workflow-patch.md` for the maintainer — **without it the whole
   section 404s in production.**
@@ -125,7 +128,8 @@ PR.
 - **Status:** `NEXT`
 - **Goal:** Two concise guides for the Headers and CSP tools, same format as
   the pilot.
-- **Scope:** Headers guide + CSP guide, each linking to its tool and to Medium.
+- **Scope:** Headers guide + CSP guide, each linking to its tool and to
+  verified primary references (a blog link only if a post on that topic exists).
 - **Non-goals:** No full articles.
 - **Dependencies:** GUIDES-01.
 - **Acceptance criteria:** Both guides live and linked.
@@ -265,8 +269,8 @@ PR.
   PR #22).
 - **Work currently in review:** GUIDES-01 — branch `arena/01a003bd-cyberbuddy`,
   **PR #23**. Not merged.
-- **Last completed checks:** **201/201** stdlib tests
-  (`python3 -m unittest test_engines.py`, +24 this session: `GuidesTests` ×21,
+- **Last completed checks:** **203/203** stdlib tests
+  (`python3 -m unittest test_engines.py`, +26 this session: `GuidesTests` ×23,
   two new `PagesExclusionTests`, one new route test) · `node --check` clean on
   all 18 JS files · live `server.py` route + link crawl over `/guides/`,
   `/guides/clickjacking/`, `/tools/clickjacking/` and the hub (every local

@@ -157,15 +157,40 @@ X-Frame-Options: DENY</code></pre>
   </div>
   <article class="card reveal">
     <p>
-      This guide stops at what you need to confirm and close the finding.
-      Longer write-ups on request-level attacks and client-side analysis are
-      published on the maintainer's blog:
-      <a href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">amitpxl on Medium</a>.
+      I stop here because this is everything needed to confirm the finding and
+      write it up. If you want the underlying references — the ones I check
+      when a client disputes the severity — start with these:
     </p>
-    <p>
-      Reference reading: OWASP WSTG-CLNT-09 (Testing for Clickjacking) and
-      CWE-1021 (Improper Restriction of Rendered UI Layers or Frames).
-    </p>
+    <ul>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/09-Testing_for_Clickjacking" target="_blank" rel="noopener noreferrer">OWASP WSTG-CLNT-09 — Testing for Clickjacking</a>
+        — the test procedure this guide follows.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/1021.html" target="_blank" rel="noopener noreferrer">CWE-1021 — Improper Restriction of Rendered UI Layers or Frames</a>
+        — the identifier to cite in the report.
+      </li>
+      <li>
+        <a href="https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP Clickjacking Defense Cheat Sheet</a>
+        — remediation detail, including why a <code>&lt;meta&gt;</code> tag
+        cannot deliver either header.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors" target="_blank" rel="noopener noreferrer">MDN — CSP <code>frame-ancestors</code></a>
+        and
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options" target="_blank" rel="noopener noreferrer">MDN — <code>X-Frame-Options</code></a>
+        — exact syntax and browser support.
+      </li>
+      <li>
+        <a href="https://w3c.github.io/webappsec-csp/#frame-ancestors-and-frame-options" target="_blank" rel="noopener noreferrer">CSP Level 3 — <code>frame-ancestors</code> and <code>X-Frame-Options</code></a>
+        — the normative rule that <code>frame-ancestors</code> wins when both
+        are present.
+      </li>
+      <li>
+        <a href="https://portswigger.net/web-security/clickjacking" target="_blank" rel="noopener noreferrer">PortSwigger Web Security Academy — Clickjacking</a>
+        — labs to practise the attack against a target you are allowed to break.
+      </li>
+    </ul>
   </article>
 
   <div class="disclaimer reveal" style="--d: .1s;">

@@ -31,8 +31,8 @@ and catalog fallbacks.
 ## Guides
 
 Short, tool-connected notes live under `/guides/`. Each guide covers one
-weakness, points at the tool that confirms it, and links out to the
-maintainer's long-form Medium write-ups for depth — they are deliberately
+weakness, points at the tool that confirms it, and closes with primary
+references (OWASP, CWE, MDN, specs) for depth — they are deliberately
 concise, not a full article library. The pilot guide is
 [`guides/clickjacking/`](guides/clickjacking/), paired with the Clickjacking
 Validator.

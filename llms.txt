@@ -22,7 +22,7 @@
 
 ## Guides
 
-Short, tool-connected notes. Each guide covers one weakness, how to confirm it with the matching tool, and links out to the maintainer's long-form Medium write-ups for depth. Guides are intentionally concise; they are not a full article library.
+Short, tool-connected notes. Each guide covers one weakness, how to confirm it with the matching tool, and closes with primary references (OWASP, CWE, MDN, specs) for depth. Guides are intentionally concise; they are not a full article library.
 
 - Clickjacking (`/guides/clickjacking/`) — UI redressing, why X-Frame-Options alone is insufficient, how CSP frame-ancestors decides framing, and how to produce screenshot evidence with the Clickjacking Validator. OWASP WSTG-CLNT-09, CWE-1021.
 
