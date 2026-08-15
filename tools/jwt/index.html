@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- JWT-01: decode/inspect/verify is now functional. The page is
+       indexable again; Edit/Generate, Test Variants and Secret Test remain
+       non-operational previews (JWT-02/03). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'" />
+  <title>JWT Security Workbench — CyberBuddy</title>
+  <meta name="description" content="Decode, inspect and verify JSON Web Tokens locally in your browser. HMAC, RSA-PKCS#1, RSA-PSS and ECDSA verification with a key you supply — no token ever leaves the browser." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/" />
+  <meta property="og:title" content="JWT Security Workbench — CyberBuddy" />
+  <meta property="og:description" content="Decode, inspect and verify JWTs locally in your browser with the key you supply." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="JWT Security Workbench — CyberBuddy" />
+  <meta name="twitter:description" content="Decode, inspect and verify JWTs locally in your browser with the key you supply." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M10 2l-8 4v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M7.5 12l2.5 2.5L16.5 8' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/jwt.engine.js?v=20260814h" defer></script>
+  <script src="../../js/tool.jwt.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/tools/jwt/" data-init="initJwt">
+<main id="main" class="container page-hero">
+
+  <p class="kicker reveal">Tool 06 · Local in your browser</p>
+  <h1 class="reveal">JWT Security Workbench</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Decode &middot; Audit &middot; Verify &mdash; locally in your browser.
+    Paste a JWT and inspect its claims; supply a key to verify its signature.
+    No token ever leaves this browser.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">
+    <strong>RFC 7519</strong> &middot; <strong>RFC 7515</strong>
+    &middot; <strong>OWASP WSTG-SESS-10</strong> &middot; <strong>CWE-347</strong>
+  </p>
+  <p class="guide-link reveal" style="--d: .12s;">Read the concise
+    <a href="../../guides/jwt/">JWT guide</a> for how decoding differs from verification.</p>
+
+  <!-- Shared token input across the Analyze & Verify panel. -->
+  <div class="card jwt-input-card reveal" style="--d: .14s;">
+    <label class="jwt-field" for="jwtToken">
+      <span>Encoded JWT (compact JWS) or <code>Authorization: Bearer …</code> header</span>
+      <textarea id="jwtToken" class="jwt-token-input" spellcheck="false" autocomplete="off"
+        aria-describedby="jwtTokenError jwtTokenHint"
+        placeholder="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSJ9…"></textarea>
+    </label>
+    <p id="jwtTokenError" class="field-error hidden" role="alert"></p>
+    <p id="jwtTokenHint" class="form-hint">
+      The token is parsed in this tab only. It is never sent, stored, cached or
+      placed in the URL. <label class="jwt-mask"><input type="checkbox" id="jwtMask" />
+      Mask the raw token on screen</label>
+    </p>
+  </div>
+
+  <!-- Tab navigation. Analyze & Verify is functional; the other three are
+       JWT-02/03 previews and stay non-interactive. -->
+  <div class="jwt-tabs reveal" style="--d: .16s;">
+    <div class="jwt-tablist" role="tablist" aria-label="JWT Workbench panels">
+      <button type="button" role="tab" id="jwt-tab-analyze" class="jwt-tab is-active"
+        aria-selected="true" aria-controls="jwt-panel-analyze" tabindex="0">Analyze &amp; Verify</button>
+      <button type="button" role="tab" id="jwt-tab-edit" class="jwt-tab"
+        aria-selected="false" aria-controls="jwt-panel-edit" tabindex="-1">Edit &amp; Generate</button>
+      <button type="button" role="tab" id="jwt-tab-variants" class="jwt-tab"
+        aria-selected="false" aria-controls="jwt-panel-variants" tabindex="-1">Test Variants</button>
+      <button type="button" role="tab" id="jwt-tab-secret" class="jwt-tab"
+        aria-selected="false" aria-controls="jwt-panel-secret" tabindex="-1">Secret Test</button>
+    </div>
+
+    <!-- Analyze & Verify (JWT-01, functional) -->
+    <section role="tabpanel" id="jwt-panel-analyze" aria-labelledby="jwt-tab-analyze"
+      class="jwt-panel is-active" tabindex="0">
+
+      <div id="jwtDecodeEmpty" class="jwt-empty">
+        <p>Paste a token above to decode its header, payload and signature.</p>
+      </div>
+
+      <div id="jwtDecoded" class="hidden">
+        <div class="jwt-state-row" role="status" aria-live="polite">
+          <span id="jwtDecodedState" class="jwt-state jwt-state-decoded">Decoded</span>
+        </div>
+
+        <div class="grid-2 jwt-sections-grid">
+          <article class="card inset-card">
+            <h3 class="card-title">Header</h3>
+            <pre id="jwtHeader" class="raw-headers jwt-json"></pre>
+          </article>
+          <article class="card inset-card">
+            <h3 class="card-title">Payload</h3>
+            <pre id="jwtPayload" class="raw-headers jwt-json"></pre>
+          </article>
+        </div>
+
+        <article class="card inset-card">
+          <h3 class="card-title">Claims timeline</h3>
+          <p id="jwtTimeline" class="card note"></p>
+          <div id="jwtClaims" class="jwt-claims"></div>
+        </article>
+
+        <article class="card inset-card">
+          <h3 class="card-title">Observations</h3>
+          <ul id="jwtObservations" class="scope-list"></ul>
+          <p class="card note">Observations are contextual, not a score or a
+            verdict — they describe the decoded token only.</p>
+        </article>
+
+        <article class="card inset-card">
+          <h3 class="card-title">Verify signature</h3>
+          <p class="card note">
+            Verification is done entirely in your browser with the Web Crypto
+            API. <strong>Decoding is not verification</strong>: a valid
+            signature here proves only a match with the key you supply, not
+            that the target trusts it.
+          </p>
+          <div class="jwt-key-tabs" role="tablist" aria-label="Key type">
+            <button type="button" role="tab" id="jwt-key-secret-tab" class="jwt-key-tab is-active"
+              data-keytype="secret" aria-selected="true" aria-controls="jwt-key-secret">HMAC secret</button>
+            <button type="button" role="tab" id="jwt-key-pem-tab" class="jwt-key-tab"
+              data-keytype="pem" aria-selected="false" aria-controls="jwt-key-pem">PEM public key</button>
+            <button type="button" role="tab" id="jwt-key-jwk-tab" class="jwt-key-tab"
+              data-keytype="jwk" aria-selected="false" aria-controls="jwt-key-jwk">JWK</button>
+            <button type="button" role="tab" id="jwt-key-jwks-tab" class="jwt-key-tab"
+              data-keytype="jwks" aria-selected="false" aria-controls="jwt-key-jwks">JWKS</button>
+          </div>
+
+          <div class="jwt-key-panels">
+            <div id="jwt-key-secret" class="jwt-key-panel" role="tabpanel">
+              <label class="jwt-field"><span>HMAC shared secret (HS256/384/512)</span>
+                <input type="password" id="jwtSecret" autocomplete="off" placeholder="Shared secret" /></label>
+            </div>
+            <div id="jwt-key-pem" class="jwt-key-panel hidden" role="tabpanel" hidden>
+              <label class="jwt-field"><span>PEM SPKI public key (RSA / EC)</span>
+                <textarea id="jwtPem" placeholder="-----BEGIN PUBLIC KEY-----…" spellcheck="false"></textarea></label>
+            </div>
+            <div id="jwt-key-jwk" class="jwt-key-panel hidden" role="tabpanel" hidden>
+              <label class="jwt-field"><span>Public JWK (JSON)</span>
+                <textarea id="jwtJwk" placeholder='{"kty":"RSA", "n":"…", "e":"AQAB"}' spellcheck="false"></textarea></label>
+            </div>
+            <div id="jwt-key-jwks" class="jwt-key-panel hidden" role="tabpanel" hidden>
+              <label class="jwt-field"><span>JWKS (JSON with a "keys" array; key matched by kid)</span>
+                <textarea id="jwtJwks" placeholder='{"keys":[…]}' spellcheck="false"></textarea></label>
+            </div>
+          </div>
+
+          <div class="grid-2 jwt-sections-grid">
+            <label class="jwt-field"><span>Expected issuer (iss, optional)</span>
+              <input type="text" id="jwtExpIss" autocomplete="off" placeholder="https://issuer.example" /></label>
+            <label class="jwt-field"><span>Expected audience (aud, optional)</span>
+              <input type="text" id="jwtExpAud" autocomplete="off" placeholder="my-api" /></label>
+            <label class="jwt-field"><span>Expected subject (sub, optional)</span>
+              <input type="text" id="jwtExpSub" autocomplete="off" placeholder="user-123" /></label>
+            <label class="jwt-field"><span>Clock tolerance (seconds)</span>
+              <input type="number" id="jwtSkew" value="0" min="0" max="300" /></label>
+          </div>
+
+          <div class="jwt-verify-actions">
+            <button type="button" id="jwtVerify" class="btn btn-primary">Verify signature &amp; claims</button>
+            <label class="jwt-pin-alg"><input type="checkbox" id="jwtPinAlg" />
+              Pin algorithm to token header (<code id="jwtPinAlgLabel">—</code>)</label>
+          </div>
+
+          <div id="jwtVerifyResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Edit & Generate (JWT-02, preview) -->
+    <section role="tabpanel" id="jwt-panel-edit" aria-labelledby="jwt-tab-edit"
+      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      <div class="jwt-panel-head">
+        <h2>Edit &amp; Generate</h2>
+        <span class="jwt-phase jwt-phase-02">JWT-02 &middot; Planned</span>
+      </div>
+      <div class="jwt-preview-banner">
+        <strong>Coming in JWT-02.</strong> Modify header/payload claims and
+        re-sign locally to build authorized test tokens. The controls below are
+        previews and are not active yet.
+      </div>
+      <div class="grid-2 jwt-sections-grid">
+        <label class="jwt-field is-disabled"><span>Header editor</span>
+          <textarea disabled aria-disabled="true" placeholder="Disabled in this preview"></textarea></label>
+        <label class="jwt-field is-disabled"><span>Payload editor</span>
+          <textarea disabled aria-disabled="true" placeholder="Disabled in this preview"></textarea></label>
+      </div>
+      <article class="card inset-card">
+        <h3 class="card-title">Planned capabilities</h3>
+        <ul class="scope-list">
+          <li>Standard-claim helpers (<code>iss</code>, <code>sub</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>, <code>iat</code>, <code>jti</code>).</li>
+          <li>Signing for HMAC and private-key algorithms via Web Crypto.</li>
+          <li>Local RSA test-key generation for throwaway, authorized testing.</li>
+          <li>An original-versus-modified semantic diff before you sign.</li>
+          <li>Explicit <strong>TEST TOKEN</strong> labels and safe copy/download.</li>
+        </ul>
+      </article>
+    </section>
+
+    <!-- Test Variants (JWT-03, preview) -->
+    <section role="tabpanel" id="jwt-panel-variants" aria-labelledby="jwt-tab-variants"
+      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      <div class="jwt-panel-head">
+        <h2>Test variants</h2>
+        <span class="jwt-phase jwt-phase-03">JWT-03 &middot; Planned</span>
+      </div>
+      <div class="jwt-preview-banner">
+        <strong>Coming in JWT-03.</strong> Build authorized-test variants.
+        Each is a template for your testing &mdash; the tool never sends a token
+        or claims a server accepted it.
+      </div>
+      <div class="jwt-variant-grid">
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title"><code>alg: none</code></h3>
+          <p>Unsigned-token variant for testing whether the server enforces signature presence.</p>
+        </article>
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title">Claim manipulation</h3>
+          <p>Edit a claim and re-sign with a key you supply.</p>
+        </article>
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title">Algorithm confusion</h3>
+          <p>HMAC-signed-with-public-key variants, requiring the analyst-supplied public key &mdash; never fetched.</p>
+        </article>
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title">Embedded JWK</h3>
+          <p>A token carrying its own key in the header, to test header trust.</p>
+        </article>
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title">JKU / X5U</h3>
+          <p>Templates pointing at an analyst-controlled URL &mdash; no target request is made by the tool.</p>
+        </article>
+        <article class="card inset-card jwt-variant">
+          <h3 class="card-title"><code>kid</code> variants</h3>
+          <p>Path-style and SQL-style <code>kid</code> mutation templates for authorized key-selection testing.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Secret Test (JWT-03, preview) -->
+    <section role="tabpanel" id="jwt-panel-secret" aria-labelledby="jwt-tab-secret"
+      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      <div class="jwt-panel-head">
+        <h2>Secret test</h2>
+        <span class="jwt-phase jwt-phase-03">JWT-03 &middot; Planned</span>
+      </div>
+      <div class="jwt-preview-banner">
+        <strong>Coming in JWT-03.</strong> Bounded HMAC secret testing for
+        HS256/384/512 only, run in a Web Worker with progress and cancel.
+      </div>
+      <article class="card inset-card">
+        <h3 class="card-title">Planned bounds</h3>
+        <ul class="scope-list">
+          <li>A small built-in candidate list (not a giant bundled wordlist).</li>
+          <li>A custom wordlist <em>you</em> upload; read in the Worker and never persisted.</li>
+          <li>Progress and Cancel controls, with explicit resource limits on time and candidates.</li>
+          <li>HS256/384/512 only &mdash; no RSA/EC cracking, no network calls.</li>
+        </ul>
+      </article>
+      <div class="jwt-future">
+        <label class="jwt-field is-disabled"><span>Custom wordlist upload</span>
+          <input type="file" disabled aria-disabled="true" /></label>
+        <button type="button" class="btn btn-primary" disabled aria-disabled="true">Start secret test (disabled)</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Privacy and accuracy statements. -->
+  <section class="jwt-privacy reveal" style="--d: .18s;">
+    <div class="card inset-card">
+      <h2 class="card-title">Privacy &amp; accuracy</h2>
+      <p><strong>JWTs can be credentials.</strong> Treat every token like a
+        password or a session cookie.</p>
+      <ul class="scope-list does">
+        <li><strong>Fully local:</strong> decoding and verification run in this
+          browser via Web Crypto. No relays, no target requests, no storage,
+          no query/share state carrying a token.</li>
+        <li><strong>Decoding is not verification.</strong> Anyone can read the
+          header and payload without a key; that proves nothing about who
+          issued it.</li>
+        <li><strong>A valid signature with a key you supply proves only a
+          match with that key</strong>, not that the target trusts it.</li>
+        <li><strong>Generated variants (JWT-02/03) will not prove server
+          acceptance</strong> &mdash; a re-signed or <code>alg:none</code>
+          token is a test case until the target actually honors it.</li>
+        <li><strong>Live target testing is not part of the hosted tool.</strong>
+          CyberBuddy will not send a JWT to a target, a JWKS URL or a third party.</li>
+        <li><strong>Context over score.</strong> There is no numeric security
+          score; observations such as a missing <code>exp</code> are reported
+          in context, never as an automatic verdict.</li>
+      </ul>
+      <p class="guide-link">See the <a href="../../guides/jwt/">concise JWT
+        guide</a> for the background behind each statement.</p>
+    </div>
+  </section>
+
+  <!-- Phase status panel -->
+  <section class="jwt-phases reveal" style="--d: .2s;">
+    <div class="section-head"><h2>Implementation phases</h2></div>
+    <div class="jwt-phase-grid">
+      <article class="card inset-card jwt-phase-card jwt-phase-next">
+        <span class="jwt-phase-tag">JWT-00 &middot; Shipped</span>
+        <h3>Workbench preview</h3>
+        <p>Project integration and the three-phase plan.</p>
+      </article>
+      <article class="card inset-card jwt-phase-card jwt-phase-current">
+        <span class="jwt-phase-tag">JWT-01 &middot; Live</span>
+        <h3>Decode, inspect &amp; verify</h3>
+        <p>Strict compact-JWS parsing, header/payload display, claim timeline,
+          observations, and HMAC/RSA/PSS/ECDSA verification via Web Crypto. No
+          persistence, no network.</p>
+      </article>
+      <article class="card inset-card jwt-phase-card">
+        <span class="jwt-phase-tag">JWT-02 &middot; Planned</span>
+        <h3>Edit &amp; generate</h3>
+        <p>Header/payload editors, standard-claim helpers, semantic diff,
+          HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
+          labels, safe copy/download.</p>
+      </article>
+      <article class="card inset-card jwt-phase-card">
+        <span class="jwt-phase-tag">JWT-03 &middot; Planned</span>
+        <h3>Test variants &amp; bounded secret testing</h3>
+        <p><code>alg:none</code>, claim manipulation, algorithm confusion,
+          embedded JWK, JKU/X5U and <code>kid</code> templates; bounded
+          HS256/384/512 secret testing in a Web Worker.</p>
+      </article>
+    </div>
+  </section>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span><strong>Authorized testing only.</strong> Verify and test JWTs and
+      systems you own or have written permission to assess. The Workbench
+      processes tokens in this browser and makes no network requests.</span>
+  </div>
+
+</main>
+</body>
+</html>

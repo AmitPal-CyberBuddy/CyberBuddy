@@ -56,7 +56,12 @@ const PAGES = [
   ["guide-cors", "/guides/cors/"],
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
-  ["documentation", "/documentation/"]
+  ["documentation", "/documentation/"],
+  // JWT-00: development preview + its guide. Appended at the end on purpose:
+  // TOOLS = PAGES.slice(1, 5) stays the four URL-based scan tools; the JWT
+  // preview is local/non-operational and must never join the Run suite.
+  ["jwt-preview", "/tools/jwt/"],
+  ["guide-jwt", "/guides/jwt/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 

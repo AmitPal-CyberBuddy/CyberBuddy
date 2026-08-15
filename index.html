@@ -244,6 +244,15 @@
         <p class="tool-card-desc">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
         <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery">OWASP WSTG-SESS-05</span><span class="std-id" title="CWE-352 — Cross-Site Request Forgery (CSRF)">CWE-352</span></div>
       </a>
+      <!-- Static no-JS fallback for the JWT tool. The JS registry
+           (renderToolCards) replaces this grid from TOOLS_MENU. JWT-01
+           (decode/inspect/verify) is live; edit/generate and variants are
+           still in development (JWT-02/03). -->
+      <a class="tool-card card corner-card" href="tools/jwt/">
+        <h3>JWT Security Workbench</h3>
+        <p class="tool-card-desc">Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. No token leaves the page.</p>
+        <div class="tool-card-std"><span class="std-id" title="RFC 7519 — JSON Web Token">RFC 7519</span><span class="std-id" title="CWE-347 — Improper Verification of Cryptographic Signature">CWE-347</span></div>
+      </a>
     </div>
   </section>
 
