@@ -702,32 +702,33 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 }
 
 /* Findings */
-.findings { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.findings { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.88rem; }
 .findings th {
-  text-align: left; font-family: var(--font-mono); font-size: 0.64rem; font-weight: 600;
+  text-align: left; font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
-  padding: 0 8px 9px; border-bottom: 1px solid var(--line-strong);
+  padding: 0 12px 10px; border-bottom: 1px solid var(--line-strong);
 }
-.findings td { padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.findings td { padding: 16px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .findings tr:last-child td { border-bottom: 0; }
 .findings tbody tr { transition: background 0.12s ease; }
 .findings tbody tr:hover { background: var(--row-hover); }
-.findings td.k { color: var(--ink-2); width: 32%; font-family: var(--font-mono); font-size: 0.76rem; font-weight: 600; }
+.findings td.k { color: var(--ink); width: 30%; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; line-height: 1.45; padding-top: 17px; }
+.f-row-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .f-status {
-  display: inline-block; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700;
+  display: inline-block; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 9px;
-  border-radius: 999px; border: 1px solid; margin-bottom: 5px;
+  border-radius: 999px; border: 1px solid;
 }
 .f-status.protected, .f-status.ok { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
 .f-status.missing, .f-status.error { color: var(--high); background: var(--high-bg); border-color: var(--high-line); }
 .f-status.weak { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .f-status.info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
-.f-detail { color: var(--ink-2); font-size: 0.85rem; }
+.f-detail { color: var(--ink-2); font-size: 0.86rem; line-height: 1.55; margin-top: 4px; }
 .f-evidence {
-  display: block; margin-top: 7px; font-family: var(--font-mono); font-size: 0.72rem;
-  color: var(--ink-2); background: var(--chip-bg); border: 1px solid var(--line);
+  display: block; margin-top: 10px; font-family: var(--font-mono); font-size: 0.73rem;
+  line-height: 1.45; color: var(--ink-2); background: var(--chip-bg); border: 1px solid var(--line);
   border-left: 3px solid var(--brand); border-radius: 6px;
-  padding: 6px 9px; word-break: break-all; white-space: pre-wrap;
+  padding: 8px 12px; word-break: break-all; white-space: pre-wrap;
 }
 
 /* Reports */
@@ -1240,10 +1241,14 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .gauge-f .gauge-band { color: var(--high); }
 
 /* ---------- Posture rollup + severity --------------------------------- */
-.posture-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.posture-strip {
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.posture-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .posture-label {
-  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 600;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
   margin-right: 4px;
 }
 .posture-chip {
@@ -1256,8 +1261,21 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .posture-chip.low { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
 .posture-chip.info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
 
+.posture-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.posture-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600;
+  letter-spacing: 0.02em; padding: 3px 8px; border-radius: 6px;
+  border: 1px solid; line-height: 1.35;
+}
+.posture-tag .tag-icon { font-size: 0.68rem; font-weight: 700; line-height: 1; }
+.posture-tag.tag-missing { color: var(--high); background: var(--high-bg); border-color: var(--high-line); }
+.posture-tag.tag-weak { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+.posture-tag.tag-ok { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+.posture-tag.tag-info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
+
 .f-severity {
-  display: inline-block; margin-left: 6px;
+  display: inline-block;
   font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase;
   padding: 2px 8px; border-radius: 999px; border: 1px solid;
@@ -1268,11 +1286,16 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .f-severity.sev-info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
 .f-severity.sev-pass { color: var(--faint); background: var(--chip-bg); border-color: var(--line); }
 
-.f-fix { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); line-height: 1.55; }
+.f-fix {
+  margin: 10px 0 0; padding: 8px 12px; font-size: 0.82rem; color: var(--muted);
+  line-height: 1.55; background: rgba(62, 224, 194, 0.04);
+  border: 1px solid rgba(62, 224, 194, 0.15); border-left: 3px solid var(--brand);
+  border-radius: 6px;
+}
 .f-fix strong {
-  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700;
+  display: block; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand);
-  margin-right: 7px;
+  margin-bottom: 3px;
 }
 
 /* Per-check earned-weight bar (headers tool) */
@@ -2198,10 +2221,9 @@ html.js .reveal.in,
 .csrf-notes-grid { margin-top: 18px; }
 
 /* ==========================================================================
-   JWT Security Workbench (JWT-00) — development preview
-   The page is non-operational: these styles support the prominent preview
-   banner, accessible tab navigation and phase cards only. No result, score
-   or token-processing UI is styled here.
+   JWT Security Workbench (JWT-01/02/03) — live workbench styles
+   Full local workbench: Analyze & Verify, Edit & Generate, Test Variants,
+   and bounded Web Worker Secret Test.
    ========================================================================== */
 
 .jwt-preview-banner {

@@ -212,6 +212,11 @@ class OutcomeRollupTests(unittest.TestCase):
         self.assertEqual(result.risk, "low")
         self.assertIn("No arbitrary-origin reflection", result.summary)
 
+    def test_cors_absent_headers_indicates_pass(self):
+        result = self._cors_result({}, {})
+        self.assertEqual(result.risk, "low")
+        self.assertIn("Pass", result.summary)
+
     def test_reflection_outcomes_remain_medium_and_high(self):
         reflected_a = {"access-control-allow-origin": ATTACKER_A, "vary": "Origin"}
         reflected_b = {"access-control-allow-origin": ATTACKER_B, "vary": "Origin"}
@@ -671,6 +676,31 @@ console.log(JSON.stringify({
         self.assertEqual(result["fixedAllowlist"], "low")
         self.assertEqual(result["wildcardCredentials"], "medium")
         self.assertEqual(result["wildcardPublic"], "low")
+
+    def test_posture_html_renders_counts_and_header_tags(self):
+        html = self._run_app_js(r'''
+const checks = [
+  { name: "Content-Security-Policy", status: "missing", detail: "Absent" },
+  { name: "X-Frame-Options", status: "missing", detail: "Absent" },
+  { name: "Referrer-Policy", status: "weak", detail: "unsafe-url" },
+  { name: "X-Content-Type-Options", status: "ok", detail: "nosniff" },
+  { name: "Reporting", status: "info", detail: "no report-to" }
+];
+console.log(JSON.stringify({ html: postureHtml(checks) }));
+''')["html"]
+        self.assertIn('class="posture-counts"', html)
+        self.assertIn('Missing · 2', html)
+        self.assertIn('Weak · 1', html)
+        self.assertIn('OK · 1', html)
+        self.assertIn('Info · 1', html)
+        self.assertIn('class="posture-tags"', html)
+        self.assertIn('class="posture-tag tag-missing"', html)
+        self.assertIn('Content-Security-Policy', html)
+        self.assertIn('class="posture-tag tag-weak"', html)
+        self.assertIn('Referrer-Policy', html)
+        self.assertIn('class="posture-tag tag-ok"', html)
+        self.assertIn('X-Content-Type-Options', html)
+        self.assertIn('class="posture-tag tag-info"', html)
 
     def test_all_entry_points_use_shared_visible_validation(self):
         pages = [ROOT / "index.html"] + [
@@ -3581,6 +3611,14 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertTrue(any("jwt" in u for u in urls), urls)
         names = [s.get("name", "") for s in manifest.get("shortcuts", [])]
         self.assertTrue(any("JWT" in n for n in names), names)
+
+    def test_methodology_and_landing_page_mention_jwt(self):
+        methodology = (ROOT / "methodology" / "index.html").read_text(encoding="utf-8")
+        landing = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("JWT Security Workbench", methodology)
+        self.assertIn("JWT verification", methodology)
+        self.assertIn("JWT Security Workbench", landing)
+        self.assertIn("JWT analysis &amp; verification", landing)
 
 
 class CspPastedHeaderTests(unittest.TestCase):

@@ -9,18 +9,20 @@
   function $(id) { return document.getElementById(id); }
 
   function setVerdict(risk, text) {
-    $("verdict").textContent = risk;
-    $("verdict").className = "risk " + (risk === "PROBING" ? "unknown" : risk.toLowerCase());
+    const r = (risk || "").toLowerCase();
+    const isPass = r === "low" || r === "pass";
+    const displayRisk = isPass ? "PASS" : (risk === "PROBING" ? "PROBING" : (risk || "UNKNOWN").toUpperCase());
+    $("verdict").textContent = displayRisk;
+    $("verdict").className = "risk " + (risk === "PROBING" ? "unknown" : (isPass ? "low" : r));
     bump($("verdict"));
     $("summary").textContent = text;
     $("verdictBanner").className = "verdict-banner " +
-      (risk === "PROBING" ? "unknown" : risk.toLowerCase());
-    const r = (risk || "").toLowerCase();
+      (risk === "PROBING" ? "unknown" : (isPass ? "low" : r));
     let label, cls;
     if (r === "probing") { label = "CORS policy: checking…"; cls = "unknown"; }
-    else if (r === "low") { label = "CORS policy: RESTRICTIVE — no arbitrary-origin reflection"; cls = "low"; }
+    else if (isPass) { label = "CORS policy: RESTRICTIVE (PASS) — cross-origin reads are blocked"; cls = "low"; }
     else if (r === "medium") { label = "CORS policy: PERMISSIVE — review the findings"; cls = "medium"; }
-    else if (r === "high") { label = "CORS policy: PERMISSIVE — reflection + credentials"; cls = "high"; }
+    else if (r === "high") { label = "CORS policy: VULNERABLE — reflection + credentials"; cls = "high"; }
     else { label = "CORS policy: UNABLE TO DETERMINE"; cls = "unknown"; }
     $("protection").textContent = label;
     $("protection").className = "protection-line " + cls;

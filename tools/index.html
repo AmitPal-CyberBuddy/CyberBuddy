@@ -53,7 +53,7 @@
     browser and never scan a target.
   </p>
   <p class="std-line reveal" style="--d: .1s;">
-    <span class="count" id="toolCount">05 live</span> · authorized testing only · all scans are read-only GETs
+    <span class="count" id="toolCount">06 live</span> · authorized testing only · all scans are read-only GETs
   </p>
 
   <div id="toolCatalog">
@@ -142,17 +142,17 @@
           <a class="btn btn-primary btn-sm" href="csrf/">Launch CSRF PoC Generator</a>
         </article>
 
-        <!-- JWT-01: decode/inspect/verify is live; edit/generate (JWT-02)
-             and variants/secret-test (JWT-03) remain in development. The
-             JS catalog renderer (renderToolCatalog) reads TOOLS_MENU. -->
+        <!-- JWT-01/02/03: decode/inspect/verify, edit/generate, test variants,
+             and offline HMAC secret testing are all live. The JS catalog
+             renderer (renderToolCatalog) reads TOOLS_MENU. -->
         <article class="card tool-catalog-card">
           <div class="tool-catalog-head"><h3>JWT Security Workbench</h3><span class="cat-badge cat-local">Local utilities</span></div>
-          <p class="tool-catalog-purpose">Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. No token leaves the page.</p>
+          <p class="tool-catalog-purpose">Decode, inspect, verify, edit, and re-sign JWTs locally in your browser with Web Crypto — HMAC, RSA-PKCS#1, RSA-PSS, and ECDSA. Test variant templates and run bounded HMAC secret dictionary searches.</p>
           <dl class="catalog-meta">
             <dt>Input</dt><dd>JWT / Bearer token</dd>
             <dt>Mode</dt><dd>Local in your browser — no token leaves the page</dd>
-            <dt>Evidence</dt><dd>Decoded header/payload, claim timeline, observations, signature verification</dd>
-            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">RFC 7519</span><span class="std-id">RFC 7515</span><span class="std-id">CWE-347</span></dd>
+            <dt>Evidence</dt><dd>Decoded claims, verification, semantic diff, re-signing, test variants, and HMAC secret matching</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-SESS-10</span><span class="std-id">RFC 7519</span><span class="std-id">RFC 7515</span><span class="std-id">CWE-347</span></dd>
           </dl>
           <a class="btn btn-primary btn-sm" href="jwt/">Launch JWT Security Workbench</a>
         </article>

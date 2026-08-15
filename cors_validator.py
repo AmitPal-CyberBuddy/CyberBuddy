@@ -194,7 +194,7 @@ def scan_cors(
         )
     elif both_absent:
         risk = "low"
-        summary = "No usable CORS headers for the probe origins. Cross-origin reads are blocked."
+        summary = "No CORS headers found for the probe origins. Cross-origin reads are blocked by default (Pass)."
     else:
         risk = "low"
         summary = "No arbitrary-origin reflection detected across two probe Origins. Review any cache-hardening recommendation separately."
