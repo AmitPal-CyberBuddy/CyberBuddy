@@ -70,6 +70,18 @@
   <div id="evidenceToggle"></div>
   <div id="relayGate" class="hidden"></div>
 
+  <details class="pages-note paste-csp">
+    <summary>📋 Analyze a pasted CSP header instead of a URL</summary>
+    <div class="pages-note-body">
+      <p>Paste a raw <code>Content-Security-Policy</code> (or <code>Content-Security-Policy-Report-Only</code>) header value — with or without the header name — to audit it directly. This runs entirely in your browser: no network request is made and no target is contacted.</p>
+      <label class="csp-paste-label" for="cspHeaderInput">CSP header</label>
+      <textarea id="cspHeaderInput" class="csp-paste-input" rows="4" spellcheck="false" autocomplete="off"
+        placeholder="Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'"></textarea>
+      <p id="cspHeaderError" class="field-error hidden" role="alert"></p>
+      <div><button id="cspHeaderGo" type="button" class="btn btn-primary">Audit pasted policy</button></div>
+    </div>
+  </details>
+
   <details class="pages-note how-note">
     <summary>ℹ What this audit can prove</summary>
     <div class="pages-note-body">

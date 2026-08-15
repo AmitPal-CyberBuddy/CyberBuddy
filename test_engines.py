@@ -3583,6 +3583,134 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertTrue(any("JWT" in n for n in names), names)
 
 
+class CspPastedHeaderTests(unittest.TestCase):
+    """The CSP Policy Auditor must accept a pasted Content-Security-Policy
+    header value (with or without the header name) and grade it with no
+    network request, and the 0-100 score / A-F grade must agree between the
+    Python and browser engines."""
+
+    PASTED = (
+        "default-src 'self'; script-src 'self'; object-src 'none'; "
+        "frame-ancestors 'none'"
+    )
+
+    def test_python_grades_pasted_header_without_delivery_false_positive(self):
+        from csp_checker import grade_csp_from_header
+
+        result = grade_csp_from_header("Content-Security-Policy: " + self.PASTED)
+        # A pasted header has no URL/status and must not claim the page is
+        # delivered over HTTP.
+        self.assertEqual(result.url, "")
+        self.assertEqual(result.final_url, "")
+        self.assertIsNone(result.status_code)
+        mixed = next(c for c in result.checks if c.name == "Mixed-content control")
+        self.assertEqual(mixed.status, "ok")
+        self.assertNotIn("delivered over HTTP", mixed.detail)
+        # The enforced policy is present, so it is not reported as missing.
+        self.assertNotEqual(
+            next(c for c in result.checks if c.name == "Enforced response policy").status,
+            "missing",
+        )
+        self.assertIsNotNone(result.score)
+        self.assertIn(result.grade, "ABCDF")
+
+    def test_python_pasted_header_label_and_report_only(self):
+        from csp_checker import grade_csp_from_header
+
+        labeled = grade_csp_from_header("Content-Security-Policy: default-src 'none'")
+        self.assertEqual(labeled.policy, "default-src 'none'")
+        self.assertEqual(labeled.report_only_policy, "")
+
+        report_only = grade_csp_from_header(
+            "Content-Security-Policy-Report-Only: default-src 'self'"
+        )
+        self.assertEqual(report_only.report_only_policy, "default-src 'self'")
+        self.assertEqual(report_only.policy, "")
+        # Report-only does not enforce: enforced policy is missing.
+        self.assertEqual(
+            next(c for c in report_only.checks if c.name == "Enforced response policy").status,
+            "missing",
+        )
+
+    def test_score_and_grade_agree_between_python_and_browser(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        from csp_checker import grade_csp_from_header
+
+        cases = [
+            self.PASTED,
+            "default-src *; script-src * 'unsafe-inline'",
+            "Content-Security-Policy-Report-Only: default-src 'self'",
+            "Content-Security-Policy: default-src 'none'; script-src 'nonce-abc' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        ]
+        py = [grade_csp_from_header(case) for case in cases]
+
+        harness = r"""
+const cases = JSON.parse(process.argv[2]);
+const out = cases.map((c) => {
+  const r = gradeCspFromHeader(c);
+  return { risk: r.risk, score: r.score, grade: r.grade, policy: r.policy,
+           report_only: r.report_only_policy, pasted: !!r._pasted,
+           source: r._source, tag: scanTag(r) };
+});
+console.log(JSON.stringify(out));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path, json.dumps(cases)],
+                cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        js = json.loads(proc.stdout.strip().splitlines()[-1])
+
+        self.assertEqual(len(js), len(py))
+        for case, python, browser in zip(cases, py, js):
+            with self.subTest(case=case):
+                self.assertEqual(browser["risk"], python.risk)
+                self.assertEqual(browser["score"], python.score)
+                self.assertEqual(browser["grade"], python.grade)
+                self.assertEqual(browser["policy"], python.policy)
+                self.assertEqual(browser["report_only"], python.report_only_policy)
+                self.assertTrue(browser["pasted"])
+                self.assertEqual(browser["source"], "pasted")
+                self.assertEqual(browser["tag"], "")  # no LIVE/CACHED tag for pasted
+
+    def test_pasted_header_has_no_scan_tag_and_local_source(self):
+        """A pasted header is local, not a scan — it must not read as LIVE/CACHED."""
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function scanTag(")
+        body = app[start:app.index("function parseCsp(", start)]
+        self.assertIn('data._source === "pasted"', body)
+        self.assertIn('"pasted header (local)"', app)
+        self.assertIn("gradeCspFromHeader", app)
+
+    def test_csp_page_offers_the_paste_affordance(self):
+        page = (ROOT / "tools" / "csp" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="cspHeaderInput"', page)
+        self.assertIn('id="cspHeaderGo"', page)
+        self.assertIn('id="cspHeaderError"', page)
+        controller = (ROOT / "js" / "tool.csp.js").read_text(encoding="utf-8")
+        self.assertIn("gradeCspFromHeader", controller)
+        self.assertIn("_pasted", controller)
+
+
 class PagesAssetVerificationTests(unittest.TestCase):
     """The Pages workflow's "Verify referenced assets exist" step must accept
     root-relative references (404.html points at /CyberBuddy/… assets so it

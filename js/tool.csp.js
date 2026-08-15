@@ -9,15 +9,28 @@
   function setVerdict(data) {
     const unreachable = !!data._unreachable;
     const risk = unreachable ? "unreachable" : (data.risk || "unknown").toLowerCase();
-    $("verdict").textContent = unreachable ? "UNREACHABLE" : risk.toUpperCase();
+    const grade = data.grade || "";
+    const score = data.score != null ? data.score : null;
+
+    if (unreachable) {
+      $("verdict").textContent = "UNREACHABLE";
+    } else if (grade && score != null) {
+      // Present the 0-100 posture score and A-F grade as the headline, not a
+      // HIGH/MEDIUM/LOW severity that overstates a configuration weakness.
+      $("verdict").textContent = grade + " · " + score + "/100";
+    } else {
+      $("verdict").textContent = "UNKNOWN";
+    }
     $("verdict").className = "risk " + risk;
     $("verdictBanner").className = "verdict-banner " + risk;
     bump($("verdict"));
 
     let label = unreachable ? "CSP posture: NOT GRADED — target unreachable" : "CSP posture: UNABLE TO DETERMINE";
-    if (risk === "low") label = "CSP posture: RESTRICTIVE — no obvious dangerous source pattern";
-    else if (risk === "medium") label = "CSP posture: NEEDS HARDENING — review directive gaps";
-    else if (risk === "high") label = "CSP posture: HIGH-RISK — enforcement or script controls are weak";
+    if (grade === "A") label = "CSP posture: STRONG — no dangerous source pattern";
+    else if (grade === "B") label = "CSP posture: GOOD — a few optional hardening gaps";
+    else if (grade === "C") label = "CSP posture: FAIR — review the directive gaps";
+    else if (grade === "D") label = "CSP posture: WEAK — multiple controls need hardening";
+    else if (grade === "F") label = "CSP posture: CRITICAL — enforcement or script controls are weak";
     $("protection").textContent = label;
     $("protection").className = "protection-line " + risk;
     $("summary").textContent = data.summary || "";
@@ -29,12 +42,13 @@
     setSourceChip(data);
     setVerdict(data);
 
-    $("mTarget").textContent = data.url || "—";
-    $("mFinal").textContent = data.final_url || "—";
+    const pasted = !!data._pasted;
+    $("mTarget").textContent = pasted ? "(pasted header)" : (data.url || "—");
+    $("mFinal").textContent = pasted ? "—" : (data.final_url || "—");
     $("mStatus").textContent = data.status_code != null ? String(data.status_code) : "—";
     $("mStamp").textContent = fmtStampUtc();
     $("mEngine").textContent = sourceLabel(data);
-    $("mMethod").textContent = "GET · read-only";
+    $("mMethod").textContent = pasted ? "Pasted header · local" : "GET · read-only";
     $("mChecks").textContent = String((data.checks || []).length);
     $("mDuration").textContent = data._duration_ms != null ? data._duration_ms + " ms" : "—";
 
@@ -115,6 +129,38 @@
 
     $("url").addEventListener("keydown", (event) => {
       if (event.key === "Enter") $("go").click();
+    });
+
+    // Paste-a-header mode: grade a raw CSP header value with no network.
+    const headerInput = $("cspHeaderInput");
+    const headerError = $("cspHeaderError");
+    const headerGo = $("cspHeaderGo");
+    const showHeaderError = (message) => {
+      headerError.classList.remove("hidden");
+      headerError.textContent = message;
+      headerInput.setAttribute("aria-invalid", "true");
+    };
+    const clearHeaderError = () => {
+      headerError.classList.add("hidden");
+      headerError.textContent = "";
+      headerInput.removeAttribute("aria-invalid");
+    };
+    headerInput.addEventListener("input", clearHeaderError);
+    headerGo.addEventListener("click", () => {
+      const raw = headerInput.value;
+      if (!raw.trim()) {
+        showHeaderError("Paste a Content-Security-Policy header value first.");
+        headerInput.focus();
+        return;
+      }
+      const data = gradeCspFromHeader(raw);
+      if (!data || !data.policy && !data.report_only_policy) {
+        showHeaderError("That did not look like a CSP header value. Check the text and try again.");
+        return;
+      }
+      clearHeaderError();
+      $("staticNotice").classList.add("hidden");
+      render(data);
     });
 
     initExportMenu("CSP Policy Auditor", () => cbLastData);

@@ -989,6 +989,7 @@ function sourceLabel(data) {
   if (s === "relay-cached") return "third-party relay (cached 10 min)";
   if (s === "cache-lookup") return "this browser (cached 10 min)";
   if (s === "browser") return "this browser";
+  if (s === "pasted") return "pasted header (local)";
   if (s === "none") return "no engine";
   return s || "live";
 }
@@ -1295,7 +1296,7 @@ function renderProvenance(data, toolName) {
   const bits = [
     '<span class="prov-brand">CyberBuddy · ' + esc(toolName) + "</span>",
     '<span class="prov-sep">|</span>',
-    "<span>" + esc(redactUrlCredentials((data && data.url) || "—")) + "</span>",
+    "<span>" + esc((data && data._pasted) ? "pasted header" : (redactUrlCredentials((data && data.url) || "—"))) + "</span>",
     '<span class="prov-sep">|</span>',
     "<span>" + esc(fmtStampUtc()) + "</span>",
     '<span class="prov-sep">|</span>',
@@ -1673,10 +1674,13 @@ function buildEvidenceCardSpec(data, toolName) {
 
   if (kind === "csp") {
     const directives = Object.keys(data.directives || {}).sort();
+    const gradeHero = data.grade
+      ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100" : "";
+    const posture = risk === "low" ? "ENFORCED POLICY IS RESTRICTIVE" : "POLICY NEEDS ATTENTION";
     return {
       kind: kind,
       title: "CSP POLICY AUDITOR",
-      hero: (risk === "low" ? "ENFORCED POLICY IS RESTRICTIVE" : "POLICY NEEDS ATTENTION") + " · " + risk.toUpperCase(),
+      hero: (gradeHero ? gradeHero + " · " : "") + posture,
       risk: risk,
       meta: commonMeta.concat(caveats),
       summary: data.summary || "",
@@ -2047,11 +2051,12 @@ function toMarkdown(data) {
   const title = reportToolTitle(data);
   const risk = (data.risk || "unknown").toUpperCase();
   const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
+  const pasted = !!data._pasted;
   const lines = [
     "# CyberBuddy — " + title + " Report",
     "",
-    "- **Target:** " + mdCell(redactUrlCredentials(data.url)),
-    "- **Final URL:** " + mdCell(redactUrlCredentials(data.final_url || data.url)),
+    "- **Target:** " + (pasted ? "pasted header (no target)" : mdCell(redactUrlCredentials(data.url))),
+    "- **Final URL:** " + (pasted ? "—" : mdCell(redactUrlCredentials(data.final_url || data.url))),
     "- **HTTP status:** " + (data.status_code != null ? data.status_code : "—"),
     "- **Risk:** " + risk + grade,
     "- **Source:** " + sourceLabel(data),
@@ -2124,8 +2129,8 @@ function toStandaloneHtml(data) {
     "<title>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</title><style>" +
     "body{font:15px/1.55 system-ui,sans-serif;color:#172033;max-width:1200px;margin:40px auto;padding:0 24px}h1{margin-bottom:8px}h2{margin-top:32px}dl{display:grid;grid-template-columns:140px 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}.risk{text-transform:uppercase;font-weight:800}.caveat{padding:12px;border-left:4px solid #b54708;background:#fff7ed}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border:1px solid #d7dde7;text-align:left;vertical-align:top}th{background:#eef2f7}code,pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:2px 4px}pre{padding:12px}@media print{body{margin:0;max-width:none}tr{break-inside:avoid}}</style></head><body>" +
     "<h1>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</h1><p>Authorized testing only · results are advisory</p>" + caveat +
-    "<dl><dt>Target</dt><dd>" + safe(redactUrlCredentials(data.url)) + "</dd><dt>Final URL</dt><dd>" +
-    safe(redactUrlCredentials(data.final_url || data.url)) + "</dd><dt>HTTP status</dt><dd>" +
+    "<dl><dt>Target</dt><dd>" + (data._pasted ? "pasted header (no target)" : safe(redactUrlCredentials(data.url))) + "</dd><dt>Final URL</dt><dd>" +
+    (data._pasted ? "—" : safe(redactUrlCredentials(data.final_url || data.url))) + "</dd><dt>HTTP status</dt><dd>" +
     safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
     safe(data.risk || "unknown") + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
     "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(new Date().toISOString()) +
@@ -2388,6 +2393,9 @@ function postureHtml(checks) {
    mistaken for a fresh scan, and the tag says which one you are reading. */
 function scanTag(data) {
   if (!data || !data._source) return "";
+  // A pasted header is not a scan of a target, so it carries no LIVE/CACHED
+  // tag — there is no target that was scanned.
+  if (data._source === "pasted") return "";
   const cached = data._source === "cache";
   return '<span class="scan-tag ' + (cached ? "cached" : "live") + '" title="' +
     (cached
@@ -2698,7 +2706,9 @@ function gradeHeadersFromMap(url, status, finalUrl, headers, source) {
    Dedicated CSP audit used by /tools/csp/. This is a pure grader: the
    Python API, published cache and browser fallback all feed it the same
    header map, and tests/csp_fixtures.json locks the two implementations
-   together. No synthetic numeric score is invented for CSP. */
+   together. The 0-100 score is derived deterministically from finding
+   severities (see cspScore); it is a configuration-posture score, never a
+   vulnerability-severity rating. */
 
 const CSP_SUGGESTED_POLICY =
   "default-src 'self'; base-uri 'self'; object-src 'none'; " +
@@ -2904,7 +2914,9 @@ function cspCheckNavigation(directives, name, label, missingSeverity, recommenda
 function cspCheckMixed(directives, finalUrl) {
   let protocol = "";
   try { protocol = new URL(finalUrl).protocol; } catch (_) { /* leave empty */ }
-  if (protocol !== "https:") {
+  // A pasted header has no delivery context (finalUrl is empty), so skip the
+  // cleartext-delivery finding and only run the directive-level source check.
+  if (finalUrl && protocol !== "https:") {
     return cspFinding("Mixed-content control", "weak",
       "The final page is delivered over HTTP, so the CSP itself can be stripped or modified in transit.",
       finalUrl, "high",
@@ -2981,6 +2993,22 @@ function combineCspPolicyChecks(perPolicy) {
   });
 }
 
+/* Derive a 0-100 configuration-posture score from finding severities. These
+   are posture weights, not a vulnerability-severity rating: a misconfigured
+   CSP is defence-in-depth, so the score is the honest headline rather than a
+   HIGH/MEDIUM/LOW that reads like exploitability. Mirrors _csp_score in
+   csp_checker.py. */
+const CSP_DEDUCTIONS = { high: 20, medium: 10, low: 5 };
+function cspScore(checks) {
+  let total = 0;
+  (checks || []).forEach((item) => {
+    if (item.status === "missing" || item.status === "weak" || item.status === "error") {
+      total += CSP_DEDUCTIONS[item.severity] || 0;
+    }
+  });
+  return Math.max(0, 100 - total);
+}
+
 function gradeCspFromMap(url, status, finalUrl, headers, source) {
   const normalized = {};
   Object.keys(headers || {}).forEach((key) => { normalized[String(key).toLowerCase()] = String(headers[key]); });
@@ -3003,11 +3031,14 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
     directives = parsed[0].directives;
     let https = false;
     try { https = new URL(final).protocol === "https:"; } catch (_) { /* false */ }
-    checks.push(cspFinding("Enforced response policy", https ? "ok" : "weak",
+    // A pasted header (final == "") has no delivery context: the policy's
+    // presence is what matters, not whether the page is served over HTTPS.
+    const deliveryOk = !final || https;
+    checks.push(cspFinding("Enforced response policy", deliveryOk ? "ok" : "weak",
       "Found " + policies.length + " enforced CSP response " +
       (policies.length === 1 ? "policy." : "policies. Multiple policies combine restrictively."),
-      policy.slice(0, 500), https ? "pass" : "high",
-      https ? "" : "Serve the page and its CSP over HTTPS so the policy cannot be stripped in transit."));
+      policy.slice(0, 500), deliveryOk ? "pass" : "high",
+      deliveryOk ? "" : "Serve the page and its CSP over HTTPS so the policy cannot be stripped in transit."));
     const duplicates = Array.from(new Set(parsed.flatMap((item) => item.duplicates))).sort();
     if (duplicates.length) {
       checks.push(cspFinding("Policy syntax", "weak",
@@ -3066,12 +3097,15 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
   ["content-security-policy", "content-security-policy-report-only"].forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(normalized, key)) interesting[key] = normalized[key];
   });
+  const score = cspScore(checks);
   return {
     url: url,
     final_url: final,
     status_code: status,
     checks: checks,
     risk: risk,
+    score: score,
+    grade: gradeLetter(score),
     summary: summary,
     policy: policy,
     report_only_policy: reportOnly,
@@ -3080,6 +3114,25 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
     headers: interesting,
     _source: source || "live"
   };
+}
+
+/* A pasted CSP header is graded entirely locally — no target is contacted.
+   Mirrors ``grade_csp_from_header`` in csp_checker.py. */
+function parseCspHeaderText(raw) {
+  const text = String(raw == null ? "" : raw).trim();
+  const m = /^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$/is.exec(text);
+  if (m) return { name: m[1].toLowerCase(), value: m[2].trim() };
+  return { name: "", value: text };
+}
+
+function gradeCspFromHeader(raw) {
+  const { name, value } = parseCspHeaderText(raw);
+  const headers = {};
+  if (name === "content-security-policy-report-only") headers["content-security-policy-report-only"] = value;
+  else headers["content-security-policy"] = value;
+  const result = gradeCspFromMap("", null, "", headers, "pasted");
+  result._pasted = true;
+  return result;
 }
 
 /* ---------- Clickjacking scoring ---------------------------------------- */
@@ -3806,6 +3859,7 @@ const SOURCE_EXPLAIN = {
   browser: "Graded in this browser from a direct read of the target.",
   "cache-lookup": "Reused this browser's 10-minute header cache from an earlier scan.",
   "relay-cached": "Relayed header values reused from this browser's 10-minute cache — still not independently verified.",
+  pasted: "Graded locally from a pasted header value — no target was contacted.",
   none: "No engine answered this scan."
 };
 
