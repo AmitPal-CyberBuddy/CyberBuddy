@@ -7,6 +7,7 @@ Routes
 ------
 GET /                       hub (index.html)
 GET /methodology/           scoring + engine notes
+GET /documentation/         how to run the suite, CLI, export, hosted limits
 GET /guides/                guides index + pilot guide
 GET /tools/                 tools catalog (every tool in one directory)
 GET /css/app.css            shared styles
@@ -49,7 +50,7 @@ ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
 
 ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json", ".png", ".xml", ".webmanifest", ".txt"}
-STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/", "methodology/", "guides/")
+STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/", "methodology/", "guides/", "documentation/")
 ROOT_STATIC = frozenset({
     "index.html", "404.html",
     "robots.txt", "sitemap.xml", "manifest.webmanifest",
@@ -366,12 +367,15 @@ class Handler(BaseHTTPRequestHandler):
             or path.startswith("/methodology/")
             or path == "/guides"
             or path.startswith("/guides/")
+            or path == "/documentation"
+            or path.startswith("/documentation/")
         ):
             rel = path.lstrip("/")
             # /tools → /tools/ (the tools catalog)
             # /tools/clickjacking → /tools/clickjacking/
             # /methodology → /methodology/
             # /guides → /guides/ ; /guides/clickjacking → /guides/clickjacking/
+            # /documentation → /documentation/
             if not rel.endswith("/") and "." not in Path(rel).name:
                 dest = path.rstrip("/") + "/"
                 if parsed.query:

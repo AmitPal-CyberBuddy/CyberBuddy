@@ -20,11 +20,11 @@ handoff” for the state at the end of that session.
 | --- | --- |
 | Latest merged feature/PR | **IA-01 — scalable tool information architecture** (PR #22, merge commit `2956801`). Verified present in `origin/main` before this session; not re-applied. |
 | Live tools | 5 — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator |
-| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · **Guides (`/guides/`, new this session — one guide per tool, 5 live)** |
-| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **203** after GUIDES-01/02/03 |
+| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · **Guides (`/guides/`, new this session — one guide per tool, 5 live)** · **Documentation (`/documentation/`, new this session — footer-linked operator docs)** |
+| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **203** after GUIDES-01/02/03; **221** after DOCS-01 |
 | JavaScript file total | **18** (11 under `js/`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout 131 · dropdown 132 · overlays 48 · relay-gate 17 · responsive 224 · csrf 22 — **574 checks** (Chromium) plus IA-01's catalog checks; not runnable in the Arena sandbox |
-| Pages assembly result | Hub, 404, methodology, catalog and five tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. **`guides/` is not copied yet** — see the maintainer follow-up in §5 (all six guide pages depend on it). |
+| Pages assembly result | Hub, 404, methodology, catalog and five tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. **`guides/` and `documentation/` are not copied yet** — see the maintainer follow-up in §5 (all six guide pages and the documentation page depend on it). |
 | Release/version state | **Pre-1.0** — no tagged release; `main` carries the live site via GitHub Pages |
 
 Tool categories in force (from IA-01): **Assess targets** (Clickjacking,
@@ -159,6 +159,35 @@ PR.
   and MDN `Set-Cookie`. Both stay under the 1200-word ceiling `GuidesTests`
   enforces.
 
+### DOCS-01 — In-site documentation page
+- **Status:** `IN REVIEW`
+- **Goal:** Replace the footer's off-site "Documentation" → GitHub `#readme`
+  link with a real page in the site shell.
+- **Scope:** `documentation/index.html` (quick start, which engine answers, the
+  four Python CLIs, evidence/export, hosted-build limits, what leaves the
+  browser, then a hand-off to GitHub for contributor material) · footer link
+  retarget · `server.py` route pair · `sitemap.xml` / `llms.txt` / `README.md`.
+- **Non-goals:** No header nav entry (the four-item budget IA-01 settled on
+  stands — this is footer-only). No third copy of the scoring rules or the
+  privacy text: the page links to `/methodology/#hosted-scans` and
+  `/methodology/#privacy` instead.
+- **Dependencies:** IA-01 (footer structure), GUIDES-01 (page-shell template).
+- **Acceptance criteria:** `/documentation/`, `/documentation` and
+  `/CyberBuddy/documentation/` all resolve; the footer link no longer leaves
+  the site; no scoring text duplicated.
+- **Required tests:** `DocumentationPageTests` (18) — shell, canonical/OG/
+  Twitter, `../` asset paths, external-link hygiene, footer link internal +
+  README hop gone, operator-content presence, first person, methodology
+  deferral, hosted-limit honesty, header nav unchanged, sitemap/`llms.txt`/
+  `README.md`/`server.py` wiring, and the carried workflow copy line.
+- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (folded into the
+  Guides PR at the maintainer's request — the docs page had to ship before
+  merge, not as a follow-up).
+- **Notes:** The directory is `documentation/`, **not** `docs/`: the Pages
+  leak guard fails the build when `_site/docs` exists, so a `docs/` page would
+  never publish. Needs the same kind of unpushable workflow line as `guides/`
+  (see `docs/pages-workflow-patch.md`).
+
 ### ABOUT-01 — Dedicated About page
 - **Status:** `NEXT`
 - **Goal:** A dedicated About page covering product purpose, scope, privacy,
@@ -277,20 +306,26 @@ PR.
 
 - **Last verified `origin/main`:** `17e66e2` (IA-01 merged as `2956801`,
   PR #22).
-- **Work currently in review:** GUIDES-01 **+ GUIDES-02 + GUIDES-03** — branch
-  `arena/01a003bd-cyberbuddy`, **PR #23**. Not merged. The maintainer lifted
-  GUIDES-01's "one pilot guide only" non-goal mid-session: all five tools now
-  ship a guide in the same PR.
+- **Work currently in review:** GUIDES-01 **+ GUIDES-02 + GUIDES-03 +
+  DOCS-01** — branch `arena/01a003bd-cyberbuddy`, **PR #23**. Not merged. The
+  maintainer lifted GUIDES-01's "one pilot guide only" non-goal mid-session
+  (all five tools now ship a guide in the same PR) and then added DOCS-01 to
+  the same PR rather than deferring it.
 - **Delivered:** `guides/index.html` plus `guides/{clickjacking,headers,cors,
   csp,csrf}/index.html`. Every tool page carries a `p.guide-link` backlink
   under its standards line; the guides index lists five real cards (the
-  "more guides coming" ghost card is gone) and reads `05 live`.
-- **Last completed checks:** **203/203** stdlib tests
+  "more guides coming" ghost card is gone) and reads `05 live`. Plus
+  `documentation/index.html` — the footer's "Documentation" entry now points at
+  `base + '/documentation/'` instead of the GitHub README anchor, which was the
+  only link in that column that ejected the visitor off-site.
+- **Last completed checks:** **221/221** stdlib tests
   (`python3 -m unittest test_engines.py`; `GuidesTests` ×23, now parameterised
   over all five guides via a `GUIDES` table of tool slug + standards +
   reference URLs) · `node --check` clean on all 18 JS files · live `server.py`
   crawl: all six guide routes 200 and every local `href`/`src` inside them
-  resolves 200 · `sitemap.xml` parses and lists all six guide URLs.
+  resolves 200 · `sitemap.xml` parses and lists all six guide URLs · the three
+  `/documentation/` routes return 301/200/200 (`/documentation`,
+  `/documentation/`, `/CyberBuddy/documentation/`).
 - **Voice and sourcing rules (maintainer directives, keep enforcing):** guides
   are written in the **first person** — never "the maintainer" / narrator
   voice — and **never** link the Medium profile as a per-tool deep dive, since
@@ -320,7 +355,8 @@ PR.
   `tests/browser/responsive.js` the guide entries **must stay appended at the
   end**: `TOOLS = PAGES.slice(1, 5)`.
 - **Next approved roadmap ID:** `ABOUT-01`.
-- **Files/traps the next session must read:** `REVIEW.md` §23 (GUIDES-01/02/03)
+- **Files/traps the next session must read:** `REVIEW.md` §23 (GUIDES-01/02/03
+  + DOCS-01)
   · `docs/DEV-NOTES.md` ("GUIDES traps") · `docs/ROADMAP.md` ·
   `guides/clickjacking/index.html` (the shape every guide copies) ·
   `docs/pages-workflow-patch.md` (unapplied).

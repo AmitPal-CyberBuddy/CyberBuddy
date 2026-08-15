@@ -2383,6 +2383,165 @@ class GuidesTests(unittest.TestCase):
         self.assertIn('path.startswith("/guides/")', text)
 
 
+class DocumentationPageTests(unittest.TestCase):
+    """The in-site documentation page.
+
+    The footer's "Documentation" link used to eject the visitor to the GitHub
+    README — the only off-site link in that column, landing them in 390 lines
+    that are two-thirds contributor material (file tree, engine internals,
+    deployment). `/documentation/` is the operator-facing half of that: how to
+    run the suite, which engine answers, the CLI, export, and the honest limits
+    of the static build.
+
+    Deliberately *not* a docs/ directory: the Pages workflow refuses to publish
+    docs/ (see PagesExclusionTests), so a page named that way would 404 hosted.
+    """
+
+    PAGE = ROOT / "documentation" / "index.html"
+
+    def _page(self) -> str:
+        return self.PAGE.read_text(encoding="utf-8")
+
+    # --- exists and uses the shared shell --------------------------------
+
+    def test_page_exists(self):
+        self.assertTrue(self.PAGE.is_file(), self.PAGE)
+
+    def test_page_uses_the_established_shell(self):
+        page = self._page()
+        self.assertIn('data-page="/documentation/"', page)
+        self.assertIn("theme-boot.js", page)
+        self.assertIn("boot.js", page)
+        self.assertIn('id="main"', page)
+        # A prose page frames nothing — least privilege stays.
+        self.assertIn("frame-src 'none'", page)
+
+    def test_page_has_canonical_and_social_metadata(self):
+        page = self._page()
+        self.assertIn(
+            'rel="canonical" href="https://amitpal-cyberbuddy.github.io'
+            '/CyberBuddy/documentation/"',
+            page,
+        )
+        self.assertIn('property="og:title"', page)
+        self.assertIn('name="twitter:card"', page)
+
+    def test_assets_resolve_one_level_up(self):
+        """Top-level section page: assets are ../, never absolute paths that
+        would break under the /CyberBuddy/ project-pages mount."""
+        page = self._page()
+        self.assertIn('href="../css/app.css', page)
+        self.assertIn('src="../js/app.js', page)
+        self.assertNotIn('href="/css/', page)
+        self.assertNotIn('src="/js/', page)
+
+    def test_external_links_open_safely(self):
+        page = self._page()
+        for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', page):
+            with self.subTest(link=external):
+                self.assertIn(
+                    'href="' + external + '" target="_blank" '
+                    'rel="noopener noreferrer"',
+                    page,
+                )
+
+    # --- the footer link now stays on the site ---------------------------
+
+    def test_footer_documentation_link_is_internal(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function renderFooter()")
+        body = app[start:app.index("\n/* ---------- Blog", start)]
+        self.assertIn("""base + '/documentation/">Documentation</a>'""", body)
+        # The README hop is what this replaced.
+        self.assertNotIn("CyberBuddy#readme", body)
+        # GitHub itself is still linked — only the docs entry changed.
+        self.assertIn("github.com/AmitPal-CyberBuddy/CyberBuddy", body)
+
+    # --- content: operator scope, not a third copy of the scoring rules ---
+
+    def test_covers_the_operator_essentials(self):
+        page = self._page()
+        for needle in (
+            "python3 server.py",       # quick start
+            "--allow-private",         # private-target opt-in
+            "127.0.0.1",               # default bind
+            "clickjacking_validator.py",
+            "security_headers.py",
+            "cors_validator.py",
+            "csp_checker.py",
+            "--public-only",
+            "Markdown",                # export formats
+            "provenance",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, page)
+
+    def test_states_the_authorization_boundary(self):
+        self.assertIn("Authorized testing only", self._page())
+
+    def test_is_written_in_first_person(self):
+        prose = re.sub(r"<[^>]+>", " ", self._page())
+        for tell in ("maintainer", "the author's", "this website's owner"):
+            self.assertNotIn(tell, prose.lower(), tell)
+        self.assertRegex(prose, r"\bI\b")
+
+    def test_defers_scoring_to_the_methodology_page(self):
+        """Scoring rules already exist twice (README + methodology). This page
+        links to methodology instead of becoming a third copy."""
+        page = self._page()
+        self.assertIn('href="../methodology/"', page)
+        self.assertIn('href="../methodology/#hosted-scans"', page)
+        self.assertIn('href="../methodology/#privacy"', page)
+        # No re-statement of the letter bands or the numeric weights.
+        for band in ("A ≥ 90", "A>=90", "score of 25", "25 points"):
+            with self.subTest(band=band):
+                self.assertNotIn(band, page)
+
+    def test_explains_why_the_hosted_build_cannot_score_itself_an_a(self):
+        page = self._page()
+        for needle in ("frame-ancestors", "X-Frame-Options", "GitHub Pages"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, page)
+
+    def test_does_not_duplicate_the_header_nav(self):
+        """Footer-only by design: the header stays Hub / Guides / Method /
+        Tools, which is the four-item budget the IA work settled on."""
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function renderHeader(")
+        body = app[start:app.index("\nfunction renderFooter(", start)]
+        self.assertNotIn("/documentation/", body)
+
+    # --- discoverability --------------------------------------------------
+
+    def test_sitemap_lists_the_page(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/documentation/</loc>", sitemap)
+
+    def test_llms_txt_describes_the_page(self):
+        self.assertIn("/documentation/", (ROOT / "llms.txt").read_text(encoding="utf-8"))
+
+    def test_readme_points_at_the_page(self):
+        self.assertIn("documentation/", (ROOT / "README.md").read_text(encoding="utf-8"))
+
+    def test_server_serves_the_page(self):
+        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"documentation/"', text)          # STATIC_PREFIXES
+        self.assertIn('path == "/documentation"', text)  # no-slash redirect
+        self.assertIn('path.startswith("/documentation/")', text)
+
+    def test_page_is_not_under_the_unpublishable_docs_dir(self):
+        """docs/ is blocked by the Pages leak guard; a docs page living there
+        would silently 404 on the hosted site."""
+        self.assertFalse((ROOT / "docs" / "index.html").exists())
+
+    def test_workflow_patch_carries_the_copy_line(self):
+        """The arena token cannot push .github/workflows/**, so the one-line
+        workflow edit is carried for the maintainer. Without it the directory
+        is never copied into _site/ and the page 404s when hosted."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("cp -a documentation _site/", patch)
+
+
 class PagesExclusionTests(unittest.TestCase):
     """The published site must never carry repo-internal planning docs.
 

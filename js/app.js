@@ -387,7 +387,9 @@ function renderFooter() {
     "<strong>Project</strong>" +
     '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">GitHub</a>' +
     '<a href="' + base + '/.well-known/security.txt">Security policy</a>' +
-    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">Documentation</a>' +
+    // Documentation is a first-class page, not a hop to the repo README: the
+    // README is mostly contributor material (file tree, engine internals).
+    '<a href="' + base + '/documentation/">Documentation</a>' +
     "</nav>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +

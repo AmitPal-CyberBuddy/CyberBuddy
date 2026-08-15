@@ -489,3 +489,41 @@ should remain shared.
   what produce LIMITED. Headers: A≥90 B≥75 C≥60 D≥45 else F, A/B low, C/D
   medium, F high. Change a scorer and the matching guide is a third place to
   update, after the tool page and the methodology page.
+
+---
+
+## DOCS traps — the `/documentation/` page
+
+- **The directory is `documentation/`, never `docs/`.** `docs/` is the
+  repo-internal planning tree, and `.github/workflows/pages.yml` has a guard
+  step that *fails the build* if `_site/docs` exists
+  (`PagesExclusionTests.test_workflow_never_copies_internal_paths` pins the
+  same rule). Renaming the published docs page to the obvious `docs/` would
+  either break the deploy or silently ship the roadmap. If a future session
+  wants a nicer URL, change the redirect, not the directory.
+- **It is footer-only, on purpose.** IA-01 settled the header on four items —
+  Hub / Guides / Method / Tools — and `renderHeader()` is pinned against
+  gaining a `/documentation/` entry by
+  `DocumentationPageTests.test_does_not_duplicate_the_header_nav`. Operator
+  docs are a reference you go looking for, not a primary destination.
+- **Do not restate the scoring rules there.** The score bands and weights
+  already exist twice (README + `methodology/`). The page links to
+  `../methodology/#hosted-scans` and `../methodology/#privacy` instead, and a
+  test asserts that neither the letter bands nor the numeric weights are
+  re-typed into it. Three copies of a scoring table is three places to forget.
+- **A new top-level section needs four wirings, not one.** `server.py` takes
+  *two* edits — the `STATIC_PREFIXES` tuple **and** the redirect/static branch
+  (~line 365) — or `/documentation` 404s while `/documentation/` works. Then
+  `sitemap.xml`, `llms.txt` and `README.md`. Then the unpushable workflow copy
+  line in `docs/pages-workflow-patch.md`. The `/CyberBuddy/…` mount comes free
+  via `strip_mount` once the branch clause is right.
+- **The page shell is copied from `guides/index.html`, one level deep.** `../`
+  asset paths, `theme-boot.js` in the head *without* `defer`, the CSP meta
+  verbatim including `frame-src 'none'`, and the `?v=` cache-buster on
+  `css/app.css` / `js/app.js` / `js/boot.js`. A prose page frames nothing —
+  only the Clickjacking Validator relaxes `frame-src`.
+- **The hosted-limits section must stay honest.** It states that the hosted
+  build cannot score itself an A because Pages cannot send headers
+  (`frame-ancestors` and `X-Frame-Options` are undeliverable via `<meta>`).
+  If the site ever moves behind a header-capable host, that section and the
+  matching README section both need correcting.

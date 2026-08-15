@@ -1,4 +1,4 @@
-# ACTION REQUIRED — publish the `guides/` section
+# ACTION REQUIRED — publish the `guides/` and `documentation/` sections
 
 The GitHub App that pushes these arena branches is **not** granted the
 `workflows` permission, so any commit that touches `.github/workflows/**` is
@@ -7,14 +7,14 @@ workflow edit that could not be pushed, for a maintainer to apply by hand
 (the same mechanism used in PR #20 for the CSRF tool and PR #22 for IA-01).
 
 This patch is for **GUIDES-01/02/03 — the public Guides section, now one
-guide per tool**.
+guide per tool** — plus the **`/documentation/` page** added in the same PR.
 
-## The required edit
+## The required edits
 
-One change to `.github/workflows/pages.yml`, in the *Assemble static site*
+Two lines in `.github/workflows/pages.yml`, both in the *Assemble static site*
 step. `guides/` is a new published top-level section (`/guides/` plus
-`/guides/{clickjacking,headers,cors,csp,csrf}/`) and nothing copies it into
-`_site/` yet:
+`/guides/{clickjacking,headers,cors,csp,csrf}/`) and `documentation/` is a new
+top-level page; nothing copies either into `_site/` yet:
 
 ```yaml
 # before
@@ -29,6 +29,10 @@ step. `guides/` is a new published top-level section (`/guides/` plus
           # Guides section: /guides/ index plus one guide directory per topic.
           # Copy the whole tree so future guides need no workflow change.
           test -d guides && cp -a guides _site/ || true
+
+          # Operator documentation page (/documentation/). Deliberately NOT
+          # docs/ — the leak guard below fails the build if _site/docs exists.
+          test -d documentation && cp -a documentation _site/ || true
 ```
 
 Without this the deployed site serves the header “Guides” link, the footer
@@ -37,9 +41,20 @@ Guides card and the guide backlink on **all five** tool pages — every one of
 them 404s on the hosted site. Local `server.py` is unaffected (it already
 routes `/guides/`, `/guides` and `/CyberBuddy/guides/`).
 
-`sitemap.xml` already lists all six guide URLs (`/guides/` and one per tool),
-so search engines will start requesting them as soon as the next deploy runs.
-Apply this edit before merging, or the sitemap advertises two dead URLs.
+The `documentation/` line matters for the same reason: the footer
+“Documentation” link no longer leaves for the GitHub README, it points at
+`/documentation/`. Without the copy, every page on the hosted site has a
+footer link to a 404.
+
+Note the directory name. `documentation/` is used instead of the obvious
+`docs/` because the *Guard internal files stay out of the published site* step
+fails the build when `_site/docs` exists (`docs/` is the internal roadmap and
+dev notes). Renaming this section to `docs/` would break the deploy.
+
+`sitemap.xml` already lists all six guide URLs (`/guides/` and one per tool)
+plus `/documentation/`, so search engines will start requesting them as soon as
+the next deploy runs. Apply these edits before merging, or the sitemap
+advertises dead URLs.
 
 The *Verify referenced assets exist* step will also catch the mistake in the
 other direction: if `guides/` is copied but `css/`/`js/` are not, the build
@@ -110,6 +125,10 @@ Everything else in the workflow is unchanged.
           # Guides section: /guides/ index plus one guide directory per topic.
           # Copy the whole tree so future guides need no workflow change.
           test -d guides && cp -a guides _site/ || true
+
+          # Operator documentation page (/documentation/). Deliberately NOT
+          # docs/ — the leak guard fails the build if _site/docs exists.
+          test -d documentation && cp -a documentation _site/ || true
 
           # Cached reports for configured targets (skipped if the build step
           # found no targets / network failed).

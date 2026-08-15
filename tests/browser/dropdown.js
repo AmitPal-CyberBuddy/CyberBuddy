@@ -34,6 +34,7 @@ const PAGES = [
   ["guide-cors", "/guides/cors/"],
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
+  ["documentation", "/documentation/"],
   ["404", "/404.html"]
 ];
 

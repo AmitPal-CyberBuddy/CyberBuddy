@@ -1748,3 +1748,112 @@ The four new guide URLs were added to the `layout`, `dropdown` and
 now list all five guides. The maintainer follow-up above is unchanged and
 still required: without `cp -a guides _site/` the whole section, now six pages
 instead of two, 404s in production.
+
+---
+
+## 24. DOCS-01 — In-site documentation page (2026-08-15)
+
+### Why this was worth doing
+
+The footer's Project column had four entries. Three stayed on the site;
+"Documentation" pointed at `https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme`
+— the only link in the entire footer that ejected a visitor off-site, and it
+landed them in a 390-line, 19-section README that is roughly two-thirds
+contributor material: the file tree, engine internals, the Pages workflow, how
+to deploy the optional `api/`. Someone who clicks "Documentation" on a security
+tool wants to know how to run it, not where `js/tool.cors.js` lives.
+
+The second problem was duplication in the other direction. The README and
+`methodology/index.html` already carry near-verbatim copies of the privacy
+notes and the hosted-scan limits. Adding a third home for that prose would have
+made a scoring change a four-file edit. So the page links to
+`../methodology/#hosted-scans` and `../methodology/#privacy` rather than
+restating them, and a test
+(`test_defers_scoring_to_the_methodology_page`) fails if the letter bands or
+numeric weights are ever typed into it.
+
+### What shipped
+
+`documentation/index.html` — a prose page in the standard shell
+(`<body data-page="/documentation/">`, `main.container.page-hero.prose`), six
+sections:
+
+1. **Quick start** — `python3 server.py`, the loopback-by-default bind, the
+   `--host 0.0.0.0` / `--allow-private` pair, and the fact that metadata and
+   link-local targets are refused on every bind with no override.
+2. **Which engine answers** — the three layers as `.roadmap-item` cards
+   (Python engine → published report → in-browser graders), then a link out to
+   the methodology page for the grading rules themselves.
+3. **Command line** — the four CLI entry points, `--public-only`, the exit-code
+   contract (`1` = high risk, usable as a CI gate; `2` = usage error), and the
+   dual-implementation parity story.
+4. **Evidence and export** — the report card and provenance strip, Evidence
+   mode, the four export formats as a `method-table`, and the honest note that
+   a cross-origin iframe cannot be rasterised so no screen-capture permission
+   is ever requested.
+5. **Limits of the hosted build** — why Pages cannot deliver
+   `frame-ancestors`, `X-Frame-Options` or HSTS, and therefore why the hosted
+   site does not score itself an A while `server.py` scores 95.
+6. **What leaves your browser** + a hand-off to GitHub for the contributor
+   material this page deliberately does not carry.
+
+Footer: `js/app.js` now emits `base + '/documentation/'`. "GitHub" stays as-is,
+so the repo is still one click away — it is just no longer disguised as
+documentation.
+
+### The directory is `documentation/`, not `docs/`
+
+This was the one real constraint. `.github/workflows/pages.yml` has a guard
+step that fails the build when `_site/docs` exists, because `docs/` is where
+`ROADMAP.md` and `DEV-NOTES.md` live, and
+`PagesExclusionTests.test_workflow_never_copies_internal_paths` pins that rule
+from the test suite. A page at `docs/index.html` would either break the deploy
+or leak the internal planning tree. `documentation/` sidesteps both, and the
+reasoning is now recorded in `docs/DEV-NOTES.md` so nobody "tidies" it later.
+
+### Wiring
+
+`server.py` needed two edits, not one: the `STATIC_PREFIXES` tuple *and* the
+redirect/static branch around line 365. Miss the second and `/documentation/`
+serves while `/documentation` 404s. The `/CyberBuddy/…` mount comes free via
+`strip_mount`. Verified live: `301 / 200 / 200` for `/documentation`,
+`/documentation/`, `/CyberBuddy/documentation/`, and every local `href`/`src`
+inside the page resolves 200. `sitemap.xml`, `llms.txt` and `README.md` all
+list the page; the README's Documentation-page section now states explicitly
+that the README is the *contributor* reference, which is the division of labour
+this change creates.
+
+### No header nav entry
+
+IA-01 settled the header on four items and that budget still holds. Operator
+docs are a reference you go looking for, not a destination you navigate to
+mid-scan, so this is footer-only —
+`test_does_not_duplicate_the_header_nav` fails if `/documentation/` ever
+appears inside `renderHeader()`.
+
+### Tests
+
+`DocumentationPageTests`, 18 tests, mirroring the `GuidesTests` structure:
+page shell and `frame-src 'none'`, canonical/OG/Twitter, `../` asset paths (no
+absolute paths that would break the project-pages mount), external links
+carrying exactly `target="_blank" rel="noopener noreferrer"`, the footer link
+being internal *and* the README hop being gone, operator-content presence
+(server flags, all four CLI names, export formats, provenance), first person,
+methodology deferral, the hosted-limit honesty, header nav unchanged,
+sitemap/`llms.txt`/`README.md`/`server.py` wiring, `docs/index.html` absent,
+and the carried workflow line. Suite total **221/221 OK** (203 before). The
+three browser PAGES arrays gained `/documentation/`, appended at the end in
+`responsive.js` where `TOOLS = PAGES.slice(1, 5)`; `node --check` clean.
+
+### Maintainer follow-up
+
+`docs/pages-workflow-patch.md` now asks for **two** lines instead of one:
+
+```yaml
+test -d guides && cp -a guides _site/ || true
+test -d documentation && cp -a documentation _site/ || true
+```
+
+Without the second, every page on the hosted site carries a footer link to a
+404, and the sitemap advertises a dead URL. The arena push token still lacks
+the `workflows` permission, so this cannot be committed here.

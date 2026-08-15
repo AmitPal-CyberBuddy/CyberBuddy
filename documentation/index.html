@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Documentation — CyberBuddy</title>
+  <meta name="description" content="How to run CyberBuddy: local server quick start, the three scan engines, the Python CLI, evidence export formats, and the limits of the hosted GitHub Pages build." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/" />
+  <meta property="og:title" content="Documentation — CyberBuddy" />
+  <meta property="og:description" content="Run CyberBuddy locally, use the Python CLI, export evidence, and understand what the hosted build can and cannot do." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Documentation — CyberBuddy" />
+  <meta name="twitter:description" content="Run CyberBuddy locally, use the Python CLI, export evidence, and understand what the hosted build can and cannot do." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../icon-512.png" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../css/noscript.css" /></noscript>
+  <script src="../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "name": "CyberBuddy documentation",
+      "headline": "CyberBuddy documentation",
+      "description": "How to run CyberBuddy: local server quick start, the three scan engines, the Python CLI, evidence export formats, and the limits of the hosted GitHub Pages build.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../js/app.js?v=20260814h" defer></script>
+  <script src="../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/documentation/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal">Running the suite</p>
+  <h1 class="reveal">Documentation</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Everything you need to run CyberBuddy properly: the local server that
+    unlocks full scans, the three engines and when each one answers, the
+    command-line tools, and the evidence formats you attach to a report.
+    Authorized testing only.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">
+    Python 3.10+ · no build step · no third-party packages
+  </p>
+
+  <div class="section-head reveal">
+    <h2 id="quick-start">Quick start</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      The hosted site works on its own, but a local server is what gives you
+      complete evidence — server-side header reads and the two-origin CORS
+      proof a browser simply cannot perform. Clone the repo and run:
+    </p>
+    <pre><code>python3 server.py
+# open http://127.0.0.1:8080/</code></pre>
+    <p>
+      That serves the hub, every tool page, and the JSON APIs behind them. It
+      binds <strong>127.0.0.1</strong> — loopback only — by default. Point your
+      browser at the catalog at <a href="../tools/">/tools/</a> and pick a
+      check, or run the whole suite from the hub.
+    </p>
+    <p>
+      To reach it from another machine on your network, bind wider. Private-IP
+      targets stay refused unless you opt in explicitly, because scanning
+      RFC1918 space is a decision you should have to make on purpose:
+    </p>
+    <pre><code>python3 server.py --host 0.0.0.0
+python3 server.py --host 0.0.0.0 --allow-private</code></pre>
+    <p>
+      Cloud-metadata and link-local addresses are <em>always</em> rejected, on
+      every bind, with no flag to override. A <code>PORT</code> environment
+      variable — the usual PaaS convention — switches the default bind to
+      <code>0.0.0.0</code>, so treat that as an explicit choice too.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="engines">Which engine answers</h2>
+    <a class="catalog-link" href="../methodology/#hosted-scans">How scoring works →</a>
+  </div>
+  <p>
+    Every report names the layer that produced it, and the engine chip in the
+    header tells you which one is live before you scan. There are three, in
+    order of preference:
+  </p>
+  <div class="roadmap">
+    <div class="roadmap-item reveal" style="--d: .05s;">
+      <div class="rm-title">01 · Python engine</div>
+      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, checks run server-side with the same stdlib engines as the CLI. Complete evidence, nothing relayed.</p>
+    </div>
+    <div class="roadmap-item reveal" style="--d: .12s;">
+      <div class="rm-title">02 · Published report</div>
+      <p>Demo targets are pre-scanned in CI and served from <code>cache/&lt;host&gt;.json</code>. These are labelled <code>CACHED</code>, never <code>LIVE</code>, and cover the fixed demo list only.</p>
+    </div>
+    <div class="roadmap-item reveal" style="--d: .19s;">
+      <div class="rm-title">03 · In-browser graders</div>
+      <p>The same scoring logic, ported to JavaScript. A direct cross-origin read is tried first; a public relay is used only if you approve it.</p>
+    </div>
+  </div>
+  <p>
+    The grading rules themselves — score bands, risk levels, what each finding
+    means — live on the <a href="../methodology/">methodology page</a>. I keep
+    them there rather than repeating them here so there is exactly one place to
+    correct when they change.
+  </p>
+
+  <div class="section-head reveal">
+    <h2 id="cli">Command line</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Each engine is also a standalone CLI, which is what I reach for when I
+      need to sweep a list of hosts rather than assess one target carefully:
+    </p>
+    <pre><code>python3 clickjacking_validator.py https://example.com
+python3 security_headers.py https://example.com
+python3 security_headers.py -f urls.txt --json --workers 8
+python3 cors_validator.py https://example.com/api
+python3 csp_checker.py https://example.com --json</code></pre>
+    <p>
+      Add <code>--public-only</code> to refuse loopback and RFC1918 targets.
+      Exit code <code>1</code> means at least one target scored high risk,
+      which makes these usable as a CI gate; <code>2</code> is a usage error.
+    </p>
+    <p>
+      The graders are implemented twice — stdlib Python for the server and CLI,
+      and a browser port so the hosted site can grade without a backend. Parity
+      tests compare them against shared fixtures, so the same target cannot get
+      a different verdict depending on where you scanned it. Run the suite with
+      <code>python3 -m unittest test_engines.py</code>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="evidence">Evidence and export</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Every tool renders a self-contained <strong>report card</strong>: target,
+      final URL, HTTP status, UTC timestamp, verdict, per-finding evidence, and
+      a provenance strip naming the tool, engine and time — so even a cropped
+      screenshot still identifies itself.
+    </p>
+    <p>
+      <strong>Evidence mode</strong> is on by default. Once results render it
+      collapses the page chrome so the whole card fits one viewport and your
+      snipping tool captures it in a single shot.
+    </p>
+    <table class="method-table">
+      <thead>
+        <tr><th>Export</th><th>What you get</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Print / Save as PDF</td><td>Full card in a paper layout, colours and PoC overlay preserved</td></tr>
+        <tr><td>Evidence card (PNG)</td><td>Tool-specific card drawn from the scan data — no live frame</td></tr>
+        <tr><td>Copy report (Markdown)</td><td>Paste-ready findings table</td></tr>
+        <tr><td>Copy JSON</td><td>Raw result object</td></tr>
+      </tbody>
+    </table>
+    <p>
+      One honest limitation: a cross-origin iframe cannot be rasterised in
+      JavaScript — canvas pixels would be tainted. So CyberBuddy never asks for
+      screen-capture permission and uses no third-party JavaScript. When the
+      live frame itself is the evidence, use Evidence mode plus your operating
+      system's screenshot tool.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="hosted-limits">Limits of the hosted build</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      GitHub Pages serves static files and <strong>cannot send response
+      headers</strong>. For a product that grades response headers, that has
+      consequences worth stating plainly:
+    </p>
+    <ul>
+      <li>The policy ships as a <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> on every page, which covers <code>script-src</code>, <code>object-src</code>, <code>base-uri</code> and <code>frame-src</code>.</li>
+      <li><strong><code>frame-ancestors</code> and <code>X-Frame-Options</code> cannot be delivered that way.</strong> A meta CSP ignores <code>frame-ancestors</code> by specification, and XFO is header-only — so the hosted site itself is framable, and scanning it will correctly report missing framing protection.</li>
+      <li>HSTS is header-only too. <code>github.io</code> is preloaded at the domain level, so it is covered in practice, but by nothing in this repo.</li>
+      <li>Consequently <strong>the hosted site does not score A against itself, while <code>server.py</code> does</strong> (95/100 — the remaining points are the plain-HTTP loopback transport warning). That is a hosting limit, not a scoring bug.</li>
+      <li><code>robots.txt</code> and <code>.well-known/security.txt</code> only take effect at a domain root, so on a project Pages site they sit under <code>/CyberBuddy/</code> and crawlers will not read them until this moves to a custom domain.</li>
+    </ul>
+    <p>
+      Only the Clickjacking Validator is permitted to frame arbitrary targets;
+      every other page is <code>frame-src 'none'</code>. If you want the hosted
+      build at full strength, run it behind a host that can send headers, or
+      deploy the optional <code>api/</code> folder and point
+      <code>API_BASE</code> at it.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="privacy">What leaves your browser</h2>
+    <a class="catalog-link" href="../methodology/#privacy">Full privacy notes →</a>
+  </div>
+  <article class="card reveal">
+    <p>
+      Scan history and the short-lived header cache stay in this browser's
+      <code>localStorage</code>, expire after 24 hours, and are never uploaded.
+      Published reports are built in CI from a fixed demo list — nothing you
+      type is ever written there. Third-party relays are opt-in, disclose only
+      the hostname, and anything they return is flagged unverified.
+    </p>
+    <p>
+      For a scan where nothing leaves your machine at all, run
+      <code>python3 server.py</code> locally. Same graders, same origin, no
+      relays.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="source">Source and contributing</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      The repository holds the parts that belong to contributors rather than to
+      this page: the file layout, the engine internals, the shared grader
+      fixtures, deployment of the optional hosted API, and how to add a tool to
+      the registry so it appears across the header menu, hub, catalog and
+      footer without touching four files.
+    </p>
+    <p>
+      <a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">CyberBuddy on GitHub</a>
+      · <a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">README</a>
+      · Apache-2.0 licensed
+    </p>
+    <p>
+      Found a security issue in CyberBuddy itself? The contact and disclosure
+      terms are in <a href="../.well-known/security.txt">security.txt</a>.
+      Ideas or feedback: <a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>.
+    </p>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Every tool here reads a target
+      you point it at. You are responsible for having written permission to
+      assess it. All scans are read-only GETs.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

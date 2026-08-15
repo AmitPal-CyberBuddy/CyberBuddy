@@ -43,6 +43,14 @@ concise, not a full article library.
 | [`guides/csp/`](guides/csp/) | CSP Policy Auditor | OWASP WSTG-CONF-12 · CWE-79 |
 | [`guides/csrf/`](guides/csrf/) | CSRF PoC Generator | OWASP WSTG-SESS-05 · CWE-352 |
 
+## Documentation page
+
+Operator-facing docs live on the site at
+[`/documentation/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/):
+quick start, which engine answers a scan, the CLI, export formats, hosted-build
+limits, and what leaves the browser. This README stays the contributor
+reference — file layout, engine internals, deployment, and the workflow.
+
 ## Quick start (full scans)
 
 ```bash
@@ -81,6 +89,7 @@ authoritative security boundary.
 index.html                      # hub (includes #methodology scoring notes)
 404.html                        # hosted 404 + repair for old tool URLs
 methodology/index.html          # full methodology page (also published to Pages)
+documentation/index.html        # operator docs: quick start, engines, CLI, export, limits
 guides/
   index.html                    # guides index (short, tool-connected notes)
   clickjacking/index.html       # guide, paired with the Clickjacking Validator
@@ -206,13 +215,16 @@ layers make the hosted site as close to `server.py` as possible:
    - **Metadata assets:** the workflow also copies `og-cyberbuddy.png`,
      `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `robots.txt`,
      `sitemap.xml`, `humans.txt`, `llms.txt`, the `methodology/` page, the
-     `guides/` section, and `.well-known/security.txt` into `_site/`. Use
+     `guides/` section, the `documentation/` page, and
+     `.well-known/security.txt` into `_site/`. Use
      `test -f "$f" && cp "$f" _site/ || true` for each file so the build
      never fails if an asset is temporarily missing. Also add
      `test -d .well-known && cp -a .well-known _site/ || true` for the
      security contact file, `test -d methodology && cp -a methodology _site/ || true`
-     for the full scoring page, and `test -d guides && cp -a guides _site/ || true`
-     for the guides section.
+     for the full scoring page, `test -d guides && cp -a guides _site/ || true`
+     for the guides section, and
+     `test -d documentation && cp -a documentation _site/ || true` for the
+     documentation page.
 
    The UI prefers the cache over the public lookups (fresh within 48h) and
    marks reports `via cached report`. The lookup path is `appBase() + "/cache/"`

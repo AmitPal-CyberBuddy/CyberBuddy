@@ -55,7 +55,8 @@ const PAGES = [
   ["guide-headers", "/guides/headers/"],
   ["guide-cors", "/guides/cors/"],
   ["guide-csp", "/guides/csp/"],
-  ["guide-csrf", "/guides/csrf/"]
+  ["guide-csrf", "/guides/csrf/"],
+  ["documentation", "/documentation/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 
