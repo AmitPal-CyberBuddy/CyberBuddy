@@ -339,8 +339,10 @@ The **Export** menu offers:
 | --- | --- | --- |
 | Print / Save as PDF | Full card, paper layout, colours and the PoC overlay preserved | everywhere |
 | Download evidence card (PNG) | Tool-specific card drawn from the scan data — no live frame | everywhere |
-| Copy report (Markdown) | Paste-ready findings table | everywhere |
-| Copy JSON | Raw result object | everywhere |
+| Copy / download Markdown | Paste-ready metadata, context, findings, evidence and recommendations | everywhere |
+| Copy / download JSON | Versioned `cyberbuddy-report/v1` envelope for automation | everywhere |
+| Download CSV | Spreadsheet-safe metadata and findings (formula injection neutralized) | everywhere |
+| Download standalone HTML | Script-free, printable and portable report | everywhere |
 
 A cross-origin iframe **cannot** be rasterised in JavaScript: canvas pixels would
 be tainted, and `html2canvas` does not render iframes. CyberBuddy therefore does

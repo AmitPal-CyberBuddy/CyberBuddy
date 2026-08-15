@@ -808,7 +808,8 @@ function unreachableScanResult(kind, url, detail) {
   };
   if (kind === "scan") common.findings = [item];
   else common.checks = [item];
-  if (kind === "headers") Object.assign(common, { score: 0, grade: "F" });
+  // An unreachable host has no score or grade; assigning 0/F would falsely
+  // describe transport failure as a measured security posture.
   if (kind === "csp") Object.assign(common, {
     policy: "", report_only_policy: "", directives: {}, suggested_policy: CSP_SUGGESTED_POLICY
   });
@@ -1517,7 +1518,12 @@ function redactUrlCredentials(raw) {
   }
 }
 
+function redactCredentialText(raw) {
+  return String(raw == null ? "" : raw).replace(/\b(https?:\/\/)[^\s/@]+@/gi, "$1");
+}
+
 function reportSafeCopy(data) {
+  if (typeof data === "string") return redactCredentialText(data);
   if (!data || typeof data !== "object") return data;
   if (Array.isArray(data)) return data.map(reportSafeCopy);
   const out = {};
@@ -1573,6 +1579,17 @@ function buildEvidenceCardSpec(data, toolName) {
   const caveats = [];
   if (data.confirmation === "manual") caveats.push(["Confirmation", "analyst-attested visual observation"]);
   if (isUnverified(data)) caveats.push(["Caveat", "relay data — not independently verified"]);
+  if (data._unreachable) {
+    const title = kind === "clickjacking" ? "CLICKJACKING VALIDATOR"
+      : kind === "headers" ? "SECURITY HEADERS"
+      : kind === "cors" ? "CORS VALIDATOR"
+      : kind === "csp" ? "CSP POLICY AUDITOR" : "CYBERBUDDY";
+    return {
+      kind: kind, title: title, hero: "TARGET UNREACHABLE · NOT GRADED", risk: "unknown",
+      meta: commonMeta.concat(caveats), summary: data.summary || "No target response was received.",
+      contextTitle: "", context: [], rowsTitle: "REACHABILITY EVIDENCE", rows: reportRows(data)
+    };
+  }
 
   if (kind === "clickjacking") {
     const protection = risk === "low" ? "PROTECTION ENABLED"
@@ -1715,7 +1732,7 @@ function buildEvidenceCard(data, toolName) {
 
   ctx.font = mono;
   const wrapText = (text, maxW) => {
-    const source = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+    const source = redactCredentialText(text).replace(/\s+/g, " ").trim();
     if (!source) return [];
     const words = source.split(" ");
     const out = [];
@@ -1736,14 +1753,16 @@ function buildEvidenceCard(data, toolName) {
   const measureRows = (rows) => (rows || []).map((row) => ({
     row: row,
     detail: wrapText(row.detail, W - pad * 2 - 210),
-    evidence: row.evidence ? wrapText(row.evidence, W - pad * 2 - 210).slice(0, 5) : []
+    evidence: row.evidence ? wrapText("Evidence: " + row.evidence, W - pad * 2 - 210).slice(0, 8) : [],
+    recommendation: reportRecommendation(row)
+      ? wrapText("Recommendation: " + reportRecommendation(row), W - pad * 2 - 210).slice(0, 8) : []
   }));
   const measuredContext = measureRows(spec.context);
   const measuredRows = measureRows(spec.rows);
   const meta = spec.meta.map(([key, value]) => ({ key: key, lines: wrapText(value, W - pad * 2 - 160) }));
   const summary = wrapText(spec.summary, W - pad * 2);
   const rowsHeight = (items) => items.reduce((height, item) =>
-    height + lineH * (1 + Math.max(1, item.detail.length) + item.evidence.length) + 15, 0);
+    height + lineH * (1 + Math.max(1, item.detail.length) + item.evidence.length + item.recommendation.length) + 15, 0);
   const H = Math.max(430,
     205 + meta.reduce((height, item) => height + lineH * Math.max(1, item.lines.length), 0) +
     (summary.length ? summary.length * lineH + 34 : 0) +
@@ -1834,6 +1853,11 @@ function buildEvidenceCard(data, toolName) {
         ctx.fillText(line, pad + 110, y);
         y += lineH;
       });
+      ctx.fillStyle = C.brand;
+      item.recommendation.forEach((line) => {
+        ctx.fillText(line, pad + 110, y);
+        y += lineH;
+      });
       y += 15;
     });
   };
@@ -1877,9 +1901,18 @@ function initExportMenu(toolName, getData) {
     "Download evidence card (PNG)<span>Tool-specific evidence drawn from scan data</span></button>" +
     '<div class="export-menu-divider"></div>' +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="md">' +
-    "Copy report (Markdown)<span>Paste into your report</span></button>" +
+    "Copy Markdown<span>Paste-ready findings, evidence and recommendations</span></button>" +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="json">' +
-    "Copy JSON<span>Raw result object</span></button>" +
+    "Copy JSON<span>Versioned, machine-readable report</span></button>" +
+    '<div class="export-menu-divider"></div>' +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="md-file">' +
+    "Download Markdown (.md)<span>Portable report source</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="json-file">' +
+    "Download JSON (.json)<span>Versioned structured report</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="csv">' +
+    "Download CSV (.csv)<span>Spreadsheet-safe findings and metadata</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="html">' +
+    "Download HTML (.html)<span>Standalone, printable report with no scripts</span></button>" +
     "</div></details>";
 
   const details = document.getElementById("exportDetails");
@@ -1895,6 +1928,18 @@ function initExportMenu(toolName, getData) {
       if (act === "card") { await downloadEvidenceCard(data, toolName, item); return; }
       if (act === "md") { await copyMarkdown(data, item); return; }
       if (act === "json") { await copyJsonReport(data, item); return; }
+      if (act === "md-file") {
+        downloadTextReport(toMarkdown(data), "text/markdown;charset=utf-8", "cyberbuddy-report", data, "md", item, "Markdown saved ✓"); return;
+      }
+      if (act === "json-file") {
+        downloadTextReport(JSON.stringify(reportExportEnvelope(data), null, 2), "application/json;charset=utf-8", "cyberbuddy-report", data, "json", item, "JSON saved ✓"); return;
+      }
+      if (act === "csv") {
+        downloadTextReport(toCsv(data), "text/csv;charset=utf-8", "cyberbuddy-report", data, "csv", item, "CSV saved ✓"); return;
+      }
+      if (act === "html") {
+        downloadTextReport(toStandaloneHtml(data), "text/html;charset=utf-8", "cyberbuddy-report", data, "html", item, "HTML saved ✓");
+      }
     });
   });
 
@@ -1923,18 +1968,83 @@ function markdownKind(data) {
   return "generic";
 }
 
+function reportToolTitle(data) {
+  const kind = markdownKind(data);
+  return kind === "headers" ? "Security Headers"
+    : kind === "csp" ? "CSP Policy Auditor"
+    : kind === "cors" ? "CORS Validator"
+    : kind === "clickjacking" ? "Clickjacking Validator"
+    : "CyberBuddy";
+}
+
+function reportRows(data) {
+  if (!data) return [];
+  if (Array.isArray(data.checks)) return data.checks;
+  if (Array.isArray(data.findings)) return data.findings;
+  return [];
+}
+
+function reportSeverity(item) {
+  if (typeof findingSeverity === "function") return findingSeverity(item).label;
+  if (item && item.severity) return String(item.severity).toUpperCase();
+  const status = String(item && item.status || "info").toLowerCase();
+  if (status === "ok" || status === "protected") return "PASS";
+  if (status === "missing" || status === "error") return "HIGH";
+  if (status === "weak") return "MEDIUM";
+  return "INFO";
+}
+
+function reportRecommendation(item) {
+  if (item && item.recommendation) return String(item.recommendation);
+  if (typeof RECOMMENDATIONS !== "undefined" && item && RECOMMENDATIONS[item.name]) {
+    return RECOMMENDATIONS[item.name];
+  }
+  return "";
+}
+
+function reportExportEnvelope(data) {
+  return {
+    schema_version: "cyberbuddy-report/v1",
+    tool: reportToolTitle(data),
+    generated_at: new Date().toISOString(),
+    authorized_testing_only: true,
+    assessment: reportSafeCopy(data)
+  };
+}
+
 function mdCell(s) {
-  return String(s == null ? "" : s).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+  return redactCredentialText(s).replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+}
+
+function reportContextMarkdown(data, kind, lines) {
+  if (data._unreachable) {
+    lines.push("", "> **Reachability:** The target was not reachable. No security posture should be inferred from this report.");
+  }
+  if (kind === "clickjacking" && data.frame_observation) {
+    const observed = data.frame_observation;
+    const rendered = observed.rendered === true ? "Yes — analyst attested"
+      : observed.rendered === false ? "No — analyst attested" : "Not confirmed";
+    lines.push("", "## Frame observation", "", "- **Rendered:** " + rendered,
+      "- **Browser event:** " + mdCell(observed.event || "—"),
+      "- **Frame peek:** " + mdCell(observed.peek || "—"));
+  }
+  if (kind === "cors") {
+    lines.push("", "## Probe context", "",
+      "- **Origins tested:** " + mdCell((data.origins_tested || []).join(" · ") || "—"),
+      "- **Coverage:** " + ((data.origins_tested || []).length >= 2
+        ? "Two-origin reflection test" : "Single-origin browser probe — not proof of reflection"));
+  }
+  if (kind === "csp") {
+    lines.push("", "## Policy evidence", "", "### Enforced policy", "",
+      "```", String(data.policy || "(not present)"), "```", "", "### Report-only policy", "",
+      "```", String(data.report_only_policy || "(not present)"), "```");
+  }
 }
 
 function toMarkdown(data) {
   if (!data) return "No scan data.";
   const kind = markdownKind(data);
-  const title = kind === "headers" ? "Security Headers"
-    : kind === "csp" ? "CSP Policy Auditor"
-    : kind === "cors" ? "CORS Validator"
-    : kind === "clickjacking" ? "Clickjacking Validator"
-    : "CyberBuddy";
+  const title = reportToolTitle(data);
   const risk = (data.risk || "unknown").toUpperCase();
   const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
   const lines = [
@@ -1948,29 +2058,80 @@ function toMarkdown(data) {
     "- **Generated:** " + fmtStampUtc()
   ];
   if (data.confirmation === "manual") {
-    lines.push(
-      "- **Confirmation:** analyst-attested (visual frame check, not measured from headers)"
-    );
+    lines.push("- **Confirmation:** analyst-attested (visual frame check, not measured from headers)");
   }
   if (isUnverified(data)) {
-    lines.push(
-      "- **Caveat:** header values were proxied by a third-party relay and are " +
-      "not independently verified. Re-run against `server.py` before relying on them."
-    );
+    lines.push("- **Caveat:** header values were proxied by a third-party relay and are " +
+      "not independently verified. Re-run against `server.py` before relying on them.");
   }
   if (data.summary) lines.push("", "## Summary", "", data.summary);
-  const rows = kind === "headers" ? (data.checks || [])
-    : kind === "cors" ? (data.checks || [])
-    : (data.findings || []);
+  reportContextMarkdown(data, kind, lines);
+  const rows = reportRows(data);
   if (rows.length) {
-    lines.push("", "## Findings", "", "| Check | Status | Assessment | Evidence |", "| --- | --- | --- | --- |");
+    lines.push("", "## Findings", "",
+      "| Check | Status | Severity | Assessment | Evidence | Recommendation |",
+      "| --- | --- | --- | --- | --- | --- |");
     rows.forEach((c) => {
       lines.push("| " + mdCell(c.name) + " | " + mdCell(c.status) + " | " +
-        mdCell(c.detail) + " | " + mdCell(c.evidence) + " |");
+        mdCell(c.severity || reportSeverity(c)) + " | " + mdCell(c.detail) + " | " +
+        mdCell(c.evidence) + " | " + mdCell(reportRecommendation(c)) + " |");
     });
   }
-  lines.push("", "---", "Generated with CyberBuddy — authorized testing only.");
+  lines.push("", "---", "Generated with CyberBuddy — authorized testing only. Results are advisory.");
   return lines.join("\n");
+}
+
+function csvSafe(value) {
+  let text = redactCredentialText(value).replace(/\r?\n/g, " ");
+  // Spreadsheet formula injection: exported target evidence is untrusted.
+  if (/^[\t\r ]*[=+\-@]/.test(text)) text = "'" + text;
+  return '"' + text.replace(/"/g, '""') + '"';
+}
+
+function toCsv(data) {
+  if (!data) return "";
+  const rows = [["record_type", "name", "status", "severity", "assessment", "evidence", "recommendation"]];
+  const meta = {
+    tool: reportToolTitle(data), target: redactUrlCredentials(data.url),
+    final_url: redactUrlCredentials(data.final_url || data.url),
+    http_status: data.status_code != null ? data.status_code : "",
+    risk: data.risk || "unknown", grade: data.grade || "", score: data.score ?? "",
+    source: sourceLabel(data), generated: new Date().toISOString(), summary: data.summary || ""
+  };
+  Object.keys(meta).forEach((key) => rows.push(["metadata", key, "", "", meta[key], "", ""]));
+  reportRows(data).forEach((item) => rows.push([
+    "finding", item.name || "", item.status || "", item.severity || reportSeverity(item),
+    item.detail || "", item.evidence || "", reportRecommendation(item)
+  ]));
+  return "\uFEFF" + rows.map((row) => row.map(csvSafe).join(",")).join("\r\n");
+}
+
+function toStandaloneHtml(data) {
+  if (!data) return "";
+  const safe = (value) => esc(redactCredentialText(value));
+  const findings = reportRows(data).map((item) =>
+    "<tr><td>" + safe(item.name) + "</td><td><strong>" + safe(item.status) +
+    "</strong></td><td>" + safe(item.severity || reportSeverity(item)) +
+    "</td><td>" + safe(item.detail) + "</td><td><code>" + safe(item.evidence) +
+    "</code></td><td>" + safe(reportRecommendation(item)) + "</td></tr>").join("");
+  const policy = Object.prototype.hasOwnProperty.call(data, "policy")
+    ? "<h2>Policy evidence</h2><h3>Enforced</h3><pre>" + safe(data.policy || "(not present)") +
+      "</pre><h3>Report-only</h3><pre>" + safe(data.report_only_policy || "(not present)") + "</pre>" : "";
+  const caveat = isUnverified(data)
+    ? '<p class="caveat"><strong>Unverified:</strong> relay-provided headers; confirm with the Python engine.</p>' : "";
+  return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\">" +
+    "<title>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</title><style>" +
+    "body{font:15px/1.55 system-ui,sans-serif;color:#172033;max-width:1200px;margin:40px auto;padding:0 24px}h1{margin-bottom:8px}h2{margin-top:32px}dl{display:grid;grid-template-columns:140px 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}.risk{text-transform:uppercase;font-weight:800}.caveat{padding:12px;border-left:4px solid #b54708;background:#fff7ed}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border:1px solid #d7dde7;text-align:left;vertical-align:top}th{background:#eef2f7}code,pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:2px 4px}pre{padding:12px}@media print{body{margin:0;max-width:none}tr{break-inside:avoid}}</style></head><body>" +
+    "<h1>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</h1><p>Authorized testing only · results are advisory</p>" + caveat +
+    "<dl><dt>Target</dt><dd>" + safe(redactUrlCredentials(data.url)) + "</dd><dt>Final URL</dt><dd>" +
+    safe(redactUrlCredentials(data.final_url || data.url)) + "</dd><dt>HTTP status</dt><dd>" +
+    safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
+    safe(data.risk || "unknown") + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
+    "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(new Date().toISOString()) +
+    "</dd></dl><h2>Summary</h2><p>" + safe(data.summary || "No summary provided.") + "</p>" + policy +
+    "<h2>Findings</h2><table><thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Assessment</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>" +
+    findings + "</tbody></table></body></html>";
 }
 
 async function copyText(text) {
@@ -2007,6 +2168,17 @@ function flashBtn(btn, ok, okLabel) {
   }, 1600);
 }
 
+function downloadTextReport(text, mime, prefix, data, extension, btn, label) {
+  try {
+    downloadBlob(new Blob([text], { type: mime }), stampName(prefix, data && data.url, extension));
+    flashBtn(btn, true, label || "Report saved ✓");
+    return true;
+  } catch (_) {
+    flashBtn(btn, false, "");
+    return false;
+  }
+}
+
 async function copyMarkdown(data, btn) {
   const ok = await copyText(toMarkdown(data));
   flashBtn(btn, ok);
@@ -2015,7 +2187,7 @@ async function copyMarkdown(data, btn) {
 
 async function copyJsonReport(data, btn) {
   if (!data) return false;
-  const ok = await copyText(JSON.stringify(reportSafeCopy(data), null, 2));
+  const ok = await copyText(JSON.stringify(reportExportEnvelope(data), null, 2));
   flashBtn(btn, ok, "JSON copied ✓");
   return ok;
 }

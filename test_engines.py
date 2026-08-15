@@ -640,11 +640,12 @@ console.log(JSON.stringify({
 
     def test_credential_urls_are_redacted_from_exports(self):
         result = self._run_app_js(r'''
-const data = { url: "https://alice:secret@example.com/private", final_url: "https://bob:hunter2@example.net/" };
+const data = { url: "https://alice:secret@example.com/private", final_url: "https://bob:hunter2@example.net/",
+  checks: [{ name: "Redirect", status: "info", detail: "Location: https://carol:password@example.org/next", evidence: "https://dave:key@example.net/" }] };
 console.log(JSON.stringify({
-  markdown: toMarkdown({ ...data, risk: "low", checks: [], grade: "A", score: 100 }),
-  safe: reportSafeCopy(data),
-  redacted: redactUrlCredentials(data.url)
+  markdown: toMarkdown({ ...data, risk: "low", grade: "A", score: 100 }),
+  csv: toCsv(data), html: toStandaloneHtml(data), envelope: reportExportEnvelope(data),
+  safe: reportSafeCopy(data), redacted: redactUrlCredentials(data.url)
 }));
 ''')
         serialized = json.dumps(result)
@@ -652,7 +653,57 @@ console.log(JSON.stringify({
         self.assertNotIn("hunter2", serialized)
         self.assertNotIn("alice", serialized)
         self.assertNotIn("bob", serialized)
+        self.assertNotIn("carol", serialized)
+        self.assertNotIn("password", serialized)
+        self.assertNotIn("dave", serialized)
         self.assertEqual(result["redacted"], "https://example.com/private")
+
+    def test_all_structured_export_formats_preserve_csp_findings(self):
+        result = self._run_app_js(r'''
+const data = {
+  url: "https://example.com", final_url: "https://example.com/login", status_code: 200,
+  risk: "high", summary: "Policy needs attention", _source: "python",
+  policy: "default-src 'self'", report_only_policy: "script-src 'none'", directives: {},
+  checks: [{ name: "Script execution", status: "weak", severity: "high",
+    detail: "Allows broad sources", evidence: "script-src https:", recommendation: "Use a nonce." }]
+};
+console.log(JSON.stringify({
+  markdown: toMarkdown(data), csv: toCsv(data), html: toStandaloneHtml(data),
+  envelope: reportExportEnvelope(data)
+}));
+''')
+        self.assertIn("Script execution", result["markdown"])
+        self.assertIn("Use a nonce.", result["markdown"])
+        self.assertIn("default-src 'self'", result["markdown"])
+        self.assertIn("Script execution", result["csv"])
+        self.assertIn("Use a nonce.", result["csv"])
+        self.assertIn("Script execution", result["html"])
+        self.assertIn("Content-Security-Policy", result["html"])
+        self.assertNotIn("<script", result["html"].lower())
+        self.assertEqual(result["envelope"]["schema_version"], "cyberbuddy-report/v1")
+        self.assertEqual(result["envelope"]["tool"], "CSP Policy Auditor")
+        self.assertEqual(result["envelope"]["assessment"]["checks"][0]["severity"], "high")
+
+    def test_csv_export_neutralizes_spreadsheet_formulas(self):
+        result = self._run_app_js(r'''
+const data = { url: "https://example.com", risk: "high", _source: "python",
+  checks: [{ name: "Injected", status: "weak", detail: "=HYPERLINK(\"https://evil.test\")", evidence: "+cmd", recommendation: "@payload" }] };
+console.log(JSON.stringify({ csv: toCsv(data) }));
+''')
+        self.assertIn("'=HYPERLINK", result["csv"])
+        self.assertIn("'+cmd", result["csv"])
+        self.assertIn("'@payload", result["csv"])
+
+    def test_unreachable_evidence_card_is_never_graded(self):
+        result = self._run_app_js(r'''
+const spec = buildEvidenceCardSpec({ url: "https://missing.example", status_code: null,
+  risk: "unknown", _source: "browser", _unreachable: true,
+  summary: "DNS reports NXDOMAIN", checks: [{ name: "Target reachability", status: "error", detail: "NXDOMAIN" }] }, "Security Headers");
+console.log(JSON.stringify(spec));
+''')
+        self.assertEqual(result["hero"], "TARGET UNREACHABLE · NOT GRADED")
+        self.assertEqual(result["rowsTitle"], "REACHABILITY EVIDENCE")
+        self.assertNotIn("/100", result["hero"])
 
     def test_export_menu_has_no_screen_capture_path(self):
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
