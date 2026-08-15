@@ -7,6 +7,7 @@ Routes
 ------
 GET /                       hub (index.html)
 GET /methodology/           scoring + engine notes
+GET /guides/                guides index + pilot guide
 GET /tools/                 tools catalog (every tool in one directory)
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
@@ -48,7 +49,7 @@ ALLOW_PRIVATE = True
 ROOT = Path(__file__).resolve().parent
 
 ALLOWED_STATIC_SUFFIXES = {".html", ".css", ".js", ".json", ".png", ".xml", ".webmanifest", ".txt"}
-STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/", "methodology/")
+STATIC_PREFIXES = ("tools/", "css/", "js/", "cache/", ".well-known/", "methodology/", "guides/")
 ROOT_STATIC = frozenset({
     "index.html", "404.html",
     "robots.txt", "sitemap.xml", "manifest.webmanifest",
@@ -358,11 +359,19 @@ class Handler(BaseHTTPRequestHandler):
             self._static("404.html")
             return
 
-        if path.startswith("/tools/") or path == "/tools" or path == "/methodology" or path.startswith("/methodology/"):
+        if (
+            path.startswith("/tools/")
+            or path == "/tools"
+            or path == "/methodology"
+            or path.startswith("/methodology/")
+            or path == "/guides"
+            or path.startswith("/guides/")
+        ):
             rel = path.lstrip("/")
             # /tools → /tools/ (the tools catalog)
             # /tools/clickjacking → /tools/clickjacking/
             # /methodology → /methodology/
+            # /guides → /guides/ ; /guides/clickjacking → /guides/clickjacking/
             if not rel.endswith("/") and "." not in Path(rel).name:
                 dest = path.rstrip("/") + "/"
                 if parsed.query:
@@ -412,6 +421,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"CyberBuddy serving on http://{HOST}:{PORT}")
     print(f"Hub:          http://127.0.0.1:{PORT}/")
     print(f"Tools catalog:http://127.0.0.1:{PORT}/tools/")
+    print(f"Guides:       http://127.0.0.1:{PORT}/guides/")
     print(f"Clickjacking: http://127.0.0.1:{PORT}/tools/clickjacking/")
     print(f"Headers:      http://127.0.0.1:{PORT}/tools/headers/")
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")

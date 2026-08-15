@@ -28,6 +28,8 @@ const PAGES = [
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
   ["methodology", "/methodology/"],
+  ["guides", "/guides/"],
+  ["guide-clickjacking", "/guides/clickjacking/"],
   ["404", "/404.html"]
 ];
 const TOOLS = [

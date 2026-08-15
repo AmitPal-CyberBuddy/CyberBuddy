@@ -400,3 +400,48 @@ should remain shared.
   `TOOLS_MENU`. This is the same intentional duplication the hub already has;
   the JS registry is still the single JS source. Keep the fallback and the
   registry in sync when tool metadata changes.
+
+## GUIDES-01 traps — the Guides section
+
+- **A guide is only useful if it is connected.** The contract for every guide
+  is three links: *up* to `/guides/`, *across* to the tool that confirms the
+  finding (`../../tools/<slug>/`), and *out* to Medium for depth. The tool page
+  links back (`../../guides/<slug>/`). Break one of those and the guide becomes
+  an orphaned article — which is exactly what the roadmap says Guides must not
+  be. `GuidesTests` pins all four directions.
+- **Link out to the profile, not to invented article URLs.** The maintainer's
+  Medium has two posts (request smuggling, client-side encryption) and no
+  clickjacking article. The guides therefore link `https://amitpxl.medium.com/`
+  (profile root). Never deep-link a topic-specific Medium slug unless the post
+  actually exists — a dead “read more” is worse than no link.
+- **Concise is a tested property, not a wish.** `test_pilot_stays_short` caps
+  the pilot's visible word count. GUIDES-02/03 must copy the pilot's shape
+  (attack in one paragraph → the controls → confirm with the tool → the fix →
+  go deeper), not grow it.
+- **Guide facts must track the engine.** The pilot's risk sentence mirrors
+  `clickjacking_validator.py`'s `score()` ladder (permissive/absent
+  `frame-ancestors` = High, X-Frame-Options only = Medium, restrictive
+  `frame-ancestors` = Low) and the methodology page. If the ladder changes,
+  the guide is a third place to update — grep `frame-ancestors` before editing
+  the scorer.
+- **New top-level section = the same four-part checklist.** `/guides/` needed
+  (1) a `STATIC_PREFIXES` entry plus `/guides` → `/guides/` redirect and the
+  `/CyberBuddy/guides/…` mount in `server.py`, (2) `sitemap.xml` + `llms.txt` +
+  README entries, (3) the CSP meta copied verbatim from `server.py`, and (4) a
+  Pages copy line. The workflow copies named directories only, so a new
+  directory is invisible on Pages until `cp -a guides _site/` is added —
+  carried in `docs/pages-workflow-patch.md` because the arena token cannot
+  push `.github/workflows/**`.
+- **Guides pages are one and two levels deep.** `guides/index.html` uses
+  `../css`, `../js`; `guides/clickjacking/index.html` uses `../../`. Same trap
+  as the catalog vs tool pages.
+- **`PagesExclusionTests` scans the assemble step only.** The workflow's leak
+  *guard* step legitimately names `docs/ROADMAP.md`, `docs/DEV-NOTES.md` and
+  `REVIEW.md`, so a whole-file token scan reports a false positive (it did, at
+  branch point `17e66e2`). `_assemble_step_body()` slices the YAML from
+  `- name: Assemble static site` to the next line indented at or below that
+  step's indent; keep new copy lines inside that step or the guard stops
+  seeing them.
+- **Footer stays category-based.** *Guides* is one entry in the Learn column —
+  never one entry per guide. `test_footer_learn_column_links_to_guides`
+  asserts the column contains `/guides/` and no `/guides/<slug>/`.

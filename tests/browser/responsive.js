@@ -48,7 +48,10 @@ const PAGES = [
   ["csrf", "/tools/csrf/"],
   ["methodology", "/methodology/"],
   ["404", "/404.html"],
-  ["catalog", "/tools/"]
+  ["catalog", "/tools/"],
+  // Appended after index 4 on purpose: TOOLS below is PAGES.slice(1, 5).
+  ["guides", "/guides/"],
+  ["guide-clickjacking", "/guides/clickjacking/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 

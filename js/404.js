@@ -4,6 +4,8 @@
       document.querySelectorAll("a.card[data-slug]").forEach(function (a) {
         a.href = base + "/tools/" + a.getAttribute("data-slug") + "/";
       });
+      var guides = document.getElementById("guidesLink");
+      if (guides) guides.href = base + "/guides/";
       var method = document.getElementById("methodLink");
       if (method) method.href = base + "/#methodology";
       var home = document.getElementById("home");

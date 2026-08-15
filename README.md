@@ -28,6 +28,15 @@ grid, the tools catalog (`/tools/`) and the footer automatically. Add the
 tool page under `tools/<slug>/` and its static no-JavaScript card to the hub
 and catalog fallbacks.
 
+## Guides
+
+Short, tool-connected notes live under `/guides/`. Each guide covers one
+weakness, points at the tool that confirms it, and links out to the
+maintainer's long-form Medium write-ups for depth — they are deliberately
+concise, not a full article library. The pilot guide is
+[`guides/clickjacking/`](guides/clickjacking/), paired with the Clickjacking
+Validator.
+
 ## Quick start (full scans)
 
 ```bash
@@ -66,6 +75,9 @@ authoritative security boundary.
 index.html                      # hub (includes #methodology scoring notes)
 404.html                        # hosted 404 + repair for old tool URLs
 methodology/index.html          # full methodology page (also published to Pages)
+guides/
+  index.html                    # guides index (short, tool-connected notes)
+  clickjacking/index.html       # pilot guide, paired with the Clickjacking Validator
 css/app.css                     # shared design system
 css/noscript.css                # no-JS fallback (reveal animations off)
 css/404.css                     # standalone styles for 404.html
@@ -183,13 +195,14 @@ layers make the hosted site as close to `server.py` as possible:
 
    - **Metadata assets:** the workflow also copies `og-cyberbuddy.png`,
      `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `robots.txt`,
-     `sitemap.xml`, `humans.txt`, `llms.txt`, the `methodology/` page, and
-     `.well-known/security.txt` into `_site/`. Use
+     `sitemap.xml`, `humans.txt`, `llms.txt`, the `methodology/` page, the
+     `guides/` section, and `.well-known/security.txt` into `_site/`. Use
      `test -f "$f" && cp "$f" _site/ || true` for each file so the build
      never fails if an asset is temporarily missing. Also add
      `test -d .well-known && cp -a .well-known _site/ || true` for the
-     security contact file and `test -d methodology && cp -a methodology _site/ || true`
-     for the full scoring page.
+     security contact file, `test -d methodology && cp -a methodology _site/ || true`
+     for the full scoring page, and `test -d guides && cp -a guides _site/ || true`
+     for the guides section.
 
    The UI prefers the cache over the public lookups (fresh within 48h) and
    marks reports `via cached report`. The lookup path is `appBase() + "/cache/"`

@@ -13,20 +13,21 @@
 
 ## 1. Current project state
 
-Recorded at the start of the IA-01 session (2026-08-14). See §5 “Current
+Recorded at the start of the GUIDES-01 session (2026-08-15). See §5 “Current
 handoff” for the state at the end of that session.
 
 | Item | Value |
 | --- | --- |
-| Latest merged feature/PR | **CSRF PoC Generator — fifth live tool** (PR #20). Verified present in `origin/main` before this session; not re-applied. |
+| Latest merged feature/PR | **IA-01 — scalable tool information architecture** (PR #22, merge commit `2956801`). Verified present in `origin/main` before this session; not re-applied. |
 | Live tools | 5 — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator |
-| Python test total | **161** (`python3 -m unittest test_engines.py`) |
+| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · **Guides (`/guides/`, new this session)** |
+| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **201** after GUIDES-01 |
 | JavaScript file total | **18** (11 under `js/`, 7 under `tests/browser/`) — all pass `node --check` |
-| Browser suites | layout 131 · dropdown 132 · overlays 48 · relay-gate 17 · responsive 224 · csrf 22 — **574 checks** (Chromium) |
-| Pages assembly result | All referenced local assets resolve across hub, 404, methodology and five tool pages; `docs/`, `tests/` and `REVIEW.md` are absent from `_site/` |
+| Browser suites | layout 131 · dropdown 132 · overlays 48 · relay-gate 17 · responsive 224 · csrf 22 — **574 checks** (Chromium) plus IA-01's catalog checks; not runnable in the Arena sandbox |
+| Pages assembly result | Hub, 404, methodology, catalog and five tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. **`guides/` is not copied yet** — see the maintainer follow-up in §5. |
 | Release/version state | **Pre-1.0** — no tagged release; `main` carries the live site via GitHub Pages |
 
-Tool categories now in force (from IA-01): **Assess targets** (Clickjacking,
+Tool categories in force (from IA-01): **Assess targets** (Clickjacking,
 Headers, CORS, CSP — the four that join the hub “Run suite”) and **Local
 utilities** (CSRF PoC Generator — a generator, never a scanner).
 
@@ -73,7 +74,7 @@ approved for the next session — do **not** implement later items in the same
 PR.
 
 ### IA-01 — Scalable tool information architecture
-- **Status:** `IN REVIEW`
+- **Status:** `DONE`
 - **Goal:** Let the site scale past five tools without a growing nav, footer
   or tool list — two tool categories, a dedicated catalog, and one JS registry.
 - **Scope:** Group the Tools menu into *Assess targets* / *Local utilities*;
@@ -92,10 +93,10 @@ PR.
   catalog page added to `layout`/`responsive`/`dropdown` browser suites;
   new dropdown-grouping and hub-category/footer checks.
 - **PR/commit:** PR #22 · branch `arena/01a00217-cyberbuddy` · commit
-  `baaea21`.
+  `baaea21` · merged into `origin/main` as `2956801` (verified 2026-08-15).
 
 ### GUIDES-01 — Public Guides foundation + one Clickjacking pilot guide
-- **Status:** `NEXT`
+- **Status:** `IN REVIEW`
 - **Goal:** A Guides section with exactly one concise pilot guide
   (Clickjacking), connected to the Clickjacking Validator.
 - **Scope:** Guides foundation + one pilot guide. Guides are **concise and
@@ -106,12 +107,22 @@ PR.
 - **Acceptance criteria:** One pilot guide, linked from the tool, linking out
   to Medium for depth.
 - **Required tests:** navigation + content presence checks.
-- **PR/commit:** —
-- **Notes:** Keep the “Guides (future)” nav/footer entries in mind — they go
-  live here.
+- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (see the PR for
+  the final commit).
+- **Notes:** Delivered `guides/index.html` (hub) + `guides/clickjacking/`
+  (pilot); header nav and footer *Learn* column now carry a single **Guides**
+  entry; the 404 page offers a Guides card; the Clickjacking Validator links
+  back to the guide. Routes (`/guides`, `/guides/`, `/CyberBuddy/guides/…`),
+  `sitemap.xml`, `llms.txt` and README updated. Medium links point at the
+  profile root — there is no clickjacking article to deep-link. New stdlib
+  `GuidesTests` (21 checks) covers navigation + content presence; the pilot's
+  brevity is asserted, not assumed. The Pages workflow still copies named
+  directories only, so `cp -a guides _site/` is carried in
+  `docs/pages-workflow-patch.md` for the maintainer — **without it the whole
+  section 404s in production.**
 
 ### GUIDES-02 — Concise Security Headers and CSP guides
-- **Status:** `TODO`
+- **Status:** `NEXT`
 - **Goal:** Two concise guides for the Headers and CSP tools, same format as
   the pilot.
 - **Scope:** Headers guide + CSP guide, each linking to its tool and to Medium.
@@ -120,6 +131,9 @@ PR.
 - **Acceptance criteria:** Both guides live and linked.
 - **Required tests:** content presence.
 - **PR/commit:** —
+- **Notes:** Copy the pilot's shape exactly (attack in one paragraph → the
+  controls → confirm with the tool → the fix → go deeper) and extend
+  `GuidesTests`; do not let a guide grow into an article.
 
 ### GUIDES-03 — Concise CORS and CSRF guides
 - **Status:** `TODO`
@@ -247,23 +261,41 @@ PR.
 
 > Replace this whole section at the end of every session.
 
-- **Last verified `origin/main`:** `237ea3b` (squashed “Update pages.yml”).
-- **Work currently in review:** IA-01 — branch `arena/01a00217-cyberbuddy`,
-  commit `baaea21`, **PR #22** (https://github.com/AmitPal-CyberBuddy/CyberBuddy/pull/22).
-- **Last completed checks:** 177/177 stdlib tests · `node --check` on all 18
-  JS files · Python `compileall` · JSON + XML checks · Pages assembly guard
-  (catalog published; internal files excluded). Real-browser suites could
-  **not** be run in this session’s sandbox (no Chromium binary available and
-  the browser CDN is unreachable) — run them by hand before merging IA-01.
-- **Maintainer follow-up:** the `pages.yml` edit (publish `tools/index.html`
-  + internal-file leak guard) could not be pushed — the arena token lacks the
-  `workflows` permission. It is carried in `docs/pages-workflow-patch.md`
-  (same mechanism as PR #20). Apply it when merging IA-01.
-- **Next approved roadmap ID:** `GUIDES-01`.
-- **Files/traps the next session must read:** `REVIEW.md` (newest section,
-  IA-01) · `docs/DEV-NOTES.md` (new “IA-01” traps) · `docs/ROADMAP.md` ·
-  `tests/browser/` (updated page arrays + grouping/footer checks).
-- **Known blockers:** none.
+- **Last verified `origin/main`:** `17e66e2` (IA-01 merged as `2956801`,
+  PR #22).
+- **Work currently in review:** GUIDES-01 — branch `arena/01a003bd-cyberbuddy`,
+  **PR #23**. Not merged.
+- **Last completed checks:** **201/201** stdlib tests
+  (`python3 -m unittest test_engines.py`, +24 this session: `GuidesTests` ×21,
+  two new `PagesExclusionTests`, one new route test) · `node --check` clean on
+  all 18 JS files · live `server.py` route + link crawl over `/guides/`,
+  `/guides/clickjacking/`, `/tools/clickjacking/` and the hub (every local
+  `href`/`src` resolves 200; `/guides` and `/guides/clickjacking` 301 to their
+  slash forms; both `/CyberBuddy/guides/…` mounts 200) · XML/JSON checks.
+- **Fixed en route:** the pre-existing failure at branch point
+  (`PagesExclusionTests.test_workflow_never_copies_internal_paths` token-scanned
+  the whole workflow and tripped over the maintainer's leak-guard step). It now
+  scans only the *Assemble static site* step body, and a second test asserts the
+  guard step still names the internal paths. The baseline is green again.
+- **Maintainer follow-up (required before GUIDES-01 is visible in production):**
+  `docs/pages-workflow-patch.md` now asks for one line —
+  `test -d guides && cp -a guides _site/ || true` — after the methodology copy
+  in *Assemble static site*. The arena token still lacks the `workflows`
+  permission. Without it the header/footer Guides links, the 404 card, the tool
+  backlink and two `sitemap.xml` URLs all 404 on Pages.
+- **Real-browser suites:** `/guides/` and `/guides/clickjacking/` were added to
+  the `layout`, `dropdown` and `responsive` PAGES arrays, but the suites were
+  **not executed** — this sandbox has no Chromium binary and the browser CDN,
+  Debian mirrors and Chrome-for-Testing endpoints are all unreachable. Run them
+  by hand (`python3 server.py --port 8080 --allow-private`, then
+  `CB_CHROME=… node tests/browser/<suite>.js`) before merging.
+- **Next approved roadmap ID:** `GUIDES-02`.
+- **Files/traps the next session must read:** `REVIEW.md` §23 (GUIDES-01) ·
+  `docs/DEV-NOTES.md` (“GUIDES-01 traps”) · `docs/ROADMAP.md` ·
+  `guides/clickjacking/index.html` (the shape GUIDES-02/03 must copy) ·
+  `docs/pages-workflow-patch.md` (unapplied).
+- **Known blockers:** none in code. One external dependency: the workflow line
+  above must be applied by a maintainer.
 
 ---
 

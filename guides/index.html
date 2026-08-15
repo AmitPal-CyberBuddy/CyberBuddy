@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Guides — CyberBuddy</title>
+  <meta name="description" content="Short, tool-connected security guides. Each guide explains one weakness, how to confirm it with the matching CyberBuddy tool, and where to read the long-form write-up." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/" />
+  <meta property="og:title" content="Guides — CyberBuddy" />
+  <meta property="og:description" content="Short, tool-connected security guides: confirm the weakness with the matching CyberBuddy tool, then read the long-form write-up." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Guides — CyberBuddy" />
+  <meta name="twitter:description" content="Short, tool-connected security guides: confirm the weakness with the matching CyberBuddy tool, then read the long-form write-up." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../icon-512.png" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../css/noscript.css" /></noscript>
+  <script src="../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "CyberBuddy guides",
+      "description": "Short, tool-connected security guides. Each guide explains one weakness, how to confirm it with the matching CyberBuddy tool, and where to read the long-form write-up.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../js/app.js?v=20260814h" defer></script>
+  <script src="../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal">Learn by testing</p>
+  <h1 class="reveal">Guides</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Short, practical notes that sit next to the tools. Each guide explains one
+    weakness in a few minutes, shows how to confirm it with the matching
+    CyberBuddy check, and links to the long-form write-up for depth.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">
+    <span class="count" id="guideCount">01 live</span> · concise by design · deep dives live on Medium
+  </p>
+
+  <div class="section-head reveal">
+    <h2>Available guides</h2>
+  </div>
+
+  <div class="tool-catalog-grid" id="guideList">
+
+    <article class="card tool-catalog-card reveal" style="--d: .06s;">
+      <div class="tool-catalog-head">
+        <h3>Clickjacking</h3>
+        <span class="cat-badge cat-assess">Assess targets</span>
+      </div>
+      <p class="tool-catalog-purpose">
+        Why <code>X-Frame-Options</code> alone is not enough, what
+        <code>frame-ancestors</code> actually decides, and how to produce a
+        screenshot that proves a page is framable.
+      </p>
+      <dl class="catalog-meta">
+        <dt>Read</dt><dd>~4 minutes</dd>
+        <dt>Tool</dt><dd>Clickjacking Validator</dd>
+        <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CLNT-09</span><span class="std-id">CWE-1021</span></dd>
+      </dl>
+      <a class="btn btn-primary btn-sm" href="clickjacking/">Read the Clickjacking guide</a>
+    </article>
+
+    <article class="card tool-catalog-card tool-card--ghost reveal" style="--d: .12s;">
+      <div class="tool-catalog-head">
+        <h3>More guides coming</h3>
+        <span class="cat-badge cat-local">soon</span>
+      </div>
+      <p class="tool-catalog-purpose">
+        Security Headers, CSP, CORS and CSRF guides follow the same shape:
+        one weakness, one tool, one screenshot you can paste into a report.
+        Until then, the full write-ups are on Medium.
+      </p>
+      <a class="btn btn-ghost btn-sm" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">Read the blog on Medium →</a>
+    </article>
+
+  </div>
+
+  <div class="section-head reveal">
+    <h2>How these guides work</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      A guide is deliberately short. It states the weakness, the evidence that
+      settles it, and the fix — then hands off. Anything that needs a full
+      walkthrough (traffic captures, exploitation chains, tool internals) lives
+      in the maintainer's
+      <a href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">Medium write-ups</a>,
+      not here.
+    </p>
+    <p>
+      Every guide is paired with a tool. Read the guide, run the matching check
+      from the <a href="../tools/">tools catalog</a>, and the report card it
+      produces is the artifact you attach to the finding. The scoring rules
+      behind those report cards are documented on the
+      <a href="../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> These guides describe read-only
+      checks against systems you own or have written permission to assess.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

@@ -828,6 +828,32 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"How it scores", body)
 
+    def test_guides_pages(self):
+        """A new published top-level section needs all three route forms:
+        /guides/, the no-slash redirect, and the GitHub project-path mount."""
+        status, headers, _ = self._req("/guides")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/guides/")
+        status, headers, body = self._req("/guides/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"Guides", body)
+
+        status, headers, _ = self._req("/guides/clickjacking")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/guides/clickjacking/")
+        status, headers, body = self._req("/guides/clickjacking/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"Clickjacking", body)
+
+        status, _, body = self._req("/CyberBuddy/guides/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Guides", body)
+        status, _, body = self._req("/CyberBuddy/guides/clickjacking/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"frame-ancestors", body)
+
     def test_health_and_api_validation(self):
         status, headers, body = self._req("/api/health")
         self.assertEqual(status, 200)
@@ -876,6 +902,8 @@ class HostedSiteTests(unittest.TestCase):
         pages = [
             ROOT / "index.html",
             ROOT / "methodology" / "index.html",
+            ROOT / "guides" / "index.html",
+            ROOT / "guides" / "clickjacking" / "index.html",
             ROOT / "tools" / "index.html",
             ROOT / "tools" / "clickjacking" / "index.html",
             ROOT / "tools" / "headers" / "index.html",
@@ -1249,6 +1277,8 @@ class HostedCspTests(unittest.TestCase):
         "index.html",
         "404.html",
         "methodology/index.html",
+        "guides/index.html",
+        "guides/clickjacking/index.html",
         "tools/index.html",
         "tools/clickjacking/index.html",
         "tools/headers/index.html",
@@ -2048,6 +2078,169 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("boot.js", page)
 
 
+class GuidesTests(unittest.TestCase):
+    """GUIDES-01: the public Guides foundation + the Clickjacking pilot.
+
+    The point of a guide is that it is *connected*: reachable from the global
+    nav, paired with the tool that confirms the finding, and honest about
+    where the long-form writing lives (Medium). It is deliberately concise —
+    this is a foundation and one pilot, not an article library.
+    """
+
+    INDEX = ROOT / "guides" / "index.html"
+    PILOT = ROOT / "guides" / "clickjacking" / "index.html"
+
+    def _index(self) -> str:
+        return self.INDEX.read_text(encoding="utf-8")
+
+    def _pilot(self) -> str:
+        return self.PILOT.read_text(encoding="utf-8")
+
+    def _app(self) -> str:
+        return (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    # --- navigation -----------------------------------------------------
+
+    def test_header_nav_links_to_guides(self):
+        app = self._app()
+        start = app.index("function renderHeader(")
+        body = app[start:app.index("\nfunction renderFooter(", start)]
+        self.assertIn('"/guides/"', body)
+        self.assertIn('"Guides"', body)
+
+    def test_footer_learn_column_links_to_guides(self):
+        """Guides is a section link in the Learn column — one entry, not one
+        per guide, so adding guides never needs a footer edit."""
+        app = self._app()
+        start = app.index("function renderFooter()")
+        body = app[start:app.index("\n/* ---------- Blog", start)]
+        learn = body[body.index('aria-label="Learn"'):]
+        self.assertIn("/guides/", learn)
+        # Still a section link only: no per-guide entries.
+        self.assertNotIn("/guides/clickjacking/", learn)
+
+    def test_hub_links_to_guides(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="guides/"', hub)
+
+    def test_404_offers_a_guides_card(self):
+        page = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn('id="guidesLink"', page)
+        js = (ROOT / "js" / "404.js").read_text(encoding="utf-8")
+        # Base-aware rewrite, so /CyberBuddy/ hosting resolves correctly.
+        self.assertIn('base + "/guides/"', js)
+
+    # --- pages exist and use the shared shell ---------------------------
+
+    def test_both_pages_exist(self):
+        self.assertTrue(self.INDEX.is_file(), self.INDEX)
+        self.assertTrue(self.PILOT.is_file(), self.PILOT)
+
+    def test_pages_use_the_established_shell(self):
+        for page, data_page in ((self._index(), "/guides/"),
+                                (self._pilot(), "/guides/clickjacking/")):
+            with self.subTest(page=data_page):
+                self.assertIn('data-page="%s"' % data_page, page)
+                self.assertIn("theme-boot.js", page)
+                self.assertIn("boot.js", page)
+                self.assertIn('id="main"', page)
+                # Guides never frame anything — least privilege stays.
+                self.assertIn("frame-src 'none'", page)
+
+    def test_pages_have_canonical_and_social_metadata(self):
+        for page, url in ((self._index(), "/CyberBuddy/guides/"),
+                          (self._pilot(), "/CyberBuddy/guides/clickjacking/")):
+            with self.subTest(url=url):
+                self.assertIn('rel="canonical" href="https://amitpal-cyberbuddy.github.io'
+                              + url + '"', page)
+                self.assertIn('property="og:title"', page)
+                self.assertIn('name="twitter:card"', page)
+
+    # --- content presence ------------------------------------------------
+
+    def test_index_lists_the_pilot_guide(self):
+        index = self._index()
+        self.assertIn('href="clickjacking/"', index)
+        self.assertIn("Clickjacking", index)
+
+    def test_scope_is_one_pilot_guide(self):
+        """Non-goal guard: exactly one guide directory ships in GUIDES-01."""
+        dirs = sorted(p.name for p in (ROOT / "guides").iterdir() if p.is_dir())
+        self.assertEqual(dirs, ["clickjacking"])
+
+    def test_pilot_covers_both_framing_controls(self):
+        pilot = self._pilot()
+        for needle in (
+            "X-Frame-Options",
+            "frame-ancestors",
+            "'none'",
+            "SAMEORIGIN",
+            "DENY",
+        ):
+            self.assertIn(needle, pilot, needle)
+
+    def test_pilot_carries_the_standards_line(self):
+        """Same standards identity the tool uses, so the guide and the report
+        cite one thing."""
+        pilot = self._pilot()
+        self.assertIn("WSTG-CLNT-09", pilot)
+        self.assertIn("CWE-1021", pilot)
+
+    def test_pilot_states_the_authorization_boundary(self):
+        self.assertIn("Authorized testing only", self._pilot())
+        self.assertIn("Authorized testing only", self._index())
+
+    def test_pilot_stays_short(self):
+        """Concise by design: the pilot is a few minutes of reading, not a
+        long-form article (that is what Medium is for)."""
+        text = re.sub(r"<[^>]+>", " ", self._pilot())
+        words = len(text.split())
+        self.assertLess(words, 1200, words)
+
+    # --- the connections that make a guide useful ------------------------
+
+    def test_guide_links_to_the_matching_tool(self):
+        pilot = self._pilot()
+        self.assertIn('href="../../tools/clickjacking/"', pilot)
+
+    def test_tool_links_back_to_the_guide(self):
+        tool = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="../../guides/clickjacking/"', tool)
+
+    def test_guides_link_out_to_medium_for_depth(self):
+        """Depth lives on the maintainer's blog. The profile root is used
+        deliberately — there is no clickjacking-specific article to deep-link,
+        and inventing one would ship a dead link."""
+        for page in (self._index(), self._pilot()):
+            self.assertIn("https://amitpxl.medium.com/", page)
+            self.assertIn('rel="noopener noreferrer"', page)
+
+    def test_guide_points_at_the_scoring_methodology(self):
+        self.assertIn('href="../../methodology/"', self._pilot())
+
+    # --- discoverability --------------------------------------------------
+
+    def test_sitemap_lists_both_guide_urls(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/guides/</loc>", sitemap)
+        self.assertIn("/CyberBuddy/guides/clickjacking/</loc>", sitemap)
+
+    def test_llms_txt_describes_the_guides_section(self):
+        text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        self.assertIn("/guides/", text)
+        self.assertIn("/guides/clickjacking/", text)
+
+    def test_readme_documents_the_section(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("guides/", text)
+
+    def test_server_serves_the_section(self):
+        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"guides/"', text)          # STATIC_PREFIXES
+        self.assertIn('path == "/guides"', text)  # no-slash redirect
+        self.assertIn('path.startswith("/guides/")', text)
+
+
 class PagesExclusionTests(unittest.TestCase):
     """The published site must never carry repo-internal planning docs.
 
@@ -2066,12 +2259,38 @@ class PagesExclusionTests(unittest.TestCase):
     def test_roadmap_doc_exists(self):
         self.assertTrue((ROOT / "docs" / "ROADMAP.md").is_file())
 
+    @staticmethod
+    def _assemble_step_body() -> str:
+        """Return just the `run:` body of the *Assemble static site* step.
+
+        Scanning the whole workflow for internal-path tokens is wrong: the
+        leak-guard step legitimately *names* docs/ROADMAP.md, docs/DEV-NOTES.md
+        and REVIEW.md in order to reject them. Only the assemble step decides
+        what gets copied, so only the assemble step is scanned here.
+        """
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        lines = text.splitlines()
+        start = next(
+            (i for i, ln in enumerate(lines) if ln.strip().startswith("- name: Assemble static site")),
+            None,
+        )
+        assert start is not None, "Assemble static site step not found in pages.yml"
+        indent = len(lines[start]) - len(lines[start].lstrip())
+        body = []
+        for ln in lines[start + 1:]:
+            # Anything back at the step's own indentation (the next `- name:`
+            # entry, or a comment introducing it) ends this step's body.
+            if ln.strip() and (len(ln) - len(ln.lstrip())) <= indent:
+                break
+            body.append(ln)
+        return "\n".join(body)
+
     def test_workflow_never_copies_internal_paths(self):
         """The assemble step must not reference docs/, tests/ or REVIEW.md
         as copy sources. This is the regression guard: CI runs it on every
         push, so a future commit that starts copying internal files into
         _site/ fails here."""
-        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        text = self._assemble_step_body()
         for token in (
             "cp -a docs", "cp docs", "cp -r docs",
             "cp -a tests", "cp tests", "cp -r tests",
@@ -2079,6 +2298,15 @@ class PagesExclusionTests(unittest.TestCase):
             "docs/ROADMAP.md", "docs/DEV-NOTES.md",
         ):
             self.assertNotIn(token, text, token)
+
+    def test_workflow_guard_step_names_the_internal_files(self):
+        """The leak guard itself must keep naming the internal files, which is
+        exactly why the scan above is scoped to the assemble step."""
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("Guard internal files stay out of the published site", text)
+        guard = text.split("Guard internal files stay out of the published site", 1)[1]
+        for name in ("docs/ROADMAP.md", "docs/DEV-NOTES.md", "REVIEW.md"):
+            self.assertIn(name, guard, name)
 
     def test_patch_doc_documents_the_catalog_and_guard(self):
         """The workflow edit that cannot be pushed (catalog copy + internal
@@ -2088,6 +2316,13 @@ class PagesExclusionTests(unittest.TestCase):
         self.assertIn("docs/ROADMAP.md", patch)
         self.assertIn("docs/DEV-NOTES.md", patch)
         self.assertIn("REVIEW.md", patch)
+
+    def test_patch_doc_documents_the_guides_copy(self):
+        """A new published top-level section must have its Pages fate decided
+        in the same commit. guides/ cannot be added to pages.yml from here, so
+        the copy line lives in the patch doc for the maintainer."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("cp -a guides _site/", patch)
 
 
 if __name__ == "__main__":

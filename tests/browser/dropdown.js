@@ -28,6 +28,8 @@ const PAGES = [
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
+  ["guides", "/guides/"],
+  ["guide-clickjacking", "/guides/clickjacking/"],
   ["404", "/404.html"]
 ];
 

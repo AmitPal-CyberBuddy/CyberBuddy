@@ -166,6 +166,7 @@ function renderHeader(current) {
     '<span class="brand-mark">' + ICONS.logo + "</span><span>CyberBuddy</span></a>" +
     '<nav class="main-nav" aria-label="Tools">' +
     navLink(base, "/", "Hub", current) +
+    navLink(base, "/guides/", "Guides", current) +
     navLink(base, "/#methodology", "Method", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
@@ -373,8 +374,11 @@ function renderFooter() {
     '<a href="' + base + '/tools/#assess-targets">Target assessments</a>' +
     '<a href="' + base + '/tools/#local-utilities">Local utilities</a>' +
     "</nav>" +
+    // Guides are a section link, not one entry per guide — the same
+    // scalability rule the Tools column follows.
     '<nav class="footer-col" aria-label="Learn">' +
     "<strong>Learn</strong>" +
+    '<a href="' + base + '/guides/">Guides</a>' +
     '<a href="' + base + '/methodology/">Methodology</a>' +
     '<a href="' + base + '/#methodology">Scoring methodology</a>' +
     '<a href="' + base + '/methodology/#privacy">Privacy</a>' +

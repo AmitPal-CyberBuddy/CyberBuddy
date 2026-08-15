@@ -43,6 +43,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/</loc>
+    <lastmod>2026-08-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/clickjacking/</loc>
+    <lastmod>2026-08-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/</loc>
     <lastmod>2026-08-14</lastmod>
     <changefreq>monthly</changefreq>
