@@ -324,7 +324,7 @@ const TOOLS_MENU = [
     std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];
-const TOOLS_SOON = ["TLS / SSL Analyzer", "Subdomain Enumeration"];
+const TOOLS_SOON = ["DNS & Domain Security Analyzer", "HAR Security Analyzer"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");

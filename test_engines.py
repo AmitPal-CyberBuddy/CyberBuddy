@@ -1018,16 +1018,16 @@ class HostedSiteTests(unittest.TestCase):
         self.assertIn("/tools/clickjacking/", sitemap)
         self.assertIn("/tools/csp/", sitemap)
 
-    def test_csrf_is_live_and_tls_is_next_up(self):
+    def test_github_pages_first_tools_are_next_up(self):
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
-        # CSRF graduated from "soon" to a live tool…
-        self.assertIn('href: "/tools/csrf/"', app)
-        self.assertIn("Next on the bench: TLS / SSL Analyzer", hub)
-        # …so it must no longer be listed as upcoming.
         soon = app[app.index("const TOOLS_SOON"):app.index("];", app.index("const TOOLS_SOON"))]
-        self.assertNotIn("CSRF PoC Generator", soon)
-        self.assertIn("TLS / SSL Analyzer", soon)
+        self.assertIn("Next on the bench: DNS &amp; Domain Security Analyzer", hub)
+        self.assertIn("HAR Security Analyzer", hub)
+        self.assertIn("DNS & Domain Security Analyzer", soon)
+        self.assertIn("HAR Security Analyzer", soon)
+        self.assertNotIn("TLS / SSL Analyzer", soon)
+        self.assertNotIn("Subdomain Enumeration", soon)
 
 
 class GraderParityTests(unittest.TestCase):
