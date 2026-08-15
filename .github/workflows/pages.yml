@@ -126,8 +126,22 @@ jobs:
                 while IFS= read -r ref; do
                   case "$ref" in
                     http*|//*|data:*) continue ;;
+                    /*)
+                      # Root-relative references are written against the
+                      # GitHub Pages base (/CyberBuddy/). Strip the leading
+                      # slash and the repo-name segment when present, then
+                      # resolve from the artifact root — matching
+                      # tools/audit_site.py.
+                      rel="${ref#/}"              # CyberBuddy/js/404.js
+                      case "$rel" in
+                        CyberBuddy/*) rel="${rel#CyberBuddy/}" ;;
+                      esac
+                      [ -f "_site/$rel" ] || echo "  $page -> $ref"
+                      ;;
+                    *)
+                      [ -f "$dir/$ref" ] || echo "  $page -> $ref"
+                      ;;
                   esac
-                  [ -f "$dir/$ref" ] || echo "  $page -> $ref"
                 done
             done
           )
