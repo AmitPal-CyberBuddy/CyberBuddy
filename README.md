@@ -20,7 +20,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
-| **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. Secret testing is in development. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
+| **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally, build test-variant templates, and run bounded HS256/384/512 secret testing — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
 
 More tools slot in later — add one entry to the `TOOLS_MENU` registry in
 `js/app.js` (with a `category` of `assess` for URL-based target checks or
@@ -286,7 +286,8 @@ the four scanners:
 ## JWT Security Workbench
 
 The sixth tool, at [`/tools/jwt/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/),
-decodes, inspects and verifies JSON Web Tokens locally in your browser:
+decodes, inspects, verifies, edits, re-signs and tests JSON Web Tokens
+locally in your browser:
 
 - **Decode & inspect (JWT-01, live)** — strict compact-JWS parsing with
   honest errors for malformed input and JWE; pretty-printed header/payload; a
@@ -304,9 +305,11 @@ decodes, inspects and verifies JSON Web Tokens locally in your browser:
   PKCS#8 / private JWK) via Web Crypto, local RSA test-key generation,
   explicit **TEST TOKEN** labels, and copy/download that never exports key
   material by accident.
-- **Test variants & secret testing (JWT-03, planned)** — `alg:none`, claim
-  manipulation, algorithm confusion, embedded JWK, JKU/X5U and `kid`
-  templates; bounded HS256/384/512 secret testing in a Web Worker.
+- **Test variants & secret testing (JWT-03, live)** — `alg:none`, claim
+  manipulation (tamper and re-sign), algorithm confusion with a pasted
+  public key, embedded JWK, JKU/X5U and `kid` mutation templates, every
+  one labelled TEST TEMPLATE; bounded HS256/384/512 secret testing in a
+  Web Worker with progress, cancel and explicit candidate/time limits.
 
 Everything runs in this browser: no token, key or wordlist is ever sent,
 stored or placed in the URL. There is no numeric score; observations are

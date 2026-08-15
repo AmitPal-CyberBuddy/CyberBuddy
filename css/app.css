@@ -2638,3 +2638,31 @@ html.js .reveal.in,
 @media (max-width: 600px) {
   .jwt-help-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   JWT Security Workbench — JWT-03 functional Test Variants & Secret Test UI
+   ========================================================================== */
+.jwt-var-base { margin: 6px 0 14px; color: var(--ink-2); }
+
+.jwt-variant { display: flex; flex-direction: column; gap: 6px; }
+.jwt-variant input[type="text"],
+.jwt-variant select,
+.jwt-variant textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.jwt-variant textarea { min-height: 92px; font-family: var(--font-mono); resize: vertical; }
+.jwt-variant .btn { margin-top: 2px; }
+
+.jwt-var-note { color: var(--ink-2); font-size: 0.88rem; line-height: 1.6; margin: 0 0 10px; }
+
+.jwt-progress-wrap { margin: 14px 0; }
+.jwt-progress { width: 100%; height: 12px; accent-color: var(--brand); }
+.jwt-progress-wrap .jwt-field-note { margin: 6px 0 0; }

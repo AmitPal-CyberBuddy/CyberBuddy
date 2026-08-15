@@ -19,9 +19,9 @@ handoff” for the state at the end of that session.
 | Item | Value |
 | --- | --- |
 | Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |
-| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (JWT-01 decode/inspect/verify + JWT-02 edit/generate/sign)** |
+| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (feature-complete: decode/inspect/verify + edit/generate/sign + test variants + bounded secret testing)** |
 | Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 6) · Documentation (`/documentation/`) |
-| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02 (13 new engine-signing + UI-wiring tests) |
+| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02; **274** after JWT-03 (16 variant/secret/worker tests) |
 | JavaScript file total | **20** (13 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
 | Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
@@ -375,7 +375,7 @@ PR.
   `27650ff` (open — not merged; do not mark DONE).
 
 ### JWT-03 — Test variants and bounded secret testing
-- **Status:** `NEXT`
+- **Status:** `IN REVIEW`
 - **Goal:** Build authorized-test variants (`alg:none`, claim manipulation,
   algorithm confusion with an analyst-supplied public key, embedded JWK,
   JKU/X5U and `kid` mutation templates) and bounded HMAC secret testing for
@@ -393,7 +393,9 @@ PR.
   transmitted.
 - **Required tests:** variant builder under Node; Worker bounds/cancel;
   real-browser variant + secret-test flow.
-- **PR/commit:** —
+- **PR/commit:** PR #25 · branch `arena/01a004aa-cyberbuddy` (folded into
+  the JWT-02 PR at the maintainer's request to merge once — see REVIEW
+  §28). Not merged; do not mark DONE.
 
 ### FUTURE-01 — External payload-corpus integration
 - **Status:** `DEFERRED`
@@ -412,60 +414,61 @@ PR.
 
 - **Last verified `origin/main`:** `e2a9a86` — PR #24 (JWT-00 preview +
   JWT-01 decode/inspect/verify) merged as `b8a9fdc` (verified 2026-08-15).
-  The Pages workflow `cp -a tools/…` line carries `tools/jwt` and the JWT
-  tool is confirmed working in production. This session started from
-  `origin/main` with a clean tree.
-- **Work in review:** **JWT-02 (edit & generate)** — branch
-  `arena/01a004aa-cyberbuddy`, **PR #25** (open, not merged).
-- **Delivered:**
-  - **JWT-02 (functional):** the Edit & Generate panel now edits
-    header/payload JSON (auto-loaded from the analyzed token, never
-    clobbering analyst edits), applies standard-claim helpers (`iss`,
-    `sub`, `aud`, `exp`, `nbf`, `iat`, `jti` with now/+1h/+24h/random-jti
-    quick buttons), renders a live original→modified semantic diff, and
-    re-signs locally — HS256/384/512 with a string secret, RS/PS/ES with a
-    PKCS#8 PEM or private JWK, or a locally generated 2048-bit RSA test
-    pair (one Web Crypto signature family per pair). Every output carries
-    the **TEST TOKEN** banner and honesty text; copy/download export the
-    token alone, and private JWK export is a separate confirmed action.
-    The engine gained `signToken`, `generateRsaTestPair`,
-    `exportPrivateJwk`/`exportPublicJwk`, `diffClaims` and `randomJti`;
-    PEM private-key parsing lives in the engine, and the controller still
-    performs no crypto, network, storage or history calls. Test Variants
-    and Secret Test (JWT-03) remain non-interactive previews; the PWA
-    shortcut stays out until the full workbench ships.
-  - Docs: `docs/DEV-NOTES.md` gained the "JWT-02 traps" section (and the
-    stale JWT-01 preview-panel trap was updated); `REVIEW.md` gained §27;
-    README and `llms.txt` were updated for the new capability; the JWT
-    guide now states JWT-01+JWT-02 are live (visible word count 1195 of
-    the 1200 ceiling).
-- **Last completed checks:** **258/258** stdlib tests OK
-  (`python3 -m unittest test_engines.py`; 13 new `JwtWorkbenchTests`
-  covering Node-driven sign→verify round-trips — HS256/384/512, RS256 and
-  PS256 with the generated pair, ES256 with a private JWK — plus the
-  sign-side confusion guards, `diffClaims`, `randomJti`, functional Edit
-  panel wiring, TEST TOKEN honesty strings, confirmed private export,
-  token-copy-never-touches-keys and the 4+4+4 tab counts) · `node --check`
-  clean on all 20 JS files · `py_compile` clean · JSON/XML valid · local
-  Pages-assembly dry run green (assets resolve, no internal leaks, JWT
-  tool + guide in the sitemap) · live `server.py` JWT route crawl (covered
-  by the stdlib route tests) · a Node DOM-shim smoke test of the full
-  controller flow (boot → decode → verify → edit auto-load → helper apply
-  → HMAC sign + banner + roundtrip → RSA keygen → RS256 sign/verify →
-  confirmed private export → `alg:none` and header/select mismatch guards).
+  This session started from `origin/main` with a clean tree.
+- **Work in review:** **JWT-02 (edit & generate) + JWT-03 (test variants
+  and bounded secret testing)** — branch `arena/01a004aa-cyberbuddy`,
+  **PR #25** (open, not merged). JWT-03 was folded into the JWT-02 PR at
+  the maintainer's request to merge once.
+- **Delivered (JWT-02, REVIEW §27):** functional Edit & Generate —
+  header/payload editors, standard-claim helpers, semantic diff,
+  HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
+  labels, token-only copy/download with confirmed private-key export.
+- **Delivered (JWT-03, REVIEW §28):**
+  - **Test Variants (functional):** `buildVariant` in the engine —
+    `alg:none`, claim tamper (original signature kept) and claim re-sign,
+    algorithm confusion (HS256 with the pasted public key as the HMAC
+    secret), embedded JWK, `jku`/`x5u`, path/SQL-style `kid` templates.
+    Every output is labelled **TEST TEMPLATE**, never a finding; re-signed
+    variants go through `signToken` so all JWT-02 guards apply; `alg:none`
+    stays rejected by parse/sign and exists only as a template.
+  - **Secret Test (functional):** `js/jwt.worker.js` runs the bounded
+    HS256/384/512 search off the main thread — `searchHmacSecret` in the
+    engine, progress every 250 candidates, cancel, explicit caps
+    (100,000 candidates, 120 s) checked between candidates, the uploaded
+    wordlist read inside the worker with `FileReaderSync`, a 32-key
+    built-in starter list. A match is a discovered secret for authorized
+    testing, never a verdict.
+  - **PWA shortcut added** (`manifest.webmanifest`) now that the workbench
+    is complete (deferred through JWT-01/02); manifest description and
+    README/`llms.txt`/guide updated (guide at 1185 of 1200 visible words).
+- **Last completed checks:** **274/274** stdlib tests OK
+  (`python3 -m unittest test_engines.py`) — 16 new/repurposed
+  `JwtWorkbenchTests` covering the Node-driven variant builder (including
+  the confusion signature verified against an independent HMAC while the
+  verify guard holds), `searchHmacSecret` (found/not-found/progress/stop),
+  and the worker message contract under a Node Worker-shim (found +
+  cancel with tested < total) · `node --check` clean on all 21 JS files
+  (incl. `js/jwt.worker.js`) · `py_compile` clean · JSON (manifest) + XML
+  valid · local Pages-assembly dry run green · live `server.py` JWT route
+  crawl (covered by the stdlib route tests) · Node DOM-shim smoke tests of
+  the full controller (JWT-01/02/03 flows, including the real worker file
+  driven through a fake `Worker`, the cache-bustered worker URL, the
+  cancel path and the HS-only guard on an RS256 base).
 - **Real-browser suites:** not executed (no Chromium in the sandbox). The
-  `/tools/jwt/` page gained the functional Edit & Generate panel; run
+  `/tools/jwt/` page now has all four panels functional; run
   `layout`/`dropdown`/`responsive` by hand before merge.
-- **Next approved roadmap ID:** **`JWT-03`** (test variants + bounded
-  secret testing). ABOUT-01 stays `TODO`.
-- **Files/traps the next session must read:** `REVIEW.md` §27 ·
-  `docs/DEV-NOTES.md` ("JWT-02 traps") · `docs/ROADMAP.md` (JWT-03 scope)
-  · `js/jwt.engine.js` + `js/tool.jwt.js` (the engine contract the new
+- **Next approved roadmap ID:** none set — the JWT series is complete.
+  ABOUT-01 and DX-01 remain `TODO` for the maintainer to approve; the §6
+  protocol's "exactly one NEXT" is intentionally not applied until then.
+  FUTURE-01 stays `DEFERRED`.
+- **Files/traps the next session must read:** `REVIEW.md` §27/§28 ·
+  `docs/DEV-NOTES.md` ("JWT-02 traps" + "JWT-03 traps") · `js/jwt.engine.js`
+  + `js/tool.jwt.js` + `js/jwt.worker.js` (the engine contract the new
   tests pin) · `docs/pages-workflow-patch.md` (no new entries needed —
-  `tools/jwt` is already in the workflow).
+  `tools/jwt` is already on the workflow copy line and `js/*.js` is
+  copied whole, so the worker needs no line).
 - **Known blockers:** none in code. No workflow edit was needed this
-  session (`tools/jwt` is already on the Pages copy line, so
-  `docs/pages-workflow-patch.md` needed no addition).
+  session.
 
 ## 6. Future-session protocol
 

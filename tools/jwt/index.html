@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- JWT-01 (decode/inspect/verify) and JWT-02 (edit/generate/sign) are
-       functional and fully local. Test Variants and Secret Test remain
-       non-operational previews (JWT-03). -->
+  <!-- JWT-01/02/03: decode, inspect, verify, edit, generate, sign,
+       test-variant templates and bounded secret testing are all functional
+       and fully local. Nothing leaves the browser. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'" />
   <title>JWT Security Workbench — CyberBuddy</title>
   <meta name="description" content="Decode, inspect, verify, edit and re-sign JSON Web Tokens locally in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the browser." />
@@ -80,9 +80,7 @@
     </p>
   </div>
 
-  <!-- Tab navigation. Analyze & Verify (JWT-01) and Edit & Generate (JWT-02)
-       are functional; Test Variants and Secret Test are JWT-03 previews and
-       stay non-interactive. -->
+  <!-- Tab navigation. All four panels are functional (JWT-01/02/03). -->
   <div class="jwt-tabs reveal" style="--d: .16s;">
     <div class="jwt-tablist" role="tablist" aria-label="JWT Workbench panels">
       <button type="button" role="tab" id="jwt-tab-analyze" class="jwt-tab is-active"
@@ -372,70 +370,187 @@
       </div>
     </section>
 
-    <!-- Test Variants (JWT-03, preview) -->
+    <!-- Test Variants (JWT-03, functional) -->
     <section role="tabpanel" id="jwt-panel-variants" aria-labelledby="jwt-tab-variants"
-      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Test variants</h2>
-        <span class="jwt-phase jwt-phase-03">JWT-03 &middot; Planned</span>
+        <span class="jwt-phase jwt-phase-live">JWT-03 &middot; Live</span>
       </div>
-      <div class="jwt-preview-banner">
-        <strong>Coming in JWT-03.</strong> Build authorized-test variants.
-        Each is a template for your testing &mdash; the tool never sends a token
-        or claims a server accepted it.
+      <div class="jwt-edit-note">
+        <strong>Authorized-test templates.</strong> Every variant is built
+        locally from the analyzed token. A template is not a finding and
+        proves nothing until the target actually accepts it — the Workbench
+        never sends one.
       </div>
+      <p id="jwtVarBase" class="jwt-field-note jwt-var-base" role="status">Paste and decode a token above — variants build on the analyzed token.</p>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Variant signing key (for re-signed variants)</h3>
+        <p class="card note">Claim re-sign, JKU/X5U, kid and embedded-JWK
+          templates are re-signed with this key. HMAC tokens need the shared
+          secret; asymmetric tokens need a private key or a generated RSA
+          pair.</p>
+        <div class="jwt-key-tabs jwt-var-key-tabs" role="tablist" aria-label="Variant signing key type">
+          <button type="button" role="tab" id="jwt-var-key-secret-tab" class="jwt-key-tab is-active"
+            data-keytype="secret" aria-selected="true" aria-controls="jwt-var-key-secret">HMAC secret</button>
+          <button type="button" role="tab" id="jwt-var-key-private-tab" class="jwt-key-tab"
+            data-keytype="private" aria-selected="false" aria-controls="jwt-var-key-private">Private key</button>
+          <button type="button" role="tab" id="jwt-var-key-generated-tab" class="jwt-key-tab"
+            data-keytype="generated" aria-selected="false" aria-controls="jwt-var-key-generated">Generated RSA pair</button>
+        </div>
+        <div class="jwt-key-panels">
+          <div id="jwt-var-key-secret" class="jwt-key-panel" role="tabpanel">
+            <label class="jwt-field"><span>HMAC shared secret (for HS* base tokens)</span>
+              <input type="password" id="jwtVarSecret" autocomplete="off" placeholder="Shared secret" /></label>
+          </div>
+          <div id="jwt-var-key-private" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <label class="jwt-field"><span>Private key — PEM PKCS#8 or JWK JSON</span>
+              <textarea id="jwtVarPrivate" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----&#10;or {&quot;kty&quot;:&quot;RSA&quot;,&quot;n&quot;:…,&quot;e&quot;:…,&quot;d&quot;:…}"></textarea></label>
+          </div>
+          <div id="jwt-var-key-generated" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <p class="jwt-field-note">Generate a throwaway RSA pair for the
+              analyzed token's algorithm (RS*/PS*). Held in memory only.</p>
+            <div class="jwt-btn-row">
+              <button type="button" id="jwtVarGenKey" class="btn btn-primary">Generate RSA test pair</button>
+            </div>
+            <p id="jwtVarGenStatus" class="jwt-gen-status" role="status"></p>
+            <label class="jwt-field"><span>Public JWK (used by the embedded-JWK template)</span>
+              <textarea id="jwtVarGenPub" readonly class="jwt-gen-pub"></textarea></label>
+          </div>
+        </div>
+      </article>
+
       <div class="jwt-variant-grid">
         <article class="card inset-card jwt-variant">
           <h3 class="card-title"><code>alg: none</code></h3>
-          <p>Unsigned-token variant for testing whether the server enforces signature presence.</p>
+          <p>Unsigned-token template — tests whether the server enforces signature presence.</p>
+          <div class="jwt-btn-row"><button type="button" id="jwtVarNone" class="btn btn-primary">Build alg:none template</button></div>
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">Claim manipulation</h3>
-          <p>Edit a claim and re-sign with a key you supply.</p>
+          <p>Change one claim. <em>Tamper</em> keeps the original signature;
+            <em>Re-sign</em> re-signs with the variant key.</p>
+          <div class="jwt-btn-row">
+            <input type="text" id="jwtVarClaim" autocomplete="off" placeholder="claim" aria-label="Claim name" />
+            <input type="text" id="jwtVarValue" autocomplete="off" placeholder="value" aria-label="Claim value" />
+          </div>
+          <div class="jwt-btn-row">
+            <button type="button" id="jwtVarTamper" class="btn">Tamper, keep old signature</button>
+            <button type="button" id="jwtVarResign" class="btn">Tamper + re-sign</button>
+          </div>
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">Algorithm confusion</h3>
-          <p>HMAC-signed-with-public-key variants, requiring the analyst-supplied public key &mdash; never fetched.</p>
+          <p>HS256-signed with the target's RSA public key as the HMAC secret — never fetched; paste it.</p>
+          <textarea id="jwtVarPubPem" spellcheck="false" placeholder="-----BEGIN PUBLIC KEY-----…" aria-label="Target RSA public key (PEM)"></textarea>
+          <div class="jwt-btn-row"><button type="button" id="jwtVarConfusion" class="btn">Build confusion template</button></div>
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">Embedded JWK</h3>
-          <p>A token carrying its own key in the header, to test header trust.</p>
+          <p>A token carrying its own public key in the header, re-signed with the matching private key — tests header trust.</p>
+          <div class="jwt-btn-row"><button type="button" id="jwtVarEmbed" class="btn">Build embedded-JWK template</button></div>
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">JKU / X5U</h3>
-          <p>Templates pointing at an analyst-controlled URL &mdash; no target request is made by the tool.</p>
+          <p>Points the header at an analyst-controlled URL (you host the key set). No request is made by the tool.</p>
+          <div class="jwt-btn-row">
+            <select id="jwtVarJkuX5u" aria-label="Header field">
+              <option value="jku">jku</option>
+              <option value="x5u">x5u</option>
+            </select>
+            <input type="text" id="jwtVarUrl" autocomplete="off" placeholder="https://attacker.example/jwks.json" aria-label="URL" />
+          </div>
+          <div class="jwt-btn-row"><button type="button" id="jwtVarJku" class="btn">Build header-URL template</button></div>
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title"><code>kid</code> variants</h3>
           <p>Path-style and SQL-style <code>kid</code> mutation templates for authorized key-selection testing.</p>
+          <div class="jwt-btn-row">
+            <select id="jwtVarKidStyle" aria-label="kid style">
+              <option value="path">Path style</option>
+              <option value="sql">SQL style</option>
+            </select>
+            <input type="text" id="jwtVarKid" autocomplete="off" placeholder="../../../dev/null" aria-label="kid value" />
+          </div>
+          <div class="jwt-btn-row"><button type="button" id="jwtVarKidBuild" class="btn">Build kid template</button></div>
         </article>
+      </div>
+
+      <div id="jwtVarResult" class="jwt-edit-result hidden" role="status" aria-live="polite">
+        <div class="jwt-test-banner">
+          <strong>TEST TEMPLATE</strong> &mdash; built locally for authorized
+          testing. A template is not a finding: only the target's actual
+          behavior decides whether it matters.
+        </div>
+        <p id="jwtVarNote" class="jwt-var-note"></p>
+        <label class="jwt-field"><span>Variant token (compact JWS)</span>
+          <textarea id="jwtVarToken" readonly class="jwt-edit-output"></textarea></label>
+        <div class="jwt-btn-row">
+          <button type="button" id="jwtVarCopy" class="btn">Copy token</button>
+          <button type="button" id="jwtVarDl" class="btn">Download token</button>
+          <span id="jwtVarCopyStatus" class="jwt-copy-status" role="status"></span>
+        </div>
+        <ul id="jwtVarResultLines" class="jwt-edit-lines"></ul>
       </div>
     </section>
 
-    <!-- Secret Test (JWT-03, preview) -->
+    <!-- Secret Test (JWT-03, functional) -->
     <section role="tabpanel" id="jwt-panel-secret" aria-labelledby="jwt-tab-secret"
-      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Secret test</h2>
-        <span class="jwt-phase jwt-phase-03">JWT-03 &middot; Planned</span>
+        <span class="jwt-phase jwt-phase-live">JWT-03 &middot; Live</span>
       </div>
-      <div class="jwt-preview-banner">
-        <strong>Coming in JWT-03.</strong> Bounded HMAC secret testing for
-        HS256/384/512 only, run in a Web Worker with progress and cancel.
+      <div class="jwt-edit-note">
+        <strong>Bounded HMAC secret testing.</strong> HS256/384/512 only, run
+        in a Web Worker in this browser with progress, cancel, and explicit
+        candidate and time limits. Nothing is stored or transmitted — a match
+        is a discovered secret for your own authorized testing, not a verdict
+        about the target.
       </div>
+      <p id="jwtSecretBase" class="jwt-field-note" role="status">Paste an HS256/384/512 token above — secret testing works on the analyzed token.</p>
+
       <article class="card inset-card">
-        <h3 class="card-title">Planned bounds</h3>
-        <ul class="scope-list">
-          <li>A small built-in candidate list (not a giant bundled wordlist).</li>
-          <li>A custom wordlist <em>you</em> upload; read in the Worker and never persisted.</li>
-          <li>Progress and Cancel controls, with explicit resource limits on time and candidates.</li>
-          <li>HS256/384/512 only &mdash; no RSA/EC cracking, no network calls.</li>
-        </ul>
+        <h3 class="card-title">Candidates &amp; bounds</h3>
+        <label class="jwt-field"><span>
+          <input type="checkbox" id="jwtSecretBuiltin" checked />
+          Include the small built-in candidate list (32 common keys — not a bundled wordlist)
+        </span></label>
+        <label class="jwt-field"><span>Custom wordlist (read in the Worker, never persisted)</span>
+          <input type="file" id="jwtWordlist" accept=".txt,.lst,.dic,text/plain" /></label>
+        <p id="jwtWordlistStatus" class="jwt-field-note">No file chosen — the worker reads it only when the test starts.</p>
+        <div class="grid-2 jwt-sections-grid">
+          <label class="jwt-field"><span>Maximum candidates (bounded: 1&ndash;100,000)</span>
+            <input type="number" id="jwtMaxCand" value="10000" min="1" max="100000" /></label>
+          <label class="jwt-field"><span>Time limit in seconds (bounded: 1&ndash;120)</span>
+            <input type="number" id="jwtMaxSec" value="60" min="1" max="120" /></label>
+        </div>
       </article>
-      <div class="jwt-future">
-        <label class="jwt-field is-disabled"><span>Custom wordlist upload</span>
-          <input type="file" disabled aria-disabled="true" /></label>
-        <button type="button" class="btn btn-primary" disabled aria-disabled="true">Start secret test (disabled)</button>
+
+      <div class="jwt-verify-actions">
+        <button type="button" id="jwtSecretStart" class="btn btn-primary">Start secret test</button>
+        <button type="button" id="jwtSecretCancel" class="btn hidden">Cancel</button>
+      </div>
+
+      <div id="jwtSecretProgress" class="jwt-progress-wrap hidden">
+        <progress id="jwtSecretBar" class="jwt-progress" max="100" value="0"></progress>
+        <p id="jwtSecretCount" class="jwt-field-note"></p>
+      </div>
+
+      <div id="jwtSecretResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
+
+      <div id="jwtSecretFoundWrap" class="hidden">
+        <label class="jwt-field"><span>Matching secret (HS key candidate)</span>
+          <input type="text" id="jwtSecretFound" readonly /></label>
+        <div class="jwt-btn-row">
+          <button type="button" id="jwtSecretCopy" class="btn">Copy secret</button>
+          <span id="jwtSecretCopyStatus" class="jwt-copy-status" role="status"></span>
+        </div>
+        <p class="jwt-field-note">A match means the token's HMAC signature was
+          computed with this candidate as the key — for authorized testing
+          only. HS256 is not automatically weak: a strong secret would never
+          appear in a candidate list.</p>
       </div>
     </section>
   </div>
@@ -455,11 +570,11 @@
           issued it.</li>
         <li><strong>A valid signature with a key you supply proves only a
           match with that key</strong>, not that the target trusts it.</li>
-        <li><strong>A generated or re-signed token (JWT-02) is a TEST
-          TOKEN, not proof of acceptance</strong> &mdash; building the bytes
-          proves nothing until the target actually honors the token, its
-          claims and its signature. Test variants and secret testing
-          (JWT-03) stay template-based when they land.</li>
+        <li><strong>A generated or re-signed token is a TEST TOKEN and a
+          variant is a TEST TEMPLATE — not proof of acceptance.</strong>
+          Building the bytes proves nothing until the target actually honors
+          the token; a secret-testing match is a discovered secret for your
+          own testing, never a verdict about the target.</li>
         <li><strong>Live target testing is not part of the hosted tool.</strong>
           CyberBuddy will not send a JWT to a target, a JWKS URL or a third party.</li>
         <li><strong>Context over score.</strong> There is no numeric security
@@ -487,19 +602,20 @@
           observations, and HMAC/RSA/PSS/ECDSA verification via Web Crypto. No
           persistence, no network.</p>
       </article>
-      <article class="card inset-card jwt-phase-card jwt-phase-current">
+      <article class="card inset-card jwt-phase-card">
         <span class="jwt-phase-tag">JWT-02 &middot; Live</span>
         <h3>Edit &amp; generate</h3>
         <p>Header/payload editors, standard-claim helpers, semantic diff,
           HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
           labels, safe copy/download.</p>
       </article>
-      <article class="card inset-card jwt-phase-card jwt-phase-next">
-        <span class="jwt-phase-tag">JWT-03 &middot; Planned</span>
+      <article class="card inset-card jwt-phase-card jwt-phase-current">
+        <span class="jwt-phase-tag">JWT-03 &middot; Live</span>
         <h3>Test variants &amp; bounded secret testing</h3>
         <p><code>alg:none</code>, claim manipulation, algorithm confusion,
           embedded JWK, JKU/X5U and <code>kid</code> templates; bounded
-          HS256/384/512 secret testing in a Web Worker.</p>
+          HS256/384/512 secret testing in a Web Worker with progress and
+          cancel.</p>
       </article>
     </div>
   </section>

@@ -2594,20 +2594,22 @@ class DocumentationPageTests(unittest.TestCase):
 
 
 class JwtWorkbenchTests(unittest.TestCase):
-    """JWT-01 + JWT-02: the JWT Security Workbench decodes, inspects and
-    verifies compact JWS tokens, and edits/generates/signs them locally.
-    The pure engine lives in js/jwt.engine.js (DOM-free, run under Node
-    here); the controller wires it to the Analyze & Verify and Edit &
-    Generate panels. Test Variants and Secret Test (JWT-03) remain
-    non-interactive previews.
+    """JWT-01/02/03: the JWT Security Workbench decodes, inspects, verifies,
+    edits, generates and re-signs compact JWS tokens locally, builds
+    authorized-test variant templates and runs a bounded HMAC secret search
+    in a Web Worker. The pure engine lives in js/jwt.engine.js (DOM-free,
+    run under Node here, including the worker message contract under a
+    Node Worker-shim); the controller wires the DOM and the worker.
 
     Accuracy rules pinned here: HS256 is not automatically weak; missing
     claims are contextual observations, not a score; decoding is separate
     from signature/claim verification; we never trust the token's alg header
     to choose a key family (algorithm-confusion guard, in both verify and
-    sign directions); a signed token is a TEST TOKEN until the target honors
-    it; key export is explicit and confirmed, never accidental; and nothing
-    leaves the browser (no network/storage in the controller).
+    sign directions); a signed token is a TEST TOKEN and a variant is a
+    TEST TEMPLATE until the target honors them; secret testing is HS-only,
+    bounded, cancellable and never persists anything; key export is explicit
+    and confirmed, never accidental; and nothing leaves the browser (no
+    network/storage in the controller or the worker).
     """
 
     PAGE = ROOT / "tools" / "jwt" / "index.html"
@@ -3023,6 +3025,290 @@ console.log(JSON.stringify({a:a, b:b, shape:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
         self.assertTrue(out["shape"], out)
         self.assertNotEqual(out["a"], out["b"])
 
+    # --- JWT-03: variant templates under Node --------------------------
+
+    def _variant_base(self):
+        """A parsed RS256 base token plus its key pair, built in Node."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        harness = """
+const crypto = globalThis.crypto;
+const b64 = (buf) => Buffer.from(buf).toString('base64').replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+(async () => {
+  const pair = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const header = {alg:'RS256', typ:'JWT', kid:'k1'};
+  const payload = {sub:'alice', role:'user', exp:4102444800};
+  const data = b64(JSON.stringify(header)) + '.' + b64(JSON.stringify(payload));
+  const sig = await crypto.subtle.sign({name:'RSASSA-PKCS1-v1_5',hash:{name:'SHA-256'}}, pair.privateKey, new TextEncoder().encode(data));
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const priv = await crypto.subtle.exportKey('jwk', pair.privateKey);
+  console.log(JSON.stringify({token: data + '.' + b64(Buffer.from(sig)), publicJwk: pub, privateJwk: priv}));
+})();
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(harness); path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_variant_alg_none_template_and_guard_intact(self):
+        data = self._variant_base()
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const v = await CyberBuddyJwt.buildVariant(parsed, 'alg-none');
+  console.log(JSON.stringify({token:v.token, alg:v.header.alg, emptySig:v.token.endsWith('.'),
+    parseRejects:!CyberBuddyJwt.tryParseToken(v.token).ok}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertTrue(out["emptySig"], out)
+        self.assertEqual(out["alg"], "none")
+        # The template exists, but parse/verify guards stay intact.
+        self.assertTrue(out["parseRejects"])
+
+    def test_variant_tamper_keeps_original_signature(self):
+        data = self._variant_base()
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const v = await CyberBuddyJwt.buildVariant(parsed, 'tamper', {claim:'role', value:'admin'});
+  const payload = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(v.token.split('.')[1])));
+  console.log(JSON.stringify({sameSig: v.token.split('.')[2] === parsed.raw.split('.')[2],
+    role: payload.role, note: v.note}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertTrue(out["sameSig"], out)
+        self.assertEqual(out["role"], "admin")
+        self.assertTrue(out["note"])
+
+    def test_variant_claim_resign_roundtrip(self):
+        data = self._variant_base()
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pair = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const v = await CyberBuddyJwt.buildVariant(parsed, 'claim-resign', {claim:'role', value:'admin', alg:'RS256', key:pair.privateKey});
+  if (v.error) { console.log(JSON.stringify(v)); return; }
+  const check = await CyberBuddyJwt.verifyToken(v.token, pub, {alg:'RS256'});
+  const payload = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(v.token.split('.')[1])));
+  console.log(JSON.stringify({ok:check.valid, role:payload.role, type:v.type}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["role"], "admin")
+        self.assertEqual(out["type"], "claim-resign")
+
+    def test_variant_algorithm_confusion_signs_with_public_key(self):
+        """The confusion template HMAC-signs with the public key text; the
+        verify-side guard still rejects PEM secrets (both coexist)."""
+        data = self._variant_base()
+        out = self._run_engine("""
+const crypto2 = require('crypto');
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pem = '-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\\n-----END PUBLIC KEY-----';
+  const v = await CyberBuddyJwt.buildVariant(parsed, 'alg-confusion', {publicKeyPem: pem});
+  if (v.error) { console.log(JSON.stringify(v)); return; }
+  const parts = v.token.split('.');
+  const header = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(parts[0])));
+  const expected = crypto2.createHmac('sha256', pem).update(parts[0] + '.' + parts[1]).digest();
+  const got = Buffer.from(CyberBuddyJwt.b64urlDecode(parts[2]));
+  const verifyRejects = await CyberBuddyJwt.verifyToken(v.token, pem, {alg:'HS256'});
+  console.log(JSON.stringify({alg:header.alg, sigOk: expected.equals(Buffer.from(got)), verifyRejected: !verifyRejects.valid}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertEqual(out["alg"], "HS256")
+        self.assertTrue(out["sigOk"], out)
+        self.assertTrue(out["verifyRejected"])
+
+    def test_variant_embedded_jwk_verifies_with_embedded_key(self):
+        data = self._variant_base()
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pair = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const v = await CyberBuddyJwt.buildVariant(parsed, 'embedded-jwk', {publicJwk: pub, alg:'RS256', key: pair.privateKey});
+  if (v.error) { console.log(JSON.stringify(v)); return; }
+  const header = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(v.token.split('.')[0])));
+  const check = await CyberBuddyJwt.verifyToken(v.token, header.jwk, {alg:'RS256'});
+  console.log(JSON.stringify({hasJwk: !!header.jwk, ok: check.valid}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertTrue(out["hasJwk"], out)
+        self.assertTrue(out["ok"], out)
+
+    def test_variant_jku_x5u_and_kid_headers(self):
+        data = self._variant_base()
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pair = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const dec = (t) => JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(t.split('.')[0])));
+  const jku = await CyberBuddyJwt.buildVariant(parsed, 'jku', {url:'https://attacker.example/jwks.json', alg:'RS256', key:pair.privateKey});
+  const x5u = await CyberBuddyJwt.buildVariant(parsed, 'x5u', {url:'https://attacker.example/cert.pem', alg:'RS256', key:pair.privateKey});
+  const kid = await CyberBuddyJwt.buildVariant(parsed, 'kid', {kid:\"1' OR 1=1--\", alg:'RS256', key:pair.privateKey});
+  const check = await CyberBuddyJwt.verifyToken(kid.token, pub, {alg:'RS256'});
+  console.log(JSON.stringify({jku:dec(jku.token).jku, x5u:dec(x5u.token).x5u,
+    kid:dec(kid.token).kid, verifies:check.valid}));
+})();
+""" % json.dumps(data["token"]))
+        self.assertEqual(out["jku"], "https://attacker.example/jwks.json")
+        self.assertEqual(out["x5u"], "https://attacker.example/cert.pem")
+        self.assertIn("OR 1=1", out["kid"])
+        self.assertTrue(out["verifies"])
+
+    def test_variant_requires_base_token(self):
+        out = self._run_engine("""
+CyberBuddyJwt.buildVariant(null, 'alg-none').then(r=>console.log(JSON.stringify(r)));
+""")
+        self.assertIn("error", out)
+        self.assertIn("base token", out["error"].lower())
+
+    def test_public_jwk_from_private_rsa_and_ec(self):
+        out = self._run_engine("""
+(async () => {
+  const rsa = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const ec = await crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, true, ['sign','verify']);
+  const rsaPriv = await crypto.subtle.exportKey('jwk', rsa.privateKey);
+  const ecPriv = await crypto.subtle.exportKey('jwk', ec.privateKey);
+  const rsaPub = CyberBuddyJwt.publicJwkFromPrivate(rsaPriv);
+  const ecPub = CyberBuddyJwt.publicJwkFromPrivate(ecPriv);
+  console.log(JSON.stringify({rsaKty:rsaPub.kty, rsaHasN:!!rsaPub.n, rsaNoD:!rsaPub.d,
+    ecCrv:ecPub.crv, ecHasX:!!ecPub.x, ecNoD:!ecPub.d}));
+})();
+""")
+        self.assertEqual(out["rsaKty"], "RSA")
+        self.assertTrue(out["rsaHasN"] and out["rsaNoD"])
+        self.assertEqual(out["ecCrv"], "P-256")
+        self.assertTrue(out["ecHasX"] and out["ecNoD"])
+
+    # --- JWT-03: bounded secret search under Node ----------------------
+
+    def test_builtin_secret_list_is_small(self):
+        out = self._run_engine("""
+const l = CyberBuddyJwt.BUILTIN_SECRET_CANDIDATES;
+console.log(JSON.stringify({n:l.length, hasSecret:l.indexOf('secret')!==-1, hasJwt:l.indexOf('jwt-secret')!==-1}));
+""")
+        self.assertLess(out["n"], 100, "built-in list stays small")
+        self.assertTrue(out["hasSecret"] and out["hasJwt"])
+
+    def test_search_hmac_secret_found_and_not_found(self):
+        out = self._run_engine("""
+(async () => {
+  const s = await CyberBuddyJwt.signToken({alg:'HS256'},{sub:'x'},'topsecret',{alg:'HS256'});
+  const parsed = CyberBuddyJwt.parseToken(s.token);
+  const found = await CyberBuddyJwt.searchHmacSecret({alg:'HS256', signingInput:parsed.signingInput,
+    signature:parsed.signature, candidates:['aaaa','bbbb','topsecret','cccc']});
+  const miss = await CyberBuddyJwt.searchHmacSecret({alg:'HS256', signingInput:parsed.signingInput,
+    signature:parsed.signature, candidates:['nope1','nope2']});
+  console.log(JSON.stringify({found:found.found, secret:found.secret, tested:found.tested,
+    miss:!miss.found, missTested:miss.tested}));
+})();
+""")
+        self.assertTrue(out["found"], out)
+        self.assertEqual(out["secret"], "topsecret")
+        self.assertEqual(out["tested"], 3)  # stops at the match
+        self.assertTrue(out["miss"])
+        self.assertEqual(out["missTested"], 2)
+
+    def test_search_hmac_secret_reports_progress_and_stops(self):
+        out = self._run_engine("""
+(async () => {
+  const s = await CyberBuddyJwt.signToken({alg:'HS512'},{sub:'x'},'zz',{alg:'HS512'});
+  const parsed = CyberBuddyJwt.parseToken(s.token);
+  let stops = 0;
+  const r = await CyberBuddyJwt.searchHmacSecret({alg:'HS512', signingInput:parsed.signingInput,
+    signature:parsed.signature, candidates:['a','b','c','d','e'],
+    shouldContinue: () => (stops++, stops < 2)});
+  console.log(JSON.stringify({tested:r.tested, total:r.total, found:r.found, stops:stops}));
+})();
+""")
+        self.assertEqual(out["tested"], 1, out)   # stopped before the 2nd candidate
+        self.assertEqual(out["total"], 5)
+        self.assertFalse(out["found"])
+
+    def test_search_hmac_secret_rejects_non_hs(self):
+        out = self._run_engine("""
+CyberBuddyJwt.searchHmacSecret({alg:'RS256', signingInput:'x', signature:new Uint8Array(1),
+  candidates:['a']}).catch(e=>console.log(JSON.stringify({err:e.message})));
+""")
+        self.assertIn("HS256/384/512", out["err"])
+
+    def _run_worker(self, harness: str):
+        """Run js/jwt.worker.js under Node with a Worker-environment shim
+        (self / importScripts / postMessage / FileReaderSync). The shim is
+        defined BEFORE the worker source so its top-level importScripts
+        call can load the engine."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        engine = self.ENGINE.read_text(encoding="utf-8")
+        worker = (ROOT / "js" / "jwt.worker.js").read_text(encoding="utf-8")
+        preamble = """
+global.self = global;
+const messages = [];
+global.postMessage = (m) => messages.push(m);
+const ENGINE_SRC = %s;
+global.importScripts = (p) => { if (String(p).indexOf('jwt.engine.js') !== -1) (0, eval)(ENGINE_SRC); };
+global.FileReaderSync = class { readAsText() { return ''; } };
+""" % json.dumps(engine)
+        script = preamble + "\n" + worker + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_worker_finds_secret_and_posts_progress(self):
+        harness = """
+(async () => {
+  const s = await globalThis.CyberBuddyJwt.signToken({alg:'HS256'},{sub:'x'},'topsecret',{alg:'HS256'});
+  const parsed = globalThis.CyberBuddyJwt.parseToken(s.token);
+  self.onmessage({data:{type:'run', alg:'HS256', signingInput:parsed.signingInput,
+    signature:parsed.signature, builtin:false,
+    candidates:['aaaa','bbbb','topsecret'], maxCandidates:10, deadline:Date.now()+5000}});
+  await new Promise(r=>setTimeout(r,300));
+  const done = messages.find(m=>m.type==='done');
+  console.log(JSON.stringify({found:done.found, secret:done.secret, tested:done.tested, total:done.total}));
+})();
+"""
+        out = self._run_worker(harness)
+        self.assertTrue(out["found"], out)
+        self.assertEqual(out["secret"], "topsecret")
+        self.assertEqual(out["tested"], 3)
+
+    def test_worker_cancel_stops_early(self):
+        harness = """
+(async () => {
+  const s = await globalThis.CyberBuddyJwt.signToken({alg:'HS256'},{sub:'x'},'zz',{alg:'HS256'});
+  const parsed = globalThis.CyberBuddyJwt.parseToken(s.token);
+  const cands = Array.from({length:5000}, (_, i) => 'cand' + i);
+  self.onmessage({data:{type:'run', alg:'HS256', signingInput:parsed.signingInput,
+    signature:parsed.signature, builtin:false, candidates:cands, maxCandidates:10000, deadline:0}});
+  await new Promise(r=>setTimeout(r,10));
+  self.onmessage({data:{type:'cancel'}});
+  await new Promise(r=>setTimeout(r,500));
+  const done = messages.find(m=>m.type==='done');
+  console.log(JSON.stringify({cancelled:done.cancelled, tested:done.tested, total:done.total}));
+})();
+"""
+        out = self._run_worker(harness)
+        self.assertTrue(out["cancelled"], out)
+        self.assertLess(out["tested"], out["total"])
+
     # --- UI wiring -----------------------------------------------------
 
     def test_analyze_and_verify_panel_is_functional(self):
@@ -3055,23 +3341,62 @@ console.log(JSON.stringify({a:a, b:b, shape:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
         self.assertNotIn("Coming in JWT-02", block)
         self.assertIn("JWT-02 &middot; Live", block)
 
-    def test_variants_and_secret_tabs_remain_preview(self):
-        """JWT-03 panels must stay non-interactive previews."""
+    def test_variants_panel_is_functional(self):
+        """JWT-03: the Test Variants panel builds labelled templates."""
         page = self._page()
-        for panel in ("jwt-panel-variants", "jwt-panel-secret"):
-            block = page[page.index('id="%s"' % panel):page.index("</section>", page.index('id="%s"' % panel))]
-            # Every input/button in these preview panels is disabled.
-            for m in re.finditer(r"<(?:button|input|textarea|select)\b[^>]*>", block):
-                tag = m.group(0)
-                if 'role="tab"' in tag:
-                    continue
-                self.assertIn("disabled", tag, "preview control must be disabled: " + tag)
+        for kid in ("jwtVarNone", "jwtVarClaim", "jwtVarValue", "jwtVarTamper",
+                    "jwtVarResign", "jwtVarPubPem", "jwtVarConfusion",
+                    "jwtVarEmbed", "jwtVarJkuX5u", "jwtVarUrl", "jwtVarJku",
+                    "jwtVarKidStyle", "jwtVarKid", "jwtVarKidBuild",
+                    "jwtVarSecret", "jwtVarPrivate", "jwtVarGenKey",
+                    "jwtVarGenPub", "jwtVarToken", "jwtVarCopy", "jwtVarDl",
+                    "jwtVarResult", "jwtVarNote"):
+            self.assertIn('id="%s"' % kid, page, kid)
+        self.assertNotIn('id="jwtVarNone" disabled', page)
+        block = page[page.index('id="jwt-panel-variants"'):page.index("</section>", page.index('id="jwt-panel-variants"'))]
+        self.assertNotIn("Coming in JWT-03", block)
+        self.assertIn("JWT-03 &middot; Live", block)
+        self.assertIn("TEST TEMPLATE", block)
+        self.assertIn("not a finding", block)
+
+    def test_secret_panel_is_functional_and_bounded(self):
+        """JWT-03: the Secret Test panel is functional, bounded and local."""
+        page = self._page()
+        for kid in ("jwtSecretBuiltin", "jwtWordlist", "jwtMaxCand", "jwtMaxSec",
+                    "jwtSecretStart", "jwtSecretCancel", "jwtSecretProgress",
+                    "jwtSecretBar", "jwtSecretResult", "jwtSecretFound",
+                    "jwtSecretCopy"):
+            self.assertIn('id="%s"' % kid, page, kid)
+        block = page[page.index('id="jwt-panel-secret"'):page.index("</section>", page.index('id="jwt-panel-secret"'))]
+        self.assertNotIn("Coming in JWT-03", block)
+        self.assertNotIn("disabled", block)
+        # Explicit bounds on candidates and time.
+        self.assertIn('max="100000"', page)
+        self.assertIn('max="120"', page)
+        # Honesty: HS-only, worker-based, nothing stored/transmitted.
+        for needle in ("HS256/384/512 only", "Web Worker", "never persisted",
+                       "not a verdict", "cancel"):
+            self.assertIn(needle, re.sub(r"\s+", " ", block))
+        ctrl = self._controller()
+        self.assertIn("new Worker", ctrl)
+        self.assertIn("terminate", ctrl)
+        self.assertIn("postMessage", ctrl)
+
+    def test_worker_references_engine_and_has_no_network_or_storage(self):
+        worker = (ROOT / "js" / "jwt.worker.js").read_text(encoding="utf-8")
+        self.assertIn('importScripts("jwt.engine.js")', worker)
+        js = self._strip_js_comments(worker)
+        for needle in ("fetch(", "XMLHttpRequest", "localStorage", "sessionStorage",
+                       "history.", "location."):
+            self.assertNotIn(needle, js, "worker must be local-only: " + needle)
 
     def test_test_token_labels_and_honesty(self):
         page = re.sub(r"\s+", " ", self._page())
         self.assertIn("TEST TOKEN", page)
+        self.assertIn("TEST TEMPLATE", page)
         for needle in ("proves nothing until", "not proof of acceptance",
-                       "throwaway", "stays in memory", "algorithm confusion"):
+                       "throwaway", "stays in memory", "algorithm confusion",
+                       "not a finding", "never sends"):
             self.assertIn(needle, page, "missing statement: " + needle)
         ctrl = self._controller()
         self.assertIn("TEST TOKEN", ctrl)
@@ -3101,9 +3426,9 @@ console.log(JSON.stringify({a:a, b:b, shape:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
     def test_accessible_tabs_and_key_subtabs(self):
         page = self._page()
         # Four panel tabs (Analyze&Verify, Edit/Generate, Test Variants,
-        # Secret Test), four verify key-type sub-tabs and four signing
-        # key-type sub-tabs.
-        self.assertEqual(page.count('role="tab"'), 4 + 4 + 4)
+        # Secret Test), four verify key-type sub-tabs, four signing key-type
+        # sub-tabs and three variant signing-key sub-tabs.
+        self.assertEqual(page.count('role="tab"'), 4 + 4 + 4 + 3)
         self.assertIn("ArrowRight", self._controller())
         self.assertIn("Home", self._controller())
         self.assertIn("End", self._controller())
@@ -3115,7 +3440,7 @@ console.log(JSON.stringify({a:a, b:b, shape:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
             "Fully local",
             "Decoding is not verification",
             "proves only a match with that key",
-            "TEST TOKEN, not proof of acceptance",
+            "TEST TOKEN and a variant is a TEST TEMPLATE — not proof of acceptance",
             "Live target testing is not part",
             "Authorized testing only",
         ):
@@ -3127,26 +3452,29 @@ console.log(JSON.stringify({a:a, b:b, shape:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
                        'class="risk medium"', 'class="risk low"'):
             self.assertNotIn(needle, page)
 
-    def test_guide_updated_for_jwt01(self):
+    def test_guide_tracks_the_live_workbench(self):
+        """The guide reflects the current phase: after JWT-03 every panel is
+        functional, so it must not describe any phase as a future preview."""
         guide = self.GUIDE.read_text(encoding="utf-8")
-        self.assertIn("JWT-01", guide)
-        # Guide should no longer call the whole tool a non-operational preview;
-        # it now describes the decode/verify capability.
+        self.assertIn("All three phases are live", guide)
         self.assertIn("decode", guide.lower())
         self.assertIn("verif", guide.lower())
+        self.assertIn("secret testing", guide.lower())
+        self.assertNotIn("still in development", guide)
 
     def test_sitemap_lists_the_tool_now_that_it_is_functional(self):
         sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
         self.assertIn("/CyberBuddy/tools/jwt/</loc>", sitemap)
         self.assertIn("/CyberBuddy/guides/jwt/</loc>", sitemap)
 
-    def test_no_pwa_shortcut_for_future_phases(self):
-        """JWT-01 could justify a shortcut now that decode/verify ships,
-        but per the phased plan we keep the shortcut out until the full
-        workbench (JWT-02/03) is live. Pin that choice deliberately."""
+    def test_pwa_shortcut_added_now_the_workbench_is_complete(self):
+        """JWT-03 completes the phased workbench, so the JWT tool earns its
+        home-screen shortcut (deliberately deferred through JWT-00/01/02)."""
         manifest = json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
         urls = [s.get("url", "") for s in manifest.get("shortcuts", [])]
-        self.assertFalse(any("jwt" in u for u in urls), urls)
+        self.assertTrue(any("jwt" in u for u in urls), urls)
+        names = [s.get("name", "") for s in manifest.get("shortcuts", [])]
+        self.assertTrue(any("JWT" in n for n in names), names)
 
 
 class PagesExclusionTests(unittest.TestCase):

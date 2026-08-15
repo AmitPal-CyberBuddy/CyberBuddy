@@ -1,19 +1,22 @@
 /* ==========================================================================
-   CyberBuddy — JWT Security Workbench controller (JWT-01 + JWT-02)
+   CyberBuddy — JWT Security Workbench controller (JWT-01 + JWT-02 + JWT-03)
 
-   Functional: Analyze & Verify (decode, inspect, verify via Web Crypto) and
+   Functional: Analyze & Verify (decode, inspect, verify via Web Crypto),
    Edit & Generate (edit header/payload, semantic diff, HMAC/private-key
    signing, local RSA test-key generation, TEST TOKEN output with safe
-   copy/download). Previews (non-interactive): Test Variants and Secret Test
-   (JWT-03). The pure engine lives in js/jwt.engine.js (DOM-free, also
-   exercised under Node in test_engines.py). All crypto — including private
-   key import/export and test-key generation — lives in the engine; this
-   controller only binds DOM.
+   copy/download), Test Variants (authorized-test variant templates) and
+   Secret Test (bounded HS256/384/512 secret testing in a Web Worker with
+   progress, cancel and limits). The pure engine lives in js/jwt.engine.js
+   (DOM-free, also exercised under Node in test_engines.py); the secret
+   search runs in js/jwt.worker.js. All crypto — including private key
+   import/export, test-key generation and the secret search loop — lives in
+   the engine/worker; this controller only binds DOM.
 
    Privacy guarantees baked in here:
      - no fetch/XMLHttpRequest/sendBeacon; connect-src is 'self' only;
      - no localStorage/sessionStorage/history/URL writing;
-     - tokens and keys live in memory only and are never persisted;
+     - tokens, keys and wordlists live in memory only and are never
+       persisted; the uploaded wordlist is read inside the worker;
      - "Copy token" / "Download token" export the token alone — key export
        is a separate, explicit, confirmed action (never accidental).
    ========================================================================== */
@@ -166,6 +169,8 @@
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
       refreshEditDiff();
+      updateSecretBase();
+      updateVariantBase();
       return;
     }
     var res = J.tryParseToken(raw);
@@ -175,6 +180,8 @@
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
       refreshEditDiff();
+      updateSecretBase();
+      updateVariantBase();
       return;
     }
     showError(null);
@@ -187,6 +194,8 @@
     renderObservations(J.observations(parsed));
     setDecodedState("Decoded", "jwt-state-decoded");
     refreshEditDiff();
+    updateSecretBase();
+    updateVariantBase();
 
     // Reflect the token alg in the optional pin label.
     var pinLabel = $("jwtPinAlgLabel");
@@ -740,6 +749,395 @@
     }
   }
 
+  // ======================================================================
+  // JWT-03 — Test Variants
+  // ======================================================================
+
+  var varGen = null; // {alg, privateKey, publicJwk}
+
+  function updateVariantBase() {
+    var el = $("jwtVarBase");
+    if (!el) return;
+    if (!lastParsed) {
+      el.textContent = "Paste and decode a token above — variants build on the analyzed token.";
+    } else {
+      el.textContent = "Base token: " + lastParsed.header.alg +
+        (lastParsed.header.kid != null ? " · kid " + String(lastParsed.header.kid) : "") +
+        " — variants are templates, never findings.";
+    }
+  }
+
+  function activeVarKeyType() {
+    var active = document.querySelector(".jwt-var-key-tabs .jwt-key-tab.is-active");
+    return active ? active.getAttribute("data-keytype") : "secret";
+  }
+
+  function readVariantSigningKey() {
+    var base = lastParsed;
+    if (!base) return { error: "Paste a token to use as the base first." };
+    var alg = base.header.alg;
+    var type = activeVarKeyType();
+    if (type === "secret") {
+      if (!/^HS/.test(alg)) {
+        return { error: "The base token is " + alg + " — an HMAC secret only signs HS* tokens. Use a private key or the generated pair." };
+      }
+      var s = $("jwtVarSecret").value;
+      if (!s) return { error: "Supply the HMAC secret." };
+      return { alg: alg, key: s };
+    }
+    if (type === "private") {
+      var t = $("jwtVarPrivate").value.trim();
+      if (!t) return { error: "Paste a private key (PEM PKCS#8 or JWK JSON)." };
+      var key = t;
+      var jwk = null;
+      try {
+        var j = JSON.parse(t);
+        if (j && typeof j === "object" && !Array.isArray(j)) { key = j; jwk = j; }
+      } catch (e) { /* not JSON -> PEM */ }
+      return { alg: alg, key: key, jwk: jwk };
+    }
+    if (type === "generated") {
+      if (!varGen) return { error: "Generate a local RSA test pair first." };
+      if (varGen.alg !== alg) {
+        return { error: "The generated pair is " + varGen.alg + " but the base token is " + alg + " — the pair is bound to one algorithm family." };
+      }
+      return { alg: alg, key: varGen.privateKey, publicJwk: varGen.publicJwk };
+    }
+    return { error: "Unknown key type" };
+  }
+
+  async function generateVariantKey() {
+    var btn = $("jwtVarGenKey");
+    var status = $("jwtVarGenStatus");
+    if (!lastParsed) {
+      if (status) status.textContent = "Paste a base token first.";
+      return;
+    }
+    var alg = lastParsed.header.alg;
+    if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+    var res = await J.generateRsaTestPair(alg);
+    if (btn) { btn.disabled = false; btn.textContent = "Generate RSA test pair"; }
+    if (!res || res.error) {
+      if (status) status.textContent = (res && res.error) + " — paste a private key (or an HMAC secret for HS* tokens) instead.";
+      return;
+    }
+    varGen = res;
+    if (status) status.textContent = "2048-bit RSA test pair ready for " + res.alg + " — held in memory only.";
+    $("jwtVarGenPub").value = prettyJson(res.publicJwk);
+  }
+
+  function setVariantResult(ok, note, lines) {
+    var result = $("jwtVarResult");
+    if (!result) return;
+    result.classList.remove("hidden");
+    var banner = result.querySelector(".jwt-test-banner");
+    if (banner) banner.classList.toggle("hidden", !ok);
+    var noteEl = $("jwtVarNote");
+    if (noteEl) noteEl.textContent = ok ? note : "";
+    var ul = $("jwtVarResultLines");
+    if (ul) {
+      ul.className = "jwt-edit-lines " + (ok ? "ok" : "bad");
+      ul.innerHTML = lines.map(function (l) { return "<li>" + escapeHtml(l) + "</li>"; }).join("");
+    }
+  }
+
+  async function runVariant(type) {
+    if (!lastParsed) {
+      setVariantResult(false, "", ["Paste and decode a base token first."]);
+      $("jwtVarToken").value = "";
+      return;
+    }
+    var opts = {};
+    if (type === "tamper" || type === "claim-resign") {
+      opts.claim = $("jwtVarClaim").value.trim();
+      opts.value = $("jwtVarValue").value;
+    } else if (type === "alg-confusion") {
+      opts.publicKeyPem = $("jwtVarPubPem").value.trim();
+    } else if (type === "jku" || type === "x5u") {
+      opts.url = $("jwtVarUrl").value.trim();
+      type = $("jwtVarJkuX5u").value === "x5u" ? "x5u" : "jku";
+    } else if (type === "kid") {
+      opts.kid = $("jwtVarKid").value.trim();
+    }
+    var needsKey = ["claim-resign", "jku", "x5u", "kid", "embedded-jwk"].indexOf(type) !== -1;
+    if (needsKey) {
+      var keyInfo = readVariantSigningKey();
+      if (keyInfo.error) { setVariantResult(false, "", [keyInfo.error]); $("jwtVarToken").value = ""; return; }
+      opts.alg = keyInfo.alg;
+      opts.key = keyInfo.key;
+      if (type === "embedded-jwk") {
+        if (keyInfo.publicJwk) {
+          opts.publicJwk = keyInfo.publicJwk;
+        } else if (keyInfo.jwk) {
+          try { opts.publicJwk = J.publicJwkFromPrivate(keyInfo.jwk); }
+          catch (e) { setVariantResult(false, "", [e.message]); $("jwtVarToken").value = ""; return; }
+        } else {
+          setVariantResult(false, "", ["The embedded-JWK template needs the public JWK of the signing key — use the generated pair or paste a private JWK (not PEM)."]);
+          $("jwtVarToken").value = "";
+          return;
+        }
+      }
+    }
+    var res = await J.buildVariant(lastParsed, type, opts);
+    if (!res || res.error) {
+      setVariantResult(false, "", [res && res.error ? res.error : "Variant build failed."]);
+      $("jwtVarToken").value = "";
+      return;
+    }
+    $("jwtVarToken").value = res.token;
+    $("jwtVarCopyStatus").textContent = "";
+    setVariantResult(true, res.note || "", [
+      "Template built: " + type + ".",
+      "A template is not a finding — only the target's behavior decides."
+    ]);
+  }
+
+  function presetKidStyle() {
+    var style = $("jwtVarKidStyle").value;
+    $("jwtVarKid").value = style === "sql" ? "1' OR 1=1--" : "../../../dev/null";
+  }
+
+  function copyVariantToken() {
+    var ta = $("jwtVarToken");
+    if (!ta || !ta.value) return;
+    setVariantClipboard(ta.value, "Token copied to clipboard.", "Copy failed — select the token text manually.");
+  }
+
+  function setVariantClipboard(text, okMsg, failMsg) {
+    var status = $("jwtVarCopyStatus");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () {
+        if (status) status.textContent = okMsg;
+      }, function () {
+        if (status) status.textContent = failMsg;
+      });
+    }
+    if (status) status.textContent = failMsg;
+  }
+
+  function downloadVariantToken() {
+    var ta = $("jwtVarToken");
+    if (!ta || !ta.value) return;
+    downloadText("cyberbuddy-test-template.jwt", ta.value + "\n", "text/plain");
+  }
+
+  // ======================================================================
+  // JWT-03 — Secret Test (bounded HS256/384/512 search in a Web Worker)
+  // ======================================================================
+
+  var secretWorker = null;
+
+  function workerUrl() {
+    // Derive the worker URL from the engine script tag so the ?v=
+    // cache-buster stamped at deploy time is inherited automatically.
+    var s = document.querySelector('script[src*="jwt.engine.js"]');
+    if (s && s.getAttribute("src")) {
+      return s.getAttribute("src").replace(/jwt\.engine\.js/, "jwt.worker.js");
+    }
+    return "../../js/jwt.worker.js";
+  }
+
+  function updateSecretBase() {
+    var el = $("jwtSecretBase");
+    if (!el) return;
+    if (!lastParsed) {
+      el.textContent = "Paste an HS256/384/512 token above — secret testing works on the analyzed token.";
+    } else if (!/^HS(256|384|512)$/.test(lastParsed.header.alg)) {
+      el.textContent = "Secret testing covers HS256/384/512 only; this token is " + lastParsed.header.alg + ".";
+    } else {
+      el.textContent = "Base token: " + lastParsed.header.alg + " — candidates are tested against its signature, locally.";
+    }
+  }
+
+  function setSecretResult(ok, lines) {
+    var box = $("jwtSecretResult");
+    if (!box) return;
+    box.classList.remove("hidden", "jwt-verify-ok", "jwt-verify-bad");
+    box.classList.add(ok ? "jwt-verify-ok" : "jwt-verify-bad");
+    box.innerHTML = "<strong>" + (ok ? "Secret found" : "Secret test") + "</strong>" +
+      "<ul>" + lines.map(function (l) { return "<li>" + escapeHtml(l) + "</li>"; }).join("") + "</ul>";
+  }
+
+  function secretRunning(running) {
+    var start = $("jwtSecretStart");
+    var cancel = $("jwtSecretCancel");
+    var progress = $("jwtSecretProgress");
+    if (start) start.disabled = running;
+    if (cancel) cancel.classList.toggle("hidden", !running);
+    if (progress) progress.classList.toggle("hidden", !running);
+  }
+
+  function finishSecret(m) {
+    secretWorker = null;
+    secretRunning(false);
+    var bar = $("jwtSecretBar");
+    var count = $("jwtSecretCount");
+    if (m.cancelled) {
+      if (count) count.textContent = "Stopped after " + m.tested + " of " + m.total + " candidates.";
+      setSecretResult(false, ["Secret test cancelled.", "No secret matched before you stopped it."]);
+      $("jwtSecretFoundWrap").classList.add("hidden");
+      return;
+    }
+    if (m.error) {
+      if (count) count.textContent = "";
+      setSecretResult(false, [m.error]);
+      $("jwtSecretFoundWrap").classList.add("hidden");
+      return;
+    }
+    if (m.found) {
+      if (bar) bar.value = 100;
+      if (count) count.textContent = m.tested + " of " + m.total + " candidates tested — match found.";
+      $("jwtSecretFound").value = m.secret;
+      $("jwtSecretFoundWrap").classList.remove("hidden");
+      setSecretResult(true, [
+        "The token's " + (lastParsed ? lastParsed.header.alg : "HS") + " signature matches HMAC key candidate \"" + m.secret + "\".",
+        "This is a discovered secret for your own authorized testing — not a verdict about the target."
+      ]);
+    } else {
+      if (bar) bar.value = 100;
+      if (count) count.textContent = m.tested + " of " + m.total + " candidates tested — no match.";
+      setSecretResult(false, [
+        "No candidate matched in " + m.tested + " tested (limit " + m.total + ").",
+        "A miss only means the secret is not in this candidate set."
+      ]);
+      $("jwtSecretFoundWrap").classList.add("hidden");
+    }
+  }
+
+  function startSecretTest() {
+    if (secretWorker) {
+      secretWorker.terminate();
+      secretWorker = null;
+    }
+    var base = lastParsed;
+    if (!base) { setSecretResult(false, ["Paste a token first."]); return; }
+    if (!/^HS(256|384|512)$/.test(base.header.alg)) {
+      setSecretResult(false, ["Secret testing covers HS256/384/512 only — this token is " + base.header.alg + "."]);
+      return;
+    }
+    var builtin = $("jwtSecretBuiltin").checked;
+    var fileInput = $("jwtWordlist");
+    var file = fileInput && fileInput.files && fileInput.files.length ? fileInput.files[0] : null;
+    if (!builtin && !file) {
+      setSecretResult(false, ["No candidates — enable the built-in list or upload a wordlist."]);
+      return;
+    }
+    var maxCand = parseInt($("jwtMaxCand").value, 10);
+    if (!isFinite(maxCand)) maxCand = 10000;
+    maxCand = Math.min(100000, Math.max(1, maxCand));
+    var maxSec = parseInt($("jwtMaxSec").value, 10);
+    if (!isFinite(maxSec)) maxSec = 60;
+    maxSec = Math.min(120, Math.max(1, maxSec));
+
+    var worker;
+    try {
+      worker = new Worker(workerUrl());
+    } catch (e) {
+      setSecretResult(false, ["This browser could not start the secret-test worker: " + (e && e.message ? e.message : String(e))]);
+      return;
+    }
+    secretWorker = worker;
+
+    worker.onmessage = function (e) {
+      var m = e.data || {};
+      if (m.type === "progress") {
+        var bar = $("jwtSecretBar");
+        var count = $("jwtSecretCount");
+        if (bar && m.total) bar.value = Math.round((m.tested / m.total) * 100);
+        if (count) count.textContent = "Testing " + m.tested + " of " + m.total + " candidates…";
+      } else if (m.type === "note") {
+        var countEl = $("jwtSecretCount");
+        if (countEl) countEl.textContent = m.text;
+      } else if (m.type === "done") {
+        finishSecret(m);
+      }
+    };
+    worker.onerror = function (ev) {
+      finishSecret({ error: "The secret-test worker failed: " + (ev && ev.message ? ev.message : "unknown error") });
+    };
+
+    $("jwtSecretResult").classList.add("hidden");
+    $("jwtSecretFoundWrap").classList.add("hidden");
+    var bar = $("jwtSecretBar");
+    if (bar) bar.value = 0;
+    secretRunning(true);
+    worker.postMessage({
+      type: "run",
+      alg: base.header.alg,
+      signingInput: base.signingInput,
+      signature: base.signature,
+      builtin: builtin,
+      file: file,
+      maxCandidates: maxCand,
+      deadline: Date.now() + maxSec * 1000
+    });
+  }
+
+  function cancelSecretTest() {
+    if (secretWorker) {
+      secretWorker.postMessage({ type: "cancel" });
+    }
+  }
+
+  function copySecret() {
+    var input = $("jwtSecretFound");
+    if (!input || !input.value) return;
+    var status = $("jwtSecretCopyStatus");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(function () {
+        if (status) status.textContent = "Secret copied to clipboard.";
+      }, function () {
+        if (status) status.textContent = "Copy failed — select the secret text manually.";
+      });
+    } else if (status) {
+      status.textContent = "Copy failed — select the secret text manually.";
+    }
+  }
+
+  function initSecretPanel() {
+    var start = $("jwtSecretStart");
+    if (!start) return;
+    start.addEventListener("click", startSecretTest);
+    var cancel = $("jwtSecretCancel");
+    if (cancel) cancel.addEventListener("click", cancelSecretTest);
+    var wordlist = $("jwtWordlist");
+    if (wordlist) {
+      wordlist.addEventListener("change", function () {
+        var status = $("jwtWordlistStatus");
+        var f = wordlist.files && wordlist.files.length ? wordlist.files[0] : null;
+        if (status) {
+          status.textContent = f
+            ? f.name + " chosen — it is read inside the worker when the test starts, never persisted."
+            : "No file chosen — the worker reads it only when the test starts.";
+        }
+      });
+    }
+    var copy = $("jwtSecretCopy");
+    if (copy) copy.addEventListener("click", copySecret);
+    updateSecretBase();
+  }
+
+  function initVariantPanel() {
+    var noneBtn = $("jwtVarNone");
+    if (!noneBtn) return;
+    noneBtn.addEventListener("click", function () { runVariant("alg-none"); });
+    $("jwtVarTamper").addEventListener("click", function () { runVariant("tamper"); });
+    $("jwtVarResign").addEventListener("click", function () { runVariant("claim-resign"); });
+    $("jwtVarConfusion").addEventListener("click", function () { runVariant("alg-confusion"); });
+    $("jwtVarEmbed").addEventListener("click", function () { runVariant("embedded-jwk"); });
+    $("jwtVarJku").addEventListener("click", function () { runVariant("jku"); });
+    $("jwtVarKidBuild").addEventListener("click", function () { runVariant("kid"); });
+    $("jwtVarGenKey").addEventListener("click", generateVariantKey);
+    $("jwtVarCopy").addEventListener("click", copyVariantToken);
+    $("jwtVarDl").addEventListener("click", downloadVariantToken);
+    var style = $("jwtVarKidStyle");
+    if (style) {
+      style.addEventListener("change", presetKidStyle);
+      presetKidStyle();
+    }
+    updateVariantBase();
+  }
+
   // --- Boot -----------------------------------------------------------
 
   function initEditPanel() {
@@ -790,7 +1188,8 @@
     var verifyBtn = $("jwtVerify");
     if (verifyBtn) verifyBtn.addEventListener("click", verify);
     initEditPanel();
-    // Preview-panel controls are intentionally not wired: JWT-03.
+    initVariantPanel();
+    initSecretPanel();
   }
 
   root.initJwt = initJwt;

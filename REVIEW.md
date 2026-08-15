@@ -2146,3 +2146,97 @@ variant builder (JWT-03) will reuse `signToken` with `header.alg` pinned and
 must keep its outputs labelled as templates, never findings. The secret-test
 Worker is still out of scope here; the Test Variants and Secret Test panels
 stay disabled and the PWA shortcut stays out.
+
+## 28. JWT-03 — test variants and bounded secret testing (2026-08-15)
+
+Completes the phased workbench in the same PR (#25) as JWT-02, at the
+maintainer's request to merge once. The Test Variants and Secret Test
+panels are now functional; the JWT tool is feature-complete (JWT-00/01/02/03).
+
+### What shipped
+
+- **`js/jwt.engine.js` (extended)** — still pure and Node-tested:
+  - `buildVariant(parsed, type, opts)` — the single variant entry point:
+    `alg-none` (empty signature), `tamper` (claim changed, original
+    signature kept), `claim-resign`, `alg-confusion` (HS256 with the
+    analyst-pasted RSA public key as the HMAC secret), `embedded-jwk`,
+    `jku`/`x5u` and `kid` (path/SQL-style). Every variant returns a
+    labelled note; re-signed variants go through `signToken`, so all
+    JWT-02 guards apply. `parseToken`/`signToken` still reject `alg:none`
+    — it exists only as a template.
+  - `unsignedToken`, `tamperToken`, `algorithmConfusionToken`,
+    `publicJwkFromPrivate` (RSA n/e, EC x/y public subset) as separate,
+    testable functions.
+  - `searchHmacSecret` — the bounded HS256/384/512 search loop:
+    `crypto.subtle` HMAC per candidate, constant-time compare, progress
+    every 250, `shouldContinue` for cancel/timeout.
+  - `BUILTIN_SECRET_CANDIDATES` — a 32-key starter list (explicitly not a
+    bundled wordlist).
+- **`js/jwt.worker.js` (new)** — the secret-test worker. Loads the engine
+  with `importScripts("jwt.engine.js")`, reads the uploaded wordlist with
+  `FileReaderSync` inside the worker, applies the candidate cap, and posts
+  note/progress/done messages. Cancel and the epoch-ms deadline stop the
+  search between candidates. No network, storage or history.
+- **`js/tool.jwt.js` (extended)** — variant panel wiring (shared signing
+  key sub-tabs: HMAC secret / private PEM-or-JWK / generated RSA pair;
+  per-variant inputs; TEST TEMPLATE result box with token-only
+  copy/download) and secret-test wiring (built-in toggle, wordlist picker
+  that is read only in the worker, candidate/time limits clamped to
+  100,000/120 s, progress bar, cancel, found-secret display with copy).
+  The worker URL inherits the `?v=` cache-buster from the engine script
+  tag. Still no `fetch`/storage/history.
+- **`tools/jwt/index.html`** — both JWT-03 panels functional with enabled
+  controls, honest bounds and labelling; phase panel shows JWT-03 as the
+  current live phase; privacy bullet updated (TEST TOKEN / TEST TEMPLATE).
+  Analyze & Verify and Edit & Generate unchanged.
+- **`manifest.webmanifest`** — the PWA shortcut for the JWT Workbench
+  shipped now that the workbench is complete (deliberately deferred through
+  JWT-01/02), and the manifest description mentions the tool.
+- **Docs** — guide updated to "all three phases are live" (1185 visible
+  words of the 1200 ceiling), README and `llms.txt` updated, DEV-NOTES
+  "JWT-03 traps" added (stale preview-panel/PWA bullets rewritten),
+  REVIEW §27's JWT-03 notes superseded here, ROADMAP updated.
+
+### Accuracy rules kept
+
+Variants are templates, never findings — labelled in the UI and pinned by
+tests; the tool never sends a token anywhere. The confusion template uses
+the pasted public key as the HMAC secret but `verifyToken` still refuses
+PEM secrets (both coexist, both tested). Secret testing is HS-only,
+bounded (candidate + time caps), cancellable, worker-isolated, and never
+persists the token, wordlist or discovered secret; a match is reported as
+a discovered secret for authorized testing, not a verdict, and the UI
+notes HS256 is not automatically weak.
+
+### Tests and verification
+
+- **274/274 stdlib tests OK** (`python3 -m unittest test_engines.py`) — 16
+  new/repurposed `JwtWorkbenchTests`: variant builder under Node
+  (alg-none + guard intact, tamper keeps the signature, claim-resign
+  roundtrip, confusion signature verified against an independent HMAC
+  while the verify guard holds, embedded-JWK verifies with the embedded
+  key, jku/x5u/kid headers, base-token requirement,
+  `publicJwkFromPrivate` for RSA and EC), secret search (found/not-found,
+  progress + `shouldContinue` stop, non-HS rejection, small built-in
+  list), and the worker message contract under a Node Worker-shim
+  (found + secret, cancel stops with tested < total). UI wiring:
+  functional variant panel, functional + bounded secret panel, worker
+  references the engine and stays local-only, TEST TEMPLATE/not-a-finding
+  labels, PWA shortcut now present, tab count 4+4+4+3, privacy wording.
+- `node --check` clean on all 21 JS files (including `js/jwt.worker.js`);
+  `py_compile`, JSON (`manifest.webmanifest`) and XML valid;
+  Pages-assembly dry run green; live `server.py` crawl of the JWT routes.
+- **Controller + worker smoke tests under Node with DOM/worker shims**
+  (no Chromium in the sandbox): full variant flow (alg-none, tamper,
+  claim-resign, kid, confusion, generated-pair + embedded-JWK roundtrip,
+  honest errors for HS-base generation), secret flow through the real
+  worker file (found via built-in list, cache-bustered worker URL, cancel
+  path, HS-only error on an RS256 base) — all pass.
+- Real-browser suites were not run in the sandbox (no Chromium) — run
+  `layout`/`dropdown`/`responsive` by hand before merge.
+
+### Roadmap state
+
+The JWT series (JWT-00 → JWT-03) is complete. No `NEXT` item is set;
+ABOUT-01 and DX-01 remain `TODO` for the maintainer to approve, and
+FUTURE-01 stays `DEFERRED`.

@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "JWT: decode, verify, and the attack surfaces that matter",
-      "description": "Header, payload and signature; decoding versus verification; and the common JWT attack surfaces.",
+      "description": "Header, payload and signature; decoding versus verification; and the common JWT attack surfaces the Workbench tests and templates.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/jwt/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
@@ -70,12 +70,10 @@
   </p>
 
   <div class="jwt-preview-note reveal card note" style="--d: .14s;">
-    <strong>The Workbench can decode, verify and sign today.</strong>
-    The page at <a href="../../tools/jwt/">/tools/jwt/</a> runs JWT-01 and
-    JWT-02 locally — decode, inspect and verify a compact JWS, then edit
-    claims and re-sign with a key you supply or generate. Every output is a
-    TEST TOKEN until the target honors it; variants and secret testing
-    (JWT-03) are still in development.
+    <strong>The Workbench can decode, verify, sign and test today.</strong>
+    The page at <a href="../../tools/jwt/">/tools/jwt/</a> runs the full
+    three-phase plan locally. Every output is a TEST TOKEN or TEST TEMPLATE
+    until the target honors it.
   </div>
 
   <div class="section-head reveal">
@@ -203,19 +201,20 @@
   </div>
   <article class="card reveal">
     <p>
-      <strong>JWT-01 and JWT-02 are live.</strong> The Workbench decodes a
+      <strong>All three phases are live.</strong> The Workbench decodes a
       compact JWS into header, payload, signature and a claim timeline,
       lists contextual observations, verifies HMAC, RSA-PKCS#1, RSA-PSS and
-      ECDSA signatures, and re-signs edited claims with a key you supply or
-      generate — all via Web Crypto. It never trusts the token's
-      <code>alg</code> header to choose the verifier, and HMAC rejects
-      public keys.
+      ECDSA signatures, re-signs edited claims with a key you supply or
+      generate, builds labelled test-variant templates, and runs bounded
+      HS256/384/512 secret testing in a Web Worker — all via Web Crypto. It
+      never trusts the token's <code>alg</code> header to choose the
+      verifier, and HMAC rejects public keys.
     </p>
     <p>
       Generating a modified token proves you can build the bytes, not that
-      the server accepts it — every output is a TEST TOKEN. JWT-03 adds
-      variants and bounded secret testing. The hosted tool never sends a JWT
-      to a target, JWKS URL or third party.
+      the server accepts it — every output is a TEST TOKEN or TEST
+      TEMPLATE. The hosted tool never sends a JWT to a target, JWKS URL or
+      third party.
     </p>
   </article>
 
