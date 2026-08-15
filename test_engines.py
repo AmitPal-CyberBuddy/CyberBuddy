@@ -402,12 +402,15 @@ class MountAndBindTests(unittest.TestCase):
         self.assertEqual(strip_mount("/tools/cors/"), "/tools/cors/")
         self.assertEqual(strip_mount("/CyberBuddy/tools/csp/"), "/tools/csp/")
 
-    def test_tool_aliases_cover_all_five(self):
+    def test_tool_aliases_cover_all_tools(self):
         self.assertEqual(TOOL_ALIASES["/headers"], "/tools/headers/")
         self.assertEqual(TOOL_ALIASES["/cors"], "/tools/cors/")
         self.assertEqual(TOOL_ALIASES["/csp"], "/tools/csp/")
         self.assertEqual(TOOL_ALIASES["/clickjacking"], "/tools/clickjacking/")
         self.assertEqual(TOOL_ALIASES["/csrf"], "/tools/csrf/")
+        # JWT-00 preview alias.
+        self.assertEqual(TOOL_ALIASES["/jwt"], "/tools/jwt/")
+        self.assertEqual(TOOL_ALIASES["/jwt/"], "/tools/jwt/")
 
     def test_default_bind_loopback_without_port_env(self):
         env = os.environ
@@ -460,11 +463,13 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("cacheLookupKeys", src)
 
     def test_tool_pages_exist(self):
-        for slug in ("clickjacking", "headers", "cors", "csp", "csrf"):
+        for slug in ("clickjacking", "headers", "cors", "csp", "csrf", "jwt"):
             page = ROOT / "tools" / slug / "index.html"
             self.assertTrue(page.is_file(), page)
             text = page.read_text(encoding="utf-8")
             self.assertIn("js/app.js", text)
+        # The JWT preview also loads its own (non-operational) controller.
+        self.assertIn("js/tool.jwt.js", (ROOT / "tools" / "jwt" / "index.html").read_text(encoding="utf-8"))
 
     def test_csp_controller_only_references_existing_elements(self):
         page = (ROOT / "tools" / "csp" / "index.html").read_text(encoding="utf-8")
@@ -482,7 +487,7 @@ class AppBaseJsTests(unittest.TestCase):
         text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
-        self.assertIn("headers|cors|csp|csrf", text)
+        self.assertIn("headers|cors|csp|csrf|jwt", text)
 
     def test_js_graders_match_python_scores(self):
         node = shutil.which("node")
@@ -741,19 +746,39 @@ class ServerRouteTests(unittest.TestCase):
         self.assertIn(b"CyberBuddy", body)
         self.assertIn("text/html", headers.get("content-type", ""))
 
-    def test_five_tool_pages(self):
+    def test_six_tool_pages(self):
         expect = {
             "/tools/clickjacking/": b"Clickjacking Validator",
             "/tools/headers/": b"Security Headers",
             "/tools/cors/": b"CORS Validator",
             "/tools/csp/": b"CSP Policy Auditor",
             "/tools/csrf/": b"CSRF PoC Generator",
+            # JWT-00: the development preview page resolves and is labelled.
+            "/tools/jwt/": b"JWT Security Workbench",
         }
         for path, needle in expect.items():
             status, headers, body = self._req(path)
             self.assertEqual(status, 200, path)
             self.assertIn(needle, body, path)
             self.assertIn("text/html", headers.get("content-type", ""))
+
+    def test_jwt_short_alias_redirects(self):
+        for short in ("/jwt", "/jwt/"):
+            status, headers, _ = self._req(short)
+            self.assertEqual(status, 301, short)
+            self.assertEqual(headers.get("location"), "/tools/jwt/", short)
+
+    def test_jwt_tool_is_operational(self):
+        """JWT-01: the served JWT page is a functional decode/verify tool
+        — it has a token input and verify button, is indexable, and no
+        longer carries the NOT OPERATIONAL preview banner."""
+        status, headers, body = self._req("/tools/jwt/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"JWT Security Workbench", body)
+        self.assertIn(b'id="jwtToken"', body)
+        self.assertIn(b'id="jwtVerify"', body)
+        self.assertNotIn(b"NOT OPERATIONAL", body)
+        self.assertNotIn(b'name="robots" content="noindex', body)
 
     def test_tool_slash_redirect(self):
         status, headers, _ = self._req("/tools/headers")
@@ -781,6 +806,7 @@ class ServerRouteTests(unittest.TestCase):
             ("/csp", "/tools/csp/"),
             ("/clickjacking", "/tools/clickjacking/"),
             ("/csrf", "/tools/csrf/"),
+            ("/jwt", "/tools/jwt/"),
         ):
             status, headers, _ = self._req(short)
             self.assertEqual(status, 301, short)
@@ -799,6 +825,11 @@ class ServerRouteTests(unittest.TestCase):
         status, _, body = self._req("/CyberBuddy/tools/csrf/")
         self.assertEqual(status, 200)
         self.assertIn(b"CSRF PoC Generator", body)
+        # JWT tool is reachable under the /CyberBuddy mount (JWT-01).
+        status, _, body = self._req("/CyberBuddy/tools/jwt/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"JWT Security Workbench", body)
+        self.assertIn(b'id="jwtVerify"', body)
 
     def test_static_assets(self):
         status, headers, body = self._req("/css/app.css")
@@ -910,6 +941,8 @@ class HostedSiteTests(unittest.TestCase):
             ROOT / "tools" / "cors" / "index.html",
             ROOT / "tools" / "csp" / "index.html",
             ROOT / "tools" / "csrf" / "index.html",
+            ROOT / "tools" / "jwt" / "index.html",
+            ROOT / "guides" / "jwt" / "index.html",
         ]
         versions = set()
         for page in pages:
@@ -1285,6 +1318,10 @@ class HostedCspTests(unittest.TestCase):
         "tools/cors/index.html",
         "tools/csp/index.html",
         "tools/csrf/index.html",
+        # JWT-00 preview: it is a non-framing, non-network page, so it
+        # must carry the same strict meta CSP as every other tool page.
+        "tools/jwt/index.html",
+        "guides/jwt/index.html",
     ]
 
     def _csp(self, page: str) -> str:
@@ -1980,9 +2017,10 @@ class ToolCatalogTests(unittest.TestCase):
         app = self._app()
         self.assertIn('category: "assess"', app)
         self.assertIn('category: "local"', app)
-        # Four scan tools assess, exactly one local utility generates.
+        # Four scan tools assess; local utilities are the CSRF PoC Generator
+        # and the JWT Security Workbench (a development preview).
         self.assertEqual(app.count('category: "assess"'), 4)
-        self.assertEqual(app.count('category: "local"'), 1)
+        self.assertEqual(app.count('category: "local"'), 2)
 
     def test_categories_define_suite_membership(self):
         app = self._app()
@@ -2172,6 +2210,19 @@ class GuidesTests(unittest.TestCase):
                 "https://portswigger.net/web-security/csrf",
                 "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
                 "/Headers/Set-Cookie",
+            ),
+        ),
+        "jwt": (
+            "jwt",
+            ("RFC 7519", "RFC 7515", "WSTG-SESS-10", "CWE-347"),
+            (
+                "https://www.rfc-editor.org/rfc/rfc7519",
+                "https://www.rfc-editor.org/rfc/rfc7515",
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/06-Session_Management_Testing"
+                "/10-Testing_JSON_Web_Tokens",
+                "https://cwe.mitre.org/data/definitions/347.html",
+                "https://portswigger.net/web-security/jwt",
             ),
         ),
     }
@@ -2540,6 +2591,371 @@ class DocumentationPageTests(unittest.TestCase):
         is never copied into _site/ and the page 404s when hosted."""
         patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
         self.assertIn("cp -a documentation _site/", patch)
+
+
+class JwtWorkbenchTests(unittest.TestCase):
+    """JWT-01: the JWT Security Workbench decodes, inspects and verifies
+    compact JWS tokens. The pure engine lives in js/jwt.engine.js (DOM-free,
+    run under Node here); the controller wires it to the Analyze & Verify
+    panel. Edit & Generate (JWT-02), Test Variants and Secret Test (JWT-03)
+    remain non-interactive previews.
+
+    Accuracy rules pinned here: HS256 is not automatically weak; missing
+    claims are contextual observations, not a score; decoding is separate
+    from signature/claim verification; we never trust the token's alg header
+    to choose a key family (algorithm-confusion guard); and nothing leaves
+    the browser (no network/storage in the controller).
+    """
+
+    PAGE = ROOT / "tools" / "jwt" / "index.html"
+    CONTROLLER = ROOT / "js" / "tool.jwt.js"
+    ENGINE = ROOT / "js" / "jwt.engine.js"
+    GUIDE = ROOT / "guides" / "jwt" / "index.html"
+
+    def _page(self) -> str:
+        return self.PAGE.read_text(encoding="utf-8")
+
+    def _controller(self) -> str:
+        return self.CONTROLLER.read_text(encoding="utf-8")
+
+    def _engine(self) -> str:
+        return self.ENGINE.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _strip_js_comments(js: str) -> str:
+        js = re.sub(r"/\*.*?\*/", " ", js, flags=re.S)
+        js = re.sub(r"//[^\n]*", " ", js)
+        return js
+
+    # --- engine under Node ---------------------------------------------
+
+    def _run_engine(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        engine = self.ENGINE.read_text(encoding="utf-8")
+        script = engine + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def _jwt(self, header: dict, payload: dict, secret: str) -> str:
+        """Build an HS256-signed JWT inside Node (mirrors what an issuer
+        would produce) and return the compact serialization."""
+        import tempfile
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        harness = """
+const h = %s;
+const p = %s;
+const secret = %s;
+const b64url = (buf) => Buffer.from(buf).toString('base64').replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const b64 = (o) => b64url(Buffer.from(JSON.stringify(o)));
+const data = b64(h) + '.' + b64(p);
+const sig = require('crypto').createHmac('sha256', secret).update(data).digest();
+console.log(JSON.stringify({ token: data + '.' + b64url(sig) }));
+""" % (json.dumps(header), json.dumps(payload), json.dumps(secret))
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(harness); path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])["token"]
+
+    # --- files, routes, wiring ----------------------------------------
+
+    def test_route_controller_and_engine_exist(self):
+        for f in (self.PAGE, self.CONTROLLER, self.ENGINE):
+            self.assertTrue(f.is_file(), f)
+        page = self._page()
+        self.assertIn("js/jwt.engine.js", page)
+        self.assertIn("js/tool.jwt.js", page)
+        self.assertIn('data-init="initJwt"', page)
+        # JWT-01 is now indexable (no more noindex preview).
+        self.assertNotIn('name="robots" content="noindex', page)
+        self.assertIn('rel="canonical"', page)
+
+    def test_server_aliases_jwt(self):
+        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"/jwt": "/tools/jwt/"', text)
+        self.assertIn('"/jwt/": "/tools/jwt/"', text)
+
+    def test_engine_has_no_network_or_storage(self):
+        js = self._strip_js_comments(self._engine())
+        for needle in ("fetch(", "XMLHttpRequest", "localStorage", "sessionStorage",
+                       "history.", "location."):
+            self.assertNotIn(needle, js, "engine must be local-only: " + needle)
+
+    def test_controller_has_no_network_or_storage(self):
+        js = self._strip_js_comments(self._controller())
+        for needle in ("fetch(", "XMLHttpRequest", "localStorage", "sessionStorage",
+                       "history.", "URLSearchParams"):
+            self.assertNotIn(needle, js, "controller must be local-only: " + needle)
+
+    # --- decode --------------------------------------------------------
+
+    def test_engine_parses_valid_hs256(self):
+        token = self._jwt(
+            {"alg": "HS256", "typ": "JWT", "kid": "k1"},
+            {"sub": "alice", "iss": "https://iss.example", "aud": "app",
+             "iat": 1700000000, "exp": 1900000000},
+            "topsecret",
+        )
+        out = self._run_engine("""
+const r = CyberBuddyJwt.tryParseToken(%s);
+console.log(JSON.stringify({ ok: r.ok, alg: r.token && r.token.header.alg,
+  sub: r.token && r.token.payload.sub, obs: r.token && CyberBuddyJwt.observations(r.token).map(o=>o.code) }));
+""" % json.dumps(token))
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["alg"], "HS256")
+        self.assertEqual(out["sub"], "alice")
+        self.assertIn("hmac", out["obs"])
+
+    def test_engine_rejects_malformed_and_jwe(self):
+        cases = {
+            "empty": "",
+            "two parts": "a.b",
+            "bad base64": "!!!.!!!.!!!",
+            "bad json": "aaaa.bbbb.cccc",
+            "no alg": self._jwt({"typ": "JWT"}, {"x": 1}, "s"),
+            "jwe": "a.b.c.d.e",
+        }
+        for name, tok in cases.items():
+            out = self._run_engine(
+                "const r = CyberBuddyJwt.tryParseToken(%s); console.log(JSON.stringify({ok:r.ok, err:r.error}));"
+                % json.dumps(tok))
+            self.assertFalse(out["ok"], name + " should not parse")
+            self.assertTrue(out["err"], name)
+
+    def test_engine_rejects_alg_none_even_with_signature(self):
+        # A token that declares alg:none must not verify.
+        out = self._run_engine("""
+const r = CyberBuddyJwt.tryParseToken('eyJhbGciOiJub25lIn0.eyJzdWIiOiJhIn0.');
+console.log(JSON.stringify({ ok: r.ok, err: r.error }));
+""")
+        self.assertFalse(out["ok"])
+        self.assertIn("none", out["err"].lower())
+
+    # --- verification: HMAC -------------------------------------------
+
+    def test_verify_hmac_correct_and_wrong_secret(self):
+        token = self._jwt(
+            {"alg": "HS256", "typ": "JWT"},
+            {"sub": "alice", "exp": 4102444800},
+            "correct horse battery staple",
+        )
+        good = self._run_engine(
+            "CyberBuddyJwt.verifyToken(%s,'correct horse battery staple',{alg:'HS256'}).then(r=>console.log(JSON.stringify(r)));"
+            % json.dumps(token))
+        self.assertTrue(good["valid"], good)
+        self.assertEqual(good["alg"], "HS256")
+        bad = self._run_engine(
+            "CyberBuddyJwt.verifyToken(%s,'wrong',{alg:'HS256'}).then(r=>console.log(JSON.stringify(r)));"
+            % json.dumps(token))
+        self.assertFalse(bad["valid"])
+        self.assertIn("Signature", bad["error"])
+
+    def test_algorithm_confusion_hmac_rejects_public_key(self):
+        """HS* must reject a PEM/JWK public key — the classic confusion."""
+        token = self._jwt({"alg": "HS256", "typ": "JWT"}, {"sub": "a"}, "s")
+        pem = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----"
+        out = self._run_engine(
+            "CyberBuddyJwt.verifyToken(%s,%s,{alg:'HS256'}).then(r=>console.log(JSON.stringify(r)));"
+            % (json.dumps(token), json.dumps(pem)))
+        self.assertFalse(out["valid"])
+        self.assertIn("shared secret", out["error"])
+
+    def test_verify_rejects_wrong_alg_pin(self):
+        token = self._jwt({"alg": "HS256", "typ": "JWT"}, {"x": 1}, "s")
+        out = self._run_engine(
+            "CyberBuddyJwt.verifyToken(%s,'s',{alg:'RS256'}).then(r=>console.log(JSON.stringify(r)));"
+            % json.dumps(token))
+        self.assertFalse(out["valid"])
+        self.assertIn("Algorithm mismatch", out["error"])
+
+    # --- verification: RSA and ECDSA ----------------------------------
+
+    def _asymmetric_token(self, alg: str):
+        """Return (token, public_jwk) generated with Web Crypto in Node."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        if alg.startswith("ES"):
+            gen = "{name:'ECDSA',namedCurve:'%s'}" % ("P-256" if alg == "ES256" else "P-384")
+            sign_alg = "{name:'ECDSA',hash:{name:'%s'},namedCurve:'%s'}" % (
+                "SHA-256" if alg.endswith("256") else "SHA-384",
+                "P-256" if alg == "ES256" else "P-384")
+        else:
+            gen = "{name:'%s',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}" % (
+                "RSA-PSS" if alg.startswith("PS") else "RSASSA-PKCS1-v1_5")
+            sign_alg = "{name:'%s',hash:{name:'SHA-256'}%s}" % (
+                "RSA-PSS" if alg.startswith("PS") else "RSASSA-PKCS1-v1_5",
+                ",saltLength:32" if alg.startswith("PS") else "")
+        harness = """
+const crypto = globalThis.crypto;
+const b64 = (buf) => Buffer.from(buf).toString('base64').replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+(async () => {
+  const pair = await crypto.subtle.generateKey(%s, true, ['sign','verify']);
+  const header = {alg:%s, typ:'JWT', kid:'k1'};
+  const payload = {sub:'bob', aud:'app', exp:4102444800, iat:1700000000};
+  const data = b64(JSON.stringify(header)) + '.' + b64(JSON.stringify(payload));
+  const sig = await crypto.subtle.sign(%s, pair.privateKey, new TextEncoder().encode(data));
+  const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  jwk.kid = 'k1';
+  console.log(JSON.stringify({ token: data + '.' + b64(Buffer.from(sig)), jwk: jwk }));
+})();
+""" % (gen, json.dumps(alg), sign_alg)
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(harness); path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_verify_rsa_and_ecdsa_with_jwk(self):
+        for alg in ("RS256", "PS256", "ES256"):
+            data = self._asymmetric_token(alg)
+            out = self._run_engine(
+                "CyberBuddyJwt.verifyToken(%s,%s,{alg:%s}).then(r=>console.log(JSON.stringify(r)));"
+                % (json.dumps(data["token"]), json.dumps(data["jwk"]), json.dumps(alg)))
+            self.assertTrue(out["valid"], "%s: %s" % (alg, out.get("error")))
+            self.assertEqual(out["alg"], alg)
+
+    def test_jwks_selects_key_by_kid(self):
+        data = self._asymmetric_token("ES256")
+        jwks = {"keys": [
+            {"kty": "RSA", "n": "aaa", "e": "AQAB", "kid": "other", "alg": "RS256"},
+            data["jwk"],
+        ]}
+        out = self._run_engine(
+            "CyberBuddyJwt.verifyToken(%s,%s,{}).then(r=>console.log(JSON.stringify(r)));"
+            % (json.dumps(data["token"]), json.dumps(jwks)))
+        self.assertTrue(out["valid"], out.get("error"))
+
+    # --- claims validation --------------------------------------------
+
+    def test_validate_claims_exp_nbf_iss_aud_sub(self):
+        now = int(__import__("time").time())
+        valid = {"iss": "me", "aud": "app", "sub": "u1", "exp": now + 3600, "nbf": now - 10}
+        out = self._run_engine(
+            "console.log(JSON.stringify(CyberBuddyJwt.validateClaims(%s,{iss:'me',aud:'app',sub:'u1'})));"
+            % json.dumps(valid))
+        self.assertTrue(out["valid"], out)
+
+        expired = dict(valid, exp=now - 10)
+        out = self._run_engine(
+            "console.log(JSON.stringify(CyberBuddyJwt.validateClaims(%s,{})));" % json.dumps(expired))
+        self.assertFalse(out["valid"])
+        self.assertIn("exp", [e["code"] for e in out["errors"]])
+
+        future = dict(valid, nbf=now + 3600)
+        out = self._run_engine(
+            "console.log(JSON.stringify(CyberBuddyJwt.validateClaims(%s,{})));" % json.dumps(future))
+        self.assertFalse(out["valid"])
+        self.assertIn("nbf", [e["code"] for e in out["errors"]])
+
+        mismatch = dict(valid)
+        out = self._run_engine(
+            "console.log(JSON.stringify(CyberBuddyJwt.validateClaims(%s,{iss:'other',aud:'x',sub:'z'})));"
+            % json.dumps(mismatch))
+        codes = {e["code"] for e in out["errors"]}
+        self.assertEqual(codes, {"iss", "aud", "sub"})
+
+    def test_skew_applies_to_exp_and_nbf(self):
+        now = int(__import__("time").time())
+        out = self._run_engine(
+            "console.log(JSON.stringify(CyberBuddyJwt.validateClaims({exp:%d},{clockTolerance:120})));"
+            % (now - 60))
+        self.assertTrue(out["valid"], out)  # expired 60s ago but within 120s skew
+
+    # --- UI wiring -----------------------------------------------------
+
+    def test_analyze_and_verify_panel_is_functional(self):
+        page = self._page()
+        self.assertIn('id="jwtToken"', page)
+        self.assertIn('id="jwtVerify"', page)
+        for kid in ("jwtHeader", "jwtPayload", "jwtTimeline", "jwtClaims",
+                    "jwtObservations", "jwtSecret", "jwtPem", "jwtJwk", "jwtJwks",
+                    "jwtExpIss", "jwtExpAud", "jwtExpSub", "jwtSkew"):
+            self.assertIn('id="%s"' % kid, page, kid)
+        # The verify button is enabled (not a preview).
+        self.assertNotIn('id="jwtVerify" disabled', page)
+
+    def test_edit_generate_variants_secret_tabs_remain_preview(self):
+        """JWT-02/03 panels must stay non-interactive previews."""
+        page = self._page()
+        for panel in ("jwt-panel-edit", "jwt-panel-variants", "jwt-panel-secret"):
+            block = page[page.index('id="%s"' % panel):page.index("</section>", page.index('id="%s"' % panel))]
+            # Every input/button in these preview panels is disabled.
+            for m in re.finditer(r"<(?:button|input|textarea|select)\b[^>]*>", block):
+                tag = m.group(0)
+                if 'role="tab"' in tag:
+                    continue
+                self.assertIn("disabled", tag, "preview control must be disabled: " + tag)
+
+    def test_accessible_tabs_and_key_subtabs(self):
+        page = self._page()
+        # Four panel tabs (Analyze&Verify, Edit/Generate, Test Variants, Secret Test).
+        self.assertEqual(page.count('role="tab"'),
+                         4 + 4)  # 4 panel tabs + 4 key-type sub-tabs
+        self.assertIn("ArrowRight", self._controller())
+        self.assertIn("Home", self._controller())
+        self.assertIn("End", self._controller())
+
+    def test_privacy_and_accuracy_statements_present(self):
+        page = re.sub(r"\s+", " ", self._page())
+        for needle in (
+            "JWTs can be credentials",
+            "Fully local",
+            "Decoding is not verification",
+            "proves only a match with that key",
+            "will not prove server",
+            "Live target testing is not part",
+            "Authorized testing only",
+        ):
+            self.assertIn(needle, page, "missing statement: " + needle)
+
+    def test_no_numeric_score_or_fake_verdict(self):
+        page = self._page()
+        for needle in ("score-gauge", "/ 100", "gaugeHtml", 'class="risk high"',
+                       'class="risk medium"', 'class="risk low"'):
+            self.assertNotIn(needle, page)
+
+    def test_guide_updated_for_jwt01(self):
+        guide = self.GUIDE.read_text(encoding="utf-8")
+        self.assertIn("JWT-01", guide)
+        # Guide should no longer call the whole tool a non-operational preview;
+        # it now describes the decode/verify capability.
+        self.assertIn("decode", guide.lower())
+        self.assertIn("verif", guide.lower())
+
+    def test_sitemap_lists_the_tool_now_that_it_is_functional(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/tools/jwt/</loc>", sitemap)
+        self.assertIn("/CyberBuddy/guides/jwt/</loc>", sitemap)
+
+    def test_no_pwa_shortcut_for_future_phases(self):
+        """JWT-01 could justify a shortcut now that decode/verify ships,
+        but per the phased plan we keep the shortcut out until the full
+        workbench (JWT-02/03) is live. Pin that choice deliberately."""
+        manifest = json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
+        urls = [s.get("url", "") for s in manifest.get("shortcuts", [])]
+        self.assertFalse(any("jwt" in u for u in urls), urls)
 
 
 class PagesExclusionTests(unittest.TestCase):

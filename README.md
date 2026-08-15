@@ -20,6 +20,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
+| **JWT Security Workbench** | Decode, inspect and verify JWTs locally — compact JWS parsing, claim timeline, observations, and HMAC/RSA-PKCS#1/RSA-PSS/ECDSA signature verification with the key you supply. Edit/generate and secret testing are in development. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
 
 More tools slot in later — add one entry to the `TOOLS_MENU` registry in
 `js/app.js` (with a `category` of `assess` for URL-based target checks or
@@ -42,6 +43,7 @@ concise, not a full article library.
 | [`guides/cors/`](guides/cors/) | CORS Validator | OWASP WSTG-CLNT-07 · CWE-942 |
 | [`guides/csp/`](guides/csp/) | CSP Policy Auditor | OWASP WSTG-CONF-12 · CWE-79 |
 | [`guides/csrf/`](guides/csrf/) | CSRF PoC Generator | OWASP WSTG-SESS-05 · CWE-352 |
+| [`guides/jwt/`](guides/jwt/) | JWT Security Workbench (preview) | RFC 7519 · RFC 7515 · OWASP WSTG-SESS-10 · CWE-347 |
 
 ## Documentation page
 
@@ -58,6 +60,7 @@ python3 server.py
 # open http://127.0.0.1:8080/
 # catalog: /tools/
 # tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
+# JWT: /tools/jwt/  (decode, inspect & verify)
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -97,6 +100,7 @@ guides/
   cors/index.html               # guide, paired with the CORS Validator
   csp/index.html                # guide, paired with the CSP Policy Auditor
   csrf/index.html               # guide, paired with the CSRF PoC Generator
+  jwt/index.html                # guide, paired with the JWT Security Workbench (preview)
 css/app.css                     # shared design system
 css/noscript.css                # no-JS fallback (reveal animations off)
 css/404.css                     # standalone styles for 404.html
@@ -109,6 +113,7 @@ js/tool.headers.js              # headers page controller
 js/tool.cors.js                 # CORS page controller
 js/tool.csp.js                  # CSP audit page controller
 js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
+js/tool.jwt.js                  # JWT Workbench preview-tab controller (preview only, no token processing)
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   index.html                    # tools catalog (every tool in one directory)
@@ -117,6 +122,7 @@ tools/
   cors/index.html               # CORS probe + roadmap
   csp/index.html                # CSP policy audit report
   csrf/index.html               # CSRF PoC generator (local-only)
+  jwt/index.html                # JWT Security Workbench (development preview, noindex)
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
@@ -276,6 +282,33 @@ the four scanners:
 - **Auto-submit is opt-in and off by default.** With it off, the PoC has a
   manual submit button; with it on, a minimal fixed auto-submit script is added
   and the UI shows an accidental-state-change warning.
+
+## JWT Security Workbench
+
+The sixth tool, at [`/tools/jwt/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/),
+decodes, inspects and verifies JSON Web Tokens locally in your browser:
+
+- **Decode & inspect (JWT-01, live)** — strict compact-JWS parsing with
+  honest errors for malformed input and JWE; pretty-printed header/payload; a
+  claim timeline for `iat`/`nbf`/`exp`; contextual observations (missing
+  claims, long lifetimes, `jku`/`x5u`/`jwk`/`kid`).
+- **Verify (JWT-01, live)** — signature verification via the native Web Crypto
+  API for HS256/384/512 (shared secret), RS256/384/512, PS256/384/512 and
+  ES256/384, using a PEM public key, JWK or pasted JWKS (key matched by
+  `kid`). Expected `iss`/`aud`/`sub` and clock tolerance are validated
+  separately. The token's `alg` header is never trusted to choose the
+  verifier, and HMAC rejects public keys (algorithm-confusion guard).
+- **Edit & generate (JWT-02, planned)** — header/payload editors,
+  standard-claim helpers, semantic diff, HMAC/private-key signing, local RSA
+  test-key generation, explicit TEST TOKEN labels.
+- **Test variants & secret testing (JWT-03, planned)** — `alg:none`, claim
+  manipulation, algorithm confusion, embedded JWK, JKU/X5U and `kid`
+  templates; bounded HS256/384/512 secret testing in a Web Worker.
+
+Everything runs in this browser: no token, key or wordlist is ever sent,
+stored or placed in the URL. There is no numeric score; observations are
+contextual. The [JWT guide](guides/jwt/) is paired with the tool. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan and accuracy rules.
 
 ## Evidence and export
 

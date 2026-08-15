@@ -28,12 +28,14 @@ const PAGES = [
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
+  ["jwt-preview", "/tools/jwt/"],
   ["guides", "/guides/"],
   ["guide-clickjacking", "/guides/clickjacking/"],
   ["guide-headers", "/guides/headers/"],
   ["guide-cors", "/guides/cors/"],
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
+  ["guide-jwt", "/guides/jwt/"],
   ["documentation", "/documentation/"],
   ["404", "/404.html"]
 ];
@@ -165,9 +167,10 @@ async function checkMenu(page, label, r) {
     const hrefs = await page.evaluate(() =>
       [...document.querySelectorAll(".header-inner .nav-menu-panel a")]
         .map((a) => new URL(a.getAttribute("href"), location.href).pathname));
-    // 5 live tool links + the "All tools" catalog link, all under the mount.
+    // 5 live tool links + 1 JWT preview link + the "All tools" catalog
+    // link, all under the mount.
     r.check(
-      hrefs.length === 6 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
+      hrefs.length === 7 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
       `project-mount links ${vn} ${JSON.stringify(hrefs)}`
     );
     await checkMenu(page, `project-mount ${vn}`, r);

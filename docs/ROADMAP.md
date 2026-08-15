@@ -13,23 +13,25 @@
 
 ## 1. Current project state
 
-Recorded at the start of the GUIDES-01 session (2026-08-15). See §5 “Current
+Recorded at the start of the JWT-00 session (2026-08-15). See §5 “Current
 handoff” for the state at the end of that session.
 
 | Item | Value |
 | --- | --- |
-| Latest merged feature/PR | **IA-01 — scalable tool information architecture** (PR #22, merge commit `2956801`). Verified present in `origin/main` before this session; not re-applied. |
-| Live tools | 5 — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator |
-| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · **Guides (`/guides/`, new this session — one guide per tool, 5 live)** · **Documentation (`/documentation/`, new this session — footer-linked operator docs)** |
-| Python test total | **177** at branch point, of which one failed (see §5 “Fixed en route”); **203** after GUIDES-01/02/03; **221** after DOCS-01 |
-| JavaScript file total | **18** (11 under `js/`, 7 under `tests/browser/`) — all pass `node --check` |
-| Browser suites | layout 131 · dropdown 132 · overlays 48 · relay-gate 17 · responsive 224 · csrf 22 — **574 checks** (Chromium) plus IA-01's catalog checks; not runnable in the Arena sandbox |
-| Pages assembly result | Hub, 404, methodology, catalog and five tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. **`guides/` and `documentation/` are not copied yet** — see the maintainer follow-up in §5 (all six guide pages and the documentation page depend on it). |
+| Latest merged feature/PR | **GUIDES-01/02/03 + DOCS-01** (PR #23, merge commit `611df2b`) — five tool guides and the `/documentation/` page. Verified present in `origin/main` before this session; not re-applied. |
+| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (JWT-01: decode/inspect/verify)** |
+| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 6) · Documentation (`/documentation/`) |
+| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests) |
+| JavaScript file total | **20** (13 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js`, 7 under `tests/browser/`) — all pass `node --check` |
+| Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
+| Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
 | Release/version state | **Pre-1.0** — no tagged release; `main` carries the live site via GitHub Pages |
 
 Tool categories in force (from IA-01): **Assess targets** (Clickjacking,
 Headers, CORS, CSP — the four that join the hub “Run suite”) and **Local
-utilities** (CSRF PoC Generator — a generator, never a scanner).
+utilities** (CSRF PoC Generator and the JWT Security Workbench — neither scans
+a target). JWT is `status: "live"` in `TOOLS_MENU` after JWT-01; it remains
+`category: "local"` and excluded from the Run suite.
 
 ---
 
@@ -96,7 +98,7 @@ PR.
   `baaea21` · merged into `origin/main` as `2956801` (verified 2026-08-15).
 
 ### GUIDES-01 — Public Guides foundation + one Clickjacking pilot guide
-- **Status:** `IN REVIEW`
+- **Status:** `DONE`
 - **Goal:** A Guides section with a concise pilot guide (Clickjacking),
   connected to the Clickjacking Validator.
 - **Scope:** Guides foundation + the pilot guide. Guides are **concise and
@@ -125,7 +127,7 @@ PR.
   same PR (see below).
 
 ### GUIDES-02 — Concise Security Headers and CSP guides
-- **Status:** `IN REVIEW`
+- **Status:** `DONE`
 - **Goal:** Two concise guides for the Headers and CSP tools, same format as
   the pilot.
 - **Scope:** Headers guide + CSP guide, each linking to its tool and to
@@ -144,7 +146,7 @@ PR.
   CWE-79, MDN and CSP Level 3.
 
 ### GUIDES-03 — Concise CORS and CSRF guides
-- **Status:** `IN REVIEW`
+- **Status:** `DONE`
 - **Goal:** Two concise guides for the CORS and CSRF tools.
 - **Scope:** CORS guide + CSRF guide.
 - **Non-goals:** No full articles.
@@ -160,7 +162,7 @@ PR.
   enforces.
 
 ### DOCS-01 — In-site documentation page
-- **Status:** `IN REVIEW`
+- **Status:** `DONE`
 - **Goal:** Replace the footer's off-site "Documentation" → GitHub `#readme`
   link with a real page in the site shell.
 - **Scope:** `documentation/index.html` (quick start, which engine answers, the
@@ -189,7 +191,7 @@ PR.
   (see `docs/pages-workflow-patch.md`).
 
 ### ABOUT-01 — Dedicated About page
-- **Status:** `NEXT`
+- **Status:** `TODO`
 - **Goal:** A dedicated About page covering product purpose, scope, privacy,
   architecture, responsible use, maintainer and a roadmap summary.
 - **Scope:** One About page + nav/footer wiring.
@@ -275,17 +277,122 @@ PR.
 - **Required tests:** full suite + browser suites + Pages guard.
 - **PR/commit:** —
 
-### TOOL-06 — JWT Security Inspector
-- **Status:** `DEFERRED`
-- **Goal:** Design and implement a JWT Security Inspector.
-- **Scope:** New tool.
-- **Non-goals:** Starting before the architecture/release work above.
-- **Dependencies:** RELEASE-01 (architecture + release first).
-- **Acceptance criteria:** — (deferred)
-- **Required tests:** — (deferred)
+### JWT-00 — JWT Security Workbench development preview
+- **Status:** `DONE`
+- **Goal:** Publish the product structure for a future JWT tool as a
+  non-operational roadmap preview, integrated across the whole site, without
+  implementing any token processing.
+- **Scope:** `tools/jwt/index.html` (five informational preview tabs —
+  Analyze, Verify, Edit & Generate, Test Variants, Secret Test),
+  `js/tool.jwt.js` (accessible keyboard tab navigation only), `guides/jwt/`,
+  registry entry (`status: "preview"`, `category: "local"`), hub/catalog/404
+  static cards, server aliases (`/jwt`), `sitemap.xml` (guide only; the tool
+  page is `noindex` and absent), `llms.txt`, README, Pages workflow copy line
+  + `docs/pages-workflow-patch.md`, and browser page arrays.
+- **Non-goals:** No decoding, verification, signing, generation, or secret
+  testing; no `fetch`, storage, history/query state, relay gate, share link,
+  LIVE/CACHED tag, numeric score, or fake result/verdict; no PWA shortcut
+  (added only when JWT-01 ships); no canonical URL on the noindex page.
+- **Dependencies:** GUIDES-01/02/03 + DOCS-01 (merged).
+- **Acceptance criteria:** The page is visibly labelled **BETA ROADMAP
+  PREVIEW · NOT OPERATIONAL** without interaction; every non-tab control is
+  disabled; the controller makes no network/storage/history call and contains
+  no crypto/parsing; the page is `noindex` and absent from the sitemap while
+  the guide is indexed; the JWT entry is labelled "Preview" (not "live") in
+  the menu, hub and catalog and is excluded from the Run suite.
+- **Required tests:** `JwtPreviewTests` (26 stdlib tests, each mutation-checked
+  against the pre-feature tree); route/alias/CSP/cache-buster coverage
+  extended; `layout`/`dropdown`/`responsive` browser arrays include the
+  preview and guide.
+- **PR/commit:** branch `arena/…-cyberbuddy` · PR #24 (open).
+- **Accuracy rules (carry into JWT-01/02/03):**
+  - HS256 is not automatically weak — a strong shared secret is fine.
+  - A missing `exp`/`iss`/`aud` is a *contextual* observation, never an
+    automatic verdict or score.
+  - Decoding is not verification.
+  - Verification with a supplied key proves only a key match, not that the
+    key is trusted by the target.
+  - A generated/modified variant never proves server acceptance.
+  - `kid`/`jku`/`x5u`/embedded `jwk`/algorithm confusion are *surfaces*,
+    not exploited findings, until the target accepts the variant.
+  - The hosted tool never sends a JWT to a target, a JWKS URL, or a third
+    party, and never persists a token, wordlist or discovered secret.
+- **Notes/traps:** `test_guides_stay_short` counts the JSON-LD block toward
+  the 1200-word ceiling — keep the guide prose tight. The
+  `_strip_js_comments` helper in `JwtPreviewTests` exists so a comment that
+  *says* the controller does not call `fetch()` cannot trip a "must not
+  contain fetch" assertion. The arena token may still lack the `workflows`
+  permission; the `tools/jwt` workflow copy line is also recorded in
+  `docs/pages-workflow-patch.md`. In `tests/browser/responsive.js` the JWT
+  entries stay appended at the end — `TOOLS = PAGES.slice(1, 5)` must remain
+  the four scan tools.
+
+### JWT-01 — Decode, inspect and verify
+- **Status:** `DONE`
+- **Goal:** Decode a compact JWS into its three parts, display header/payload/
+  signature and a claim timeline, and verify the signature with a key the
+  analyst supplies — entirely in the browser via the Web Crypto API.
+- **Scope:** Strict compact-JWS parsing (honest errors for malformed input and
+  JWE); header/payload/signature sections; `iat`/`nbf`/`exp` timeline with
+  clock-skew; expected `iss`/`aud`/`sub` validation; HMAC (`HS256/384/512`),
+  RSA (`RS256/384/512`, `PS256/384/512`) and ECDSA (`ES256/384`) verification
+  through `crypto.subtle`; PEM, JWK and pasted JWKS key inputs; three
+  distinct UI states (Decoded / Signature verified / Claims validated).
+- **Non-goals:** No editing or signing (JWT-02); no test variants or secret
+  testing (JWT-03); no network fetch of a JWKS URL (keys are pasted); no
+  token persistence or query/share state; no numeric score.
+- **Dependencies:** JWT-00.
+- **Acceptance criteria:** A token verifies only against a supplied key;
+  failures are specific (bad signature, unsupported alg, expired, wrong
+  audience); nothing leaves the browser; the page drops `noindex`, gains a
+  canonical URL, a PWA shortcut and a sitemap entry only once functional.
+- **Required tests:** pure decoder/verifier under Node (DOM-free), stdlib
+  content/route tests, real-browser verification matrix.
 - **PR/commit:** —
-- **Notes:** Deferred until the architecture and release work above is
-  complete.
+- **Notes:** Web Crypto support varies by algorithm; feature-detect and
+  report "unsupported in this browser" honestly. A pasted JWKS must select
+  by `kid` and pin the algorithm — never trust the token's `alg` header to
+  choose the verifier (the algorithm-confusion trap).
+
+### JWT-02 — Edit and generate
+- **Status:** `NEXT`
+- **Goal:** Modify header/payload claims and re-sign locally to build
+  authorized test tokens.
+- **Scope:** Header/payload editors; standard-claim helpers (`iss`, `sub`,
+  `aud`, `exp`, `nbf`, `iat`, `jti`); HMAC and private-key signing via Web
+  Crypto; local RSA test-key generation; original-vs-modified semantic diff;
+  explicit **TEST TOKEN** labels; safe copy/download with no accidental key
+  export.
+- **Non-goals:** No target requests; no key/secret persistence; no algorithm
+  that the browser cannot perform.
+- **Dependencies:** JWT-01.
+- **Acceptance criteria:** A generated token verifies with the matching key;
+  modified claims are shown in a diff before signing; every artifact is
+  labelled a test token.
+- **Required tests:** pure signer under Node; copy/download and labelling
+  tests; real-browser round-trip.
+- **PR/commit:** —
+
+### JWT-03 — Test variants and bounded secret testing
+- **Status:** `TODO`
+- **Goal:** Build authorized-test variants (`alg:none`, claim manipulation,
+  algorithm confusion with an analyst-supplied public key, embedded JWK,
+  JKU/X5U and `kid` mutation templates) and bounded HMAC secret testing for
+  HS256/384/512 only.
+- **Scope:** Variant templates (the tool never sends them); a Web Worker for
+  secret testing with progress/cancel and explicit browser resource limits;
+  a small built-in candidate list plus an uploaded custom wordlist (read in
+  the Worker, never persisted).
+- **Non-goals:** No RSA/EC cracking; no target/JWKS fetch; no large bundled
+  wordlist; no persistence of the token, wordlist or discovered secret; no
+  claim of server acceptance.
+- **Dependencies:** JWT-02.
+- **Acceptance criteria:** Every variant is labelled a test template, not a
+  finding; secret testing is cancellable and bounded; nothing is stored or
+  transmitted.
+- **Required tests:** variant builder under Node; Worker bounds/cancel;
+  real-browser variant + secret-test flow.
+- **PR/commit:** —
 
 ### FUTURE-01 — External payload-corpus integration
 - **Status:** `DEFERRED`
@@ -304,66 +411,59 @@ PR.
 
 > Replace this whole section at the end of every session.
 
-- **Last verified `origin/main`:** `17e66e2` (IA-01 merged as `2956801`,
-  PR #22).
-- **Work currently in review:** GUIDES-01 **+ GUIDES-02 + GUIDES-03 +
-  DOCS-01** — branch `arena/01a003bd-cyberbuddy`, **PR #23**. Not merged. The
-  maintainer lifted GUIDES-01's "one pilot guide only" non-goal mid-session
-  (all five tools now ship a guide in the same PR) and then added DOCS-01 to
-  the same PR rather than deferring it.
-- **Delivered:** `guides/index.html` plus `guides/{clickjacking,headers,cors,
-  csp,csrf}/index.html`. Every tool page carries a `p.guide-link` backlink
-  under its standards line; the guides index lists five real cards (the
-  "more guides coming" ghost card is gone) and reads `05 live`. Plus
-  `documentation/index.html` — the footer's "Documentation" entry now points at
-  `base + '/documentation/'` instead of the GitHub README anchor, which was the
-  only link in that column that ejected the visitor off-site.
-- **Last completed checks:** **221/221** stdlib tests
-  (`python3 -m unittest test_engines.py`; `GuidesTests` ×23, now parameterised
-  over all five guides via a `GUIDES` table of tool slug + standards +
-  reference URLs) · `node --check` clean on all 18 JS files · live `server.py`
-  crawl: all six guide routes 200 and every local `href`/`src` inside them
-  resolves 200 · `sitemap.xml` parses and lists all six guide URLs · the three
-  `/documentation/` routes return 301/200/200 (`/documentation`,
-  `/documentation/`, `/CyberBuddy/documentation/`).
-- **Voice and sourcing rules (maintainer directives, keep enforcing):** guides
-  are written in the **first person** — never "the maintainer" / narrator
-  voice — and **never** link the Medium profile as a per-tool deep dive, since
-  only two posts exist and neither matches a guide topic. Both are pinned by
-  tests (`test_guides_are_written_in_first_person_not_as_a_narrator`,
-  `test_guides_never_sell_the_blog_as_a_per_tool_deep_dive`). Every external
-  `<a>` must carry exactly `target="_blank" rel="noopener noreferrer"`, and
-  every reference URL is pinned in `GuidesTests.GUIDES` after being fetched
-  and verified.
-- **Fixed en route:** the pre-existing failure at branch point
-  (`PagesExclusionTests.test_workflow_never_copies_internal_paths` token-scanned
-  the whole workflow and tripped over the maintainer's leak-guard step). It now
-  scans only the *Assemble static site* step body, and a second test asserts the
-  guard step still names the internal paths. The baseline is green again.
-- **Maintainer follow-up (required before the Guides section is visible in
-  production):** `docs/pages-workflow-patch.md` asks for one line —
-  `test -d guides && cp -a guides _site/ || true` — after the methodology copy
-  in *Assemble static site*. The arena token still lacks the `workflows`
-  permission. Without it the header/footer Guides links, the 404 card, five
-  tool backlinks and six `sitemap.xml` URLs all 404 on Pages.
-- **Real-browser suites:** all six guide URLs were added to the `layout`,
-  `dropdown` and `responsive` PAGES arrays, but the suites were **not
-  executed** — this sandbox has no Chromium binary and the browser CDN,
-  Debian mirrors and Chrome-for-Testing endpoints are all unreachable. Run them
-  by hand (`python3 server.py --port 8080 --allow-private`, then
-  `CB_CHROME=… node tests/browser/<suite>.js`) before merging. In
-  `tests/browser/responsive.js` the guide entries **must stay appended at the
-  end**: `TOOLS = PAGES.slice(1, 5)`.
-- **Next approved roadmap ID:** `ABOUT-01`.
-- **Files/traps the next session must read:** `REVIEW.md` §23 (GUIDES-01/02/03
-  + DOCS-01)
-  · `docs/DEV-NOTES.md` ("GUIDES traps") · `docs/ROADMAP.md` ·
-  `guides/clickjacking/index.html` (the shape every guide copies) ·
-  `docs/pages-workflow-patch.md` (unapplied).
-- **Known blockers:** none in code. One external dependency: the workflow line
-  above must be applied by a maintainer.
-
----
+- **Last verified `origin/main`:** `611df2b` (GUIDES-01/02/03 + DOCS-01, PR #23).
+- **Work in review:** **JWT-00 preview + JWT-01 decode/inspect/verify** —
+  branch `arena/01a00446-cyberbuddy`, **PR #24**. Both shipped in the same
+  PR per the maintainer's request to merge this session.
+- **Delivered:**
+  - **JWT-00 (preview, now shipped):** `tools/jwt/index.html`,
+    `js/tool.jwt.js`, `guides/jwt/`, registry integration, routes, sitemap
+    (guide only at JWT-00) and the full test/guard/doc set.
+  - **JWT-01 (functional):** a pure DOM-free engine `js/jwt.engine.js`
+    (compact JWS parse, observations, claims validation, signature
+    verification) and a rewritten Analyze & Verify panel. Decodes
+    header/payload/signature, renders a claim timeline + observations, and
+    verifies HS256/384/512, RS256/384/512, PS256/384/512, ES256/384 via
+    `crypto.subtle` with HMAC secret / PEM SPKI / JWK / JWKS (matched by
+    `kid`) key inputs. Expected `iss`/`aud`/`sub` and clock skew are
+    validated. Edit & Generate (JWT-02), Test Variants and Secret Test
+    (JWT-03) remain non-interactive previews on the same page.
+  - The page dropped `noindex`, gained a canonical URL and a
+    `sitemap.xml` entry (JWT-01 is functional); the registry entry is now
+    `status: "live"` (still `category: "local"`, still out of the Run suite).
+- **Last completed checks:** **245/245** stdlib tests OK
+  (`python3 -m unittest test_engines.py`; 26 JWT-00 preview tests were
+  replaced by ~20 `JwtWorkbenchTests` covering the Node-driven engine — HMAC
+  good/bad, algorithm-confusion guard, alg pin, RSA/PS/ECDSA verification,
+  JWKS-by-kid, claims/skew, malformed/JWE/alg:none, plus UI wiring and the
+  remaining preview panels) · `node --check` clean on all 20 JS files ·
+  `py_compile` clean · JSON/XML valid · local Pages-assembly dry run green
+  (all assets resolve, no internal files leaked, JWT tool in sitemap and
+  indexed) · live `server.py` crawl of the JWT routes all 200/301.
+- **Accuracy rules (enforced by the engine):** never trust the token's
+  `alg` to choose the verifier; HMAC algs reject PEM/JWK public keys
+  (algorithm-confusion guard); a JWKS key's family must match the expected
+  alg; decoding is reported separately from signature/claims verification;
+  observations are contextual (no numeric score); the hosted tool never
+  sends a JWT to a target, JWKS URL or third party and never persists a
+  token, wordlist or secret.
+- **Maintainer follow-up:** if the push of `.github/workflows/pages.yml`
+  was rejected (missing `workflows` permission), `docs/pages-workflow-patch.md`
+  carries the line that adds `tools/jwt` to the explicit `cp -a tools/…`
+  copy. `guides/` is copied whole-tree so `guides/jwt/` needs no line.
+- **Real-browser suites:** `/tools/jwt/` and `/guides/jwt/` are in the
+  `layout`/`dropdown`/`responsive` PAGES arrays (appended at the end in
+  `responsive.js` so `TOOLS = PAGES.slice(1, 5)` stays the four scan
+  tools; dropdown project-mount link count is 7). Suites were **not
+  executed** (no Chromium in the sandbox); run by hand before merge.
+- **Next approved roadmap ID:** **`JWT-02`** (edit & generate). ABOUT-01
+  stays `TODO`.
+- **Files/traps the next session must read:** `REVIEW.md` §25/§26 ·
+  `docs/DEV-NOTES.md` ("JWT-00 traps" + "JWT-01 traps") ·
+  `docs/ROADMAP.md` (JWT-02 scope) · `js/jwt.engine.js` + `js/tool.jwt.js`
+  (the engine contract the new tests pin) · `docs/pages-workflow-patch.md`.
+- **Known blockers:** none in code. Possible external dependency: the
+  workflow line may need a maintainer if the push was rejected.
 
 ## 6. Future-session protocol
 

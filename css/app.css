@@ -301,6 +301,9 @@ main.container { z-index: 2; }
 }
 .nav-status.live { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
 .nav-status.beta { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+/* JWT-00 preview: amber/med, same as beta but labelled "preview" so the
+   tool is never mistaken for an operational/live entry. */
+.nav-status.preview { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .nav-status.soon { color: var(--faint); background: var(--surface-2); border-color: var(--line); }
 .nav-menu-divider {
   font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700;
@@ -457,6 +460,9 @@ main.container { z-index: 2; }
 .cat-badge.cat-assess { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
 .cat-badge.cat-local { color: var(--accent-2); background: var(--surface-2); border-color: var(--line-strong); }
 .cat-badge.cat-suite { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+/* JWT-00: a non-live, non-operational preview. Amber so it reads as
+   "in development" rather than as a live/launchable tool. */
+.cat-badge.cat-preview { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .cat-badge.cat-local.cat-badge,
 .cat-badge.cat-suite.cat-badge { margin-left: 0; }
 
@@ -628,6 +634,8 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 }
 .status-led::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--low); box-shadow: 0 0 8px var(--low); }
 .status-led.beta::before { background: var(--med); box-shadow: 0 0 8px var(--med); }
+/* JWT-00: the preview led is amber and does not claim to be live. */
+.status-led.preview::before { background: var(--med); box-shadow: 0 0 8px var(--med); }
 .status-led.soon::before { background: var(--faint); box-shadow: none; }
 .tool-card h3 { font-size: 1.12rem; margin: 0 0 5px; }
 .tool-card-desc { color: var(--muted); font-size: 0.9rem; margin: 0; flex: 1; }
@@ -2145,3 +2153,329 @@ html.js .reveal.in,
 .csrf-source { max-height: 420px; overflow: auto; white-space: pre; }
 
 .csrf-notes-grid { margin-top: 18px; }
+
+/* ==========================================================================
+   JWT Security Workbench (JWT-00) — development preview
+   The page is non-operational: these styles support the prominent preview
+   banner, accessible tab navigation and phase cards only. No result, score
+   or token-processing UI is styled here.
+   ========================================================================== */
+
+.jwt-preview-banner {
+  border: 1px solid var(--med-line);
+  background: var(--med-bg);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin: 18px 0 22px;
+}
+.jwt-preview-banner h2 {
+  font-size: 1.05rem;
+  margin: 8px 0 6px;
+  color: var(--ink);
+}
+.jwt-preview-banner p {
+  margin: 6px 0;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+.jwt-preview-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--med);
+  background: var(--surface);
+  border: 1px solid var(--med-line);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.jwt-preview-phase {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 10px !important;
+}
+
+/* Accessible preview tabs. */
+.jwt-tabs { margin-top: 8px; }
+.jwt-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+}
+.jwt-tab {
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 10px 16px;
+  position: relative;
+  top: 1px;
+}
+.jwt-tab:hover { color: var(--ink); background: var(--surface-2); }
+.jwt-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.jwt-tab.is-active {
+  color: var(--brand);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.jwt-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--brand);
+}
+.jwt-panel { outline: none; }
+.jwt-panel[hidden] { display: none; }
+.jwt-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.jwt-panel-head h2 { margin: 0; font-size: 1.15rem; }
+
+.jwt-phase {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--faint);
+}
+.jwt-phase-01 { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
+.jwt-phase-02 { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+.jwt-phase-03 { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+
+/* Disabled "future" controls. They are non-interactive previews only. */
+.jwt-future { margin: 14px 0; display: flex; flex-direction: column; gap: 12px; }
+.jwt-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.jwt-field > span {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.jwt-field input,
+.jwt-field textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  padding: 10px 12px;
+  font: inherit;
+  resize: vertical;
+  min-height: 44px;
+}
+.jwt-field textarea { min-height: 84px; font-family: var(--font-mono); font-size: 0.82rem; }
+.jwt-field.is-disabled input,
+.jwt-field.is-disabled textarea {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.jwt-field input:disabled,
+.jwt-field textarea:disabled,
+.jwt-field input[aria-disabled="true"],
+.jwt-field textarea[aria-disabled="true"] { cursor: not-allowed; }
+.jwt-field-note { color: var(--muted); font-size: 0.8rem; margin: 0; }
+.jwt-key-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.jwt-sections-grid { margin: 14px 0; }
+
+.jwt-variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+}
+.jwt-variant h3 { font-size: 0.88rem; margin-bottom: 6px; }
+.jwt-variant p { margin: 0; font-size: 0.84rem; color: var(--muted); line-height: 1.5; }
+
+.jwt-privacy { margin-top: 26px; }
+.jwt-privacy h2 { font-size: 1.05rem; }
+.jwt-privacy .card-title { margin-bottom: 10px; }
+
+/* Phase status cards. */
+.jwt-phases { margin-top: 26px; }
+.jwt-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.jwt-phase-card { padding: 16px; }
+.jwt-phase-card h3 { font-size: 0.92rem; margin: 8px 0 6px; }
+.jwt-phase-card p { margin: 0; font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+.jwt-phase-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.jwt-phase-current { border-color: var(--med-line); background: var(--med-bg); }
+.jwt-phase-current .jwt-phase-tag { color: var(--med); }
+.jwt-phase-next { border-color: var(--brand); }
+.jwt-phase-next .jwt-phase-tag { color: var(--brand); }
+
+/* Responsive: collapse grids and keep the tab strip scrollable on phones. */
+@media (max-width: 900px) {
+  .jwt-variant-grid { grid-template-columns: repeat(2, 1fr); }
+  .jwt-phase-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .jwt-tablist { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .jwt-tab { white-space: nowrap; padding: 10px 12px; font-size: 0.82rem; }
+  .jwt-key-grid { grid-template-columns: 1fr; }
+  .jwt-variant-grid { grid-template-columns: 1fr; }
+  .jwt-phase-grid { grid-template-columns: 1fr; }
+}
+
+/* JWT-00: "Preview" tag on the static no-JS hub card. */
+.hub-preview-tag {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--med);
+  border: 1px solid var(--med-line);
+  background: var(--med-bg);
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* JWT guide preview-note callout. */
+.jwt-preview-note {
+  border: 1px solid var(--med-line);
+  background: var(--med-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin: 14px 0;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.jwt-preview-note strong { color: var(--ink); }
+
+/* ==========================================================================
+   JWT Security Workbench — JWT-01 functional Analyze & Verify UI
+   ========================================================================== */
+.jwt-input-card { margin-top: 6px; }
+.jwt-token-input {
+  width: 100%; min-height: 110px; resize: vertical;
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); color: var(--ink);
+  padding: 12px 14px; font-family: var(--font-mono); font-size: 0.84rem;
+  line-height: 1.55;
+}
+.jwt-token-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.jwt-mask {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted); cursor: pointer;
+}
+
+.jwt-empty { padding: 22px; text-align: center; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); }
+.jwt-state-row { margin: 6px 0 14px; }
+.jwt-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 999px; border: 1px solid;
+}
+.jwt-state-decoded { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
+.jwt-state-ok { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+.jwt-state-warn { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+
+.jwt-json {
+  margin: 0; max-height: 320px; overflow: auto; white-space: pre;
+  font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.55;
+  background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px;
+  overflow-wrap: anywhere;
+}
+.jwt-claims { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.jwt-claim {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 8px 11px; min-width: 0;
+}
+.jwt-claim-k { font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.jwt-claim-v { font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.jwt-obs { list-style: none; padding: 0; margin: 0; }
+.jwt-obs { padding: 6px 0 6px 22px; position: relative; font-size: 0.86rem; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.jwt-obs:last-child { border-bottom: 0; }
+.jwt-obs::before { position: absolute; left: 0; top: 6px; font-family: var(--font-mono); font-weight: 700; }
+.jwt-obs-info::before { content: "i"; color: var(--brand); }
+.jwt-obs-high::before { content: "!"; color: var(--high); }
+
+/* Key-type sub-tabs */
+.jwt-key-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  border-bottom: 1px solid var(--line); margin: 14px 0 12px;
+}
+.jwt-key-tab {
+  appearance: none; background: none; border: 1px solid transparent;
+  border-bottom: none; border-radius: 8px 8px 0 0;
+  color: var(--muted); cursor: pointer; font: inherit; font-weight: 600; font-size: 0.82rem;
+  padding: 8px 13px; position: relative; top: 1px;
+}
+.jwt-key-tab:hover { color: var(--ink); background: var(--surface-2); }
+.jwt-key-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.jwt-key-tab.is-active { color: var(--brand); background: var(--surface); border-color: var(--line); }
+.jwt-key-tab.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--brand); }
+.jwt-key-panel .jwt-field { margin-bottom: 10px; }
+.jwt-key-panel textarea { min-height: 120px; font-family: var(--font-mono); font-size: 0.8rem; }
+
+.jwt-verify-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 14px 0; }
+.jwt-pin-alg { font-size: 0.82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.jwt-verify-result {
+  margin-top: 8px; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid;
+}
+.jwt-verify-result strong { display: block; font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+.jwt-verify-result ul { margin: 0; padding-left: 18px; }
+.jwt-verify-result li { font-size: 0.88rem; }
+.jwt-verify-ok { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
+.jwt-verify-ok strong { color: var(--low); }
+.jwt-verify-bad { color: var(--high); background: var(--high-bg); border-color: var(--high-line); }
+.jwt-verify-bad strong { color: var(--high); }
+
+/* Preview-panel banner (JWT-02/03) */
+.jwt-preview-panel .jwt-preview-banner {
+  border: 1px solid var(--med-line); background: var(--med-bg);
+  border-radius: var(--radius-sm); padding: 12px 16px; margin: 6px 0 16px;
+  color: var(--ink-2); font-size: 0.9rem;
+}
+.jwt-preview-panel .jwt-preview-banner strong { color: var(--ink); }
+
+@media (max-width: 600px) {
+  .jwt-claims { grid-template-columns: 1fr; }
+  .jwt-key-tabs { flex-wrap: nowrap; overflow-x: auto; }
+}

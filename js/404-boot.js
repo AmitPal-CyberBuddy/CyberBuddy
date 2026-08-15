@@ -8,8 +8,8 @@
       } catch (_) {}
       var path = location.pathname || "/";
       var next = path.replace(/\/js\/app\.js(?=\/)/, "");
-      if (!/\/tools\/(clickjacking|headers|cors|csp|csrf)\/?$/.test(next)) {
-        next = next.replace(/\/(clickjacking|headers|cors|csp|csrf)\/?$/, "/tools/$1/");
+      if (!/\/tools\/(clickjacking|headers|cors|csp|csrf|jwt)\/?$/.test(next)) {
+        next = next.replace(/\/(clickjacking|headers|cors|csp|csrf|jwt)\/?$/, "/tools/$1/");
       } else if (next.slice(-1) !== "/") {
         next += "/";
       }

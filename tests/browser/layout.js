@@ -27,6 +27,7 @@ const PAGES = [
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
+  ["jwt-preview", "/tools/jwt/"],
   ["methodology", "/methodology/"],
   ["guides", "/guides/"],
   ["guide-clickjacking", "/guides/clickjacking/"],
@@ -34,6 +35,7 @@ const PAGES = [
   ["guide-cors", "/guides/cors/"],
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
+  ["guide-jwt", "/guides/jwt/"],
   ["documentation", "/documentation/"],
   ["404", "/404.html"]
 ];

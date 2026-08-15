@@ -527,3 +527,112 @@ should remain shared.
   (`frame-ancestors` and `X-Frame-Options` are undeliverable via `<meta>`).
   If the site ever moves behind a header-capable host, that section and the
   matching README section both need correcting.
+
+---
+
+## JWT-00 traps (JWT Security Workbench development preview)
+
+The JWT tool shipped first as a **non-operational preview**. These traps keep
+it from silently becoming a half-working token processor before JWT-01:
+
+- **"Beta" alone is not enough.** The brief is explicit: visitors read "beta"
+  as functional. The page carries the literal strings **BETA ROADMAP PREVIEW**
+  and **NOT OPERATIONAL** in the static markup (not injected by JS, not in a
+  tooltip, not inside `<details>`), and `JwtPreviewTests` pins both. Do not
+  soften the wording when restyling.
+- **The controller is tab navigation and nothing else.** `js/tool.jwt.js`
+  must not call `fetch`/`XMLHttpRequest`, touch `localStorage`/`sessionStorage`,
+  write `history`/`location`, parse JSON, or touch `crypto.subtle`/`atob`.
+  `JwtPreviewTests` strips comments then asserts the absence of each. If a
+  comment that *says* "does not call fetch()" trips the test, strip comments in
+  the assertion — do not weaken the assertion by removing the token.
+- **Disabled in markup, disabled by the controller.** Every non-tab
+  input/textarea/button/select on the page ships `disabled` +
+  `aria-disabled="true"`, and the controller force-disables them again on boot
+  (skipping `role="tab"`). A future edit that adds a token input must not
+  ship it enabled; the test `test_no_token_processing_action_is_enabled`
+  fails loudly if it does.
+- **No fake result, score or verdict.** There must be no gauge, `/ 100`,
+  `gaugeHtml`, `verdict-banner`, risk label, or pre-filled `"alg":"HS256"`
+  JSON on the page. The five tabs explain what *will* exist; none of it is
+  computed yet.
+- **Noindex, no canonical, no sitemap entry for the tool page.** The preview
+  carries `<meta name="robots" content="noindex, nofollow">`, deliberately
+  omits `rel="canonical"`, and is absent from `sitemap.xml`. The **guide**
+  (`guides/jwt/`) *is* indexed and in the sitemap. When JWT-01 ships and the
+  tool becomes functional, remove the noindex, add the canonical, add the
+  sitemap URL, and add the PWA shortcut — all four together.
+- **It is `status: "preview"`, not `live`, in `TOOLS_MENU`.** That is how the
+  menu, hub cards and catalog render a "Preview" badge / "View preview"
+  affordance instead of "Run check"/"Launch". Category stays `"local"` (it
+  never scans a target and must never join `initSuite`). `TOOLS =
+  PAGES.slice(1, 5)` in `tests/browser/responsive.js` must remain the four
+  URL-based scan tools — append JWT entries *after* index 4.
+- **Preview is one guide per tool, so `guides/jwt/` exists.** `GuidesTests`
+  enforces `set(tools/*) == set(guides/*)`; adding the tool without the guide
+  (or vice versa) fails the suite. The guide must link to
+  `../../methodology/` and `../../tools/jwt/`, stay first-person, cite RFC
+  7519/RFC 7515/WSTG-SESS-10/CWE-347, and stay under 1200 words — *including*
+  the JSON-LD block, which the word-count test does not strip.
+- **The CSP on the JWT page is stricter.** It uses `connect-src 'self'` (no
+  `http: https:`) because the preview makes no network calls, and keeps
+  `frame-src 'none'`. When JWT-01 adds verification it stays same-origin;
+  do not relax `connect-src` to reach a JWKS URL — keys are pasted, never
+  fetched by the hosted tool.
+- **Workflow copy.** The tool directories are copied by name in
+  `.github/workflows/pages.yml` (not a glob), so a new tool needs
+  `tools/jwt` on that line. `guides/` is copied whole-tree, so the guide
+  needs no named line. If the arena push of the workflow edit is rejected
+  (missing `workflows` permission), the same line is carried in
+  `docs/pages-workflow-patch.md` for the maintainer — that happened for
+  PR #20/#22 and may happen again.
+- **Cache-buster consistency.** Every page must use the same `?v=` string;
+  the Pages workflow stamps it with the commit SHA at deploy, but the source
+  strings must match or `test_cache_buster_is_consistent` fails. New pages
+  copy the existing `?v=20260814h` (or whatever is current), not a new date.
+
+---
+
+## JWT-01 traps (decode, inspect & verify)
+
+The functional Analyze & Verify panel builds on the JWT-00 preview. These traps
+keep the decode/verify implementation honest:
+
+- **The pure engine is DOM-free and UMD-wrapped.** `js/jwt.engine.js` exposes
+  `globalThis.CyberBuddyJwt` with `parseToken`, `tryParseToken`, `observations`,
+  `validateClaims` and `verifyToken`, and exports via `module.exports` so the
+  same code runs under Node in `JwtWorkbenchTests`. Put token logic in the
+  engine, not the controller — the controller only binds DOM.
+- **Never trust the token's `alg` header to choose the verifier family.** The
+  caller passes `opts.alg` (or the key's `alg` is used); a mismatch with
+  `header.alg` fails. HMAC algs only accept a **string** secret and reject
+  PEM/JWK objects — that is the algorithm-confusion guard (`HS256 signed with
+  the RSA public key`). A JWKS key's `kty` must match the expected alg family,
+  and a JWK `alg` that disagrees with the token fails.
+- **Decoding is separate from verifying.** The UI shows a "Decoded" state
+  immediately; "Verified" only after `verifyToken` resolves valid AND claims
+  validate. Observations are contextual (`no-exp`, `long-lifetime`, `jku`,
+  `x5u`, `jwk`, `kid`) — there is no numeric score or verdict.
+- **JWE is rejected, `alg:none` is rejected, malformed/empty signatures are
+  rejected** with specific errors. `parseToken` throws; `tryParseToken` returns
+  `{ok:false,error}`. The controller shows the error and never leaves stale
+  decoded data on screen.
+- **Local-only by construction.** The engine and controller contain no
+  `fetch`/`XMLHttpRequest`/storage/history (pinned by tests). The page CSP is
+  `connect-src 'self'; frame-src 'none'`. Keys are read from inputs in memory
+  and never persisted. JWKS is **pasted**, never fetched from a URL.
+- **Web Crypto is async and varies.** `importKey`/`verify` are promises;
+  RSA-PSS needs `saltLength` (32/48/64 for SHA-256/384/512); ECDSA uses
+  `namedCurve` P-256/P-384 and Web Crypto handles DER conversion. Feature-detect
+  `crypto.subtle`; report "unsupported in this browser" rather than crashing.
+- **Test tokens are built inside Node with `crypto.createHmac`/`crypto.subtle`**
+  — never hand-rolled base64. The HMAC helper must use **base64url** (not
+  standard base64) for all three parts, or signatures silently won't verify.
+- **Preview panels stay disabled.** Edit & Generate (JWT-02), Test Variants and
+  Secret Test (JWT-03) still ship disabled controls; the test
+  `test_edit_generate_variants_secret_tabs_remain_preview` pins that. When
+  JWT-02/03 land, those controls become functional and the test changes then
+  (not before).
+- **PWA shortcut still omitted deliberately** (`test_no_pwa_shortcut_for_future_phases`)
+  until the full workbench ships — JWT-01 decode/verify alone doesn't justify
+  a home-screen shortcut.

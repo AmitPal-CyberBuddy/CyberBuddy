@@ -13,7 +13,7 @@ GET /tools/                 tools catalog (every tool in one directory)
 GET /css/app.css            shared styles
 GET /js/app.js              shared helpers
 GET /tools/<tool>/          each tool page (static)
-GET /headers /cors /csp /clickjacking /csrf
+GET /headers /cors /csp /clickjacking /csrf /jwt
                             aliases → /tools/<tool>/
 GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
@@ -71,6 +71,10 @@ TOOL_ALIASES = {
     "/clickjacking/": "/tools/clickjacking/",
     "/csrf": "/tools/csrf/",
     "/csrf/": "/tools/csrf/",
+    # JWT Security Workbench is a DEVELOPMENT PREVIEW (JWT-00): the alias
+    # points at the preview page, which is noindex and non-operational.
+    "/jwt": "/tools/jwt/",
+    "/jwt/": "/tools/jwt/",
 }
 
 # Chunk size for streaming file I/O (64KB)
@@ -431,6 +435,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")
     print(f"CSP:          http://127.0.0.1:{PORT}/tools/csp/")
     print(f"CSRF:         http://127.0.0.1:{PORT}/tools/csrf/")
+    print(f"JWT (preview):http://127.0.0.1:{PORT}/tools/jwt/  (development preview, not operational)")
     print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/health")
     if not loopback:
         print("WARNING: bound on a non-loopback address. Private-IP scans are "

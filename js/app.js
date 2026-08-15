@@ -16,6 +16,10 @@ const ICONS = {
   cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   policy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
   csrf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1"/></svg>',
+  // JWT Security Workbench is a DEVELOPMENT PREVIEW (JWT-00). It is not
+  // operational: the page ships informational preview tabs only and must
+  // never be mistaken for a live tool. The icon (a key/token) is decorative.
+  jwt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 2l-8 4v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z"/><path d="M7.5 12l2.5 2.5L16.5 8"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -303,6 +307,23 @@ const TOOLS_MENU = [
     desc: "Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — parsed and generated fully in your browser.",
     tags: ["Burp request", "hidden form", "JSON fetch", "auto-submit"],
     std: ["OWASP WSTG-SESS-05", "CWE-352"]
+  },
+  {
+    // JWT-01: decode, inspect and verify is functional; edit/generate
+    // (JWT-02) and variants/secret-test (JWT-03) remain previews on the
+    // same page. category "local" — it never scans a target or joins the
+    // Run suite.
+    href: "/tools/jwt/",
+    label: "JWT Security Workbench",
+    status: "live",
+    icon: "jwt",
+    category: "local",
+    input: "JWT / Bearer token",
+    mode: "Local in your browser — no token leaves the page",
+    evidence: "Decoded header/payload, claim timeline, observations, and HMAC/RSA-PSS/ECDSA signature verification",
+    desc: "Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. Edit/generate and secret testing are coming soon.",
+    tags: ["JWT", "decode", "verify", "HMAC", "RSA", "ECDSA", "JWKS"],
+    std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];
 const TOOLS_SOON = ["TLS / SSL Analyzer", "Subdomain Enumeration"];
@@ -314,8 +335,11 @@ function toolsMenu(base, uid) {
 
   const item = (t) => {
     const active = (base + t.href) === path;
+    // "preview" reads as "preview" in the menu (not "live"); a non-live
+    // status is how JWT-00 is kept visually distinct from operational tools.
+    const label = t.status === "preview" ? "preview" : t.status;
     return '<a class="nav-menu-item' + (active ? " active" : "") + '" href="' + base + t.href + '">' +
-      t.label + '<span class="nav-status ' + t.status + '">' + t.status + "</span></a>";
+      t.label + '<span class="nav-status ' + t.status + '">' + label + "</span></a>";
   };
 
   // Group live tools by category (assess vs local) so the menu stays small
@@ -471,14 +495,19 @@ function toolCardHtml(t, i, base, ghostAction) {
   const tags = (t.tags || []).map((tag) => '<span class="tool-tag">' + esc(tag) + "</span>").join("");
   const std = (t.std || []).map(stdBadgeHtml).join("");
   const led = t.status === "live" ? "status-led" : "status-led " + t.status;
+  // A preview/non-live tool must not read as "Run check" (an action) or
+  // display the raw lowercase status. JWT-00 shows "Preview" and a
+  // "View preview" affordance.
+  const ledText = t.status === "preview" ? "Preview" : t.status;
+  const action = ghostAction || (t.status === "preview" ? "View preview" : "Run check");
   return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
     base + t.href + '">' +
     '<div class="tool-card-top"><span class="tool-card-icon">' + icon +
-    '</span><span class="' + led + '">' + esc(t.status) + "</span></div>" +
+    '</span><span class="' + led + '">' + esc(ledText) + "</span></div>" +
     "<div><h3>" + esc(t.label) + '</h3><p class="tool-card-desc">' + esc(t.desc) + "</p></div>" +
     '<div class="tool-card-tags">' + tags + "</div>" +
     '<div class="tool-card-std">' + std + "</div>" +
-    '<span class="tool-card-open">' + (ghostAction || "Run check") + " " + ICONS.chevron + "</span></a>";
+    '<span class="tool-card-open">' + esc(action) + " " + ICONS.chevron + "</span></a>";
 }
 
 function renderToolCards() {
@@ -524,11 +553,22 @@ function renderToolCatalog() {
     const icon = ICONS[t.icon] || ICONS.plus;
     const std = (t.std || []).map(stdBadgeHtml).join("");
     const cat = TOOL_CATEGORIES[t.category] || { label: t.category };
+    // A development-preview tool is labelled "Preview" (never "Launch") and
+    // carries its category badge plus an explicit preview status badge so it
+    // is not mistaken for an operational tool. JWT-00 is the first such tool.
+    const isPreview = t.status === "preview";
+    const statusBadge = isPreview
+      ? ' <span class="cat-badge cat-preview" title="Development preview — not operational">Preview</span>'
+      : "";
+    const button = isPreview
+      ? '<a class="btn btn-ghost btn-sm" href="' + base + t.href + '">View preview</a>'
+      : '<a class="btn btn-primary btn-sm" href="' + base + t.href + '">Launch ' + esc(t.label) + "</a>";
     return '<article class="card tool-catalog-card reveal" style="--d: ' + (0.05 + i * 0.06) + 's">' +
       '<div class="tool-catalog-head">' +
       '<span class="tool-card-icon">' + icon + "</span>" +
       '<h3>' + esc(t.label) + "</h3>" +
       '<span class="cat-badge cat-' + esc(t.category) + '">' + esc(cat.label) + "</span>" +
+      statusBadge +
       "</div>" +
       '<p class="tool-catalog-purpose">' + esc(t.desc) + "</p>" +
       '<dl class="catalog-meta">' +
@@ -537,7 +577,7 @@ function renderToolCatalog() {
       "<dt>Evidence</dt><dd>" + esc(t.evidence) + "</dd>" +
       "<dt>Standards</dt><dd class=\"catalog-std\">" + (std || "—") + "</dd>" +
       "</dl>" +
-      '<a class="btn btn-primary btn-sm" href="' + base + t.href + '">Launch ' + esc(t.label) + "</a>" +
+      button +
       "</article>";
   };
 

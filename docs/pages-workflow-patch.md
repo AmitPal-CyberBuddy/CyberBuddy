@@ -6,8 +6,29 @@ rejected by the server. Everything else ships normally. This file carries the
 workflow edit that could not be pushed, for a maintainer to apply by hand
 (the same mechanism used in PR #20 for the CSRF tool and PR #22 for IA-01).
 
-This patch is for **GUIDES-01/02/03 — the public Guides section, now one
-guide per tool** — plus the **`/documentation/` page** added in the same PR.
+This patch originally covered **GUIDES-01/02/03 — the public Guides section,
+one guide per tool** — plus the **`/documentation/` page**. It now also
+carries the **JWT-00** addition: the `tools/jwt` preview directory must be
+copied into `_site/tools/` so `/tools/jwt/` resolves on Pages. (The whole
+`guides/` tree is copied, so the new `guides/jwt/` guide needs no separate
+line.) The JWT tool page itself is `noindex` and absent from `sitemap.xml`
+until JWT-01 ships; the guide is indexed.
+
+## JWT-00 edit (apply if not already present)
+
+In the *Assemble static site* step, add `tools/jwt` to the explicit tool
+copy line:
+
+```yaml
+# before
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+# after
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt _site/tools/
+```
+
+Without this, `/tools/jwt/` 404s on the hosted site even though the
+header Tools menu, hub card and catalog link to it. Local `server.py` is
+unaffected (it serves anything under `tools/` generically).
 
 ## The required edits
 
@@ -115,7 +136,8 @@ Everything else in the workflow is unchanged.
 
           # Publish every live tool, including the CSP Policy Auditor and the
           # CSRF PoC Generator, plus the tools catalog that indexes them all.
-          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+          # tools/jwt is the JWT-00 DEVELOPMENT PREVIEW (noindex until JWT-01).
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt _site/tools/
           cp tools/index.html _site/tools/
 
           # Full methodology page (the hub links to the #methodology anchor,

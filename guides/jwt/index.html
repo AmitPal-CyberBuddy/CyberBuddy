@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>JWT guide — CyberBuddy</title>
+  <meta name="description" content="A short, practical guide to JSON Web Tokens: header, payload and signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, and the common JWT attack surfaces the CyberBuddy Workbench will test." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/jwt/" />
+  <meta property="og:title" content="JWT guide — CyberBuddy" />
+  <meta property="og:description" content="Header, payload and signature; decoding versus verification; the common JWT attack surfaces the Workbench will test." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/jwt/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="JWT guide — CyberBuddy" />
+  <meta name="twitter:description" content="Decoding versus verification, algorithm confusion, kid/jku/x5u and embedded JWK — the short version." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "JWT: decode, verify, and the attack surfaces that matter",
+      "description": "Header, payload and signature; decoding versus verification; alg=none, algorithm confusion, kid/jku/x5u and embedded JWK; and the Workbench's three phases.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/jwt/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/jwt/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">JWT: decode, verify, and the surfaces that matter</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    A JSON Web Token is three base64url segments — header, payload, signature.
+    Most confusion in a JWT assessment comes from treating the first two as if
+    they were the third: decoding tells you what a token claims, verification
+    tells you whether to believe it.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>RFC 7519</strong> &middot; <strong>RFC 7515</strong> &middot; <strong>OWASP WSTG-SESS-10</strong> &middot; <strong>CWE-347</strong></p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/jwt/">Open the JWT Workbench (preview)</a>
+  </p>
+
+  <div class="jwt-preview-note reveal card note" style="--d: .14s;">
+    <strong>The JWT Security Workbench can decode and verify today.</strong>
+    The page at <a href="../../tools/jwt/">/tools/jwt/</a> runs JWT-01 locally
+    in your browser — decode, inspect and verify a compact JWS with a key you
+    supply. Edit &amp; generate, test variants and bounded secret testing
+    (JWT-02/03) are still in development.
+  </div>
+
+  <div class="section-head reveal">
+    <h2>Header, payload, signature</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      The header names the algorithm (<code>alg</code>) and key id
+      (<code>kid</code>); the payload carries the claims — issuer, subject,
+      audience and the time claims; the signature is the only part tied to a
+      key. The first two are base64url, not encryption, so a secret in a claim
+      is exposed. I keep three states sharp in the UI: <em>Decoded</em> is
+      free; <em>Signature verified</em> means a key you supplied matched;
+      <em>Claims validated</em> means the expected issuer, audience and
+      lifetime also hold.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Decoding is not verification</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      You can decode any well-formed JWT without a key; that shows the claims
+      and declared algorithm, but says nothing about whether the signature is
+      valid. A token that decodes cleanly can still be unsigned, tampered
+      with, or signed by a key the target does not trust — the decoded view is
+      reconnaissance, not a result. A valid signature with a key <em>you</em>
+      supplied proves only a match with that key, not that it is the key the
+      target uses. The Verify tab says so plainly.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Time claims: iat, nbf, exp</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="JWT time claims">
+      <thead><tr><th scope="col">Claim</th><th scope="col">Means</th></tr></thead>
+      <tbody>
+        <tr><td class="k"><code>iat</code></td><td>Issued-at time.</td></tr>
+        <tr><td class="k"><code>nbf</code></td><td>Not valid before this time.</td></tr>
+        <tr><td class="k"><code>exp</code></td><td>Expiry; accepted only before it.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Clock skew between issuer and verifier is real, so the Workbench exposes
+      a skew setting rather than ignoring it. A long lifetime widens the
+      replay window if a token leaks. Missing <code>exp</code> is worth
+      noting, but contextual — some tokens are intentionally long-lived.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Issuer and audience</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      <code>iss</code> names who issued the token; <code>aud</code> names who
+      it is for. A service that accepts a token minted for a different
+      audience is trusting a token it was never meant to receive. The
+      Workbench lets you state the expected issuer/audience/subject and
+      reports mismatches as claims findings, separate from the signature.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Symmetric vs asymmetric</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      HMAC (<code>HS256/384/512</code>) uses a shared secret to sign and
+      verify. RSA and EC (<code>RS256</code>, <code>PS256</code>,
+      <code>ES256</code>) use a private key to sign and a public key to
+      verify. The Workbench verifies through the native Web Crypto API where
+      supported, with PEM, JWK and a pasted JWKS as inputs — no key leaves the
+      browser.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The attack surfaces I actually test</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="JWT attack surfaces">
+      <thead><tr><th scope="col">Surface</th><th scope="col">What to look for</th></tr></thead>
+      <tbody>
+        <tr><td class="k"><code>alg: none</code></td><td>A server that accepts an unsigned token after stripping the signature.</td></tr>
+        <tr><td class="k">Algorithm confusion</td><td>A token HMAC-signed with the victim's <em>public</em> key as the secret; possible only when the verifier treats an RSA public key as a shared HMAC secret.</td></tr>
+        <tr><td class="k"><code>kid</code></td><td>Key-id pulled into a file path or SQL query; traversal or injection can choose the verifying key.</td></tr>
+        <tr><td class="k"><code>jku</code> / <code>x5u</code></td><td>Header URLs pointing at a key set; fetched without strict allowlisting, an attacker URL supplies the key.</td></tr>
+        <tr><td class="k">Embedded <code>jwk</code></td><td>A token carrying its own public key in the header and asking the server to trust it.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <strong>Presence is not proof.</strong> A <code>kid</code>,
+      <code>jku</code> or embedded JWK is an attack surface, not an exploited
+      vulnerability; algorithm confusion stays "potential" until the server
+      accepts it. The Workbench labels these as test templates, never findings.
+    </p>
+    <p>
+      <strong>HS256 is not automatically weak.</strong> A strong, high-entropy
+      shared secret over HTTPS is reasonable; the weakness is a guessable or
+      leaked secret, not the algorithm. Secret testing stays bounded
+      (HS256/384/512 only, a small built-in list plus your wordlist, in a Web
+      Worker with progress and cancel) and never persists the wordlist or a
+      discovered secret.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Replay and lifetime</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      A signature proves integrity and authenticity at issue time, not that
+      the token is still okay to use; a stolen but unexpired token is valid.
+      Short lifetimes, rotation, and a revocable <code>jti</code> bound the
+      replay window. An <code>exp</code> you read from a decoded token does
+      not prove the server enforces it — that is behaviour you test.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>What the Workbench will and won't do</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      <strong>JWT-01 is live.</strong> The Workbench decodes a compact JWS
+      into its header, payload, signature and a claim timeline, lists
+      contextual observations, and verifies HMAC, RSA-PKCS#1, RSA-PSS and
+      ECDSA signatures with a key you supply — all via Web Crypto. It never
+      trusts the token's <code>alg</code> header to choose the verifier, and
+      HMAC rejects public keys.
+    </p>
+    <p>
+      Generating a modified token proves you can build the bytes, not that
+      the server accepts it. JWT-02 adds edit/generate, and JWT-03 adds test
+      variants and bounded HMAC secret testing. The hosted tool never sends
+      a JWT to a target, JWKS URL or third party.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Remediation checklist</h2>
+  </div>
+  <article class="card reveal">
+    <ul class="scope-list does">
+      <li>Pin accepted algorithms server-side; never let the token's <code>alg</code> header choose the verifier.</li>
+      <li>Reject <code>alg: none</code> unless unsigned tokens are an explicit requirement.</li>
+      <li>Verify <code>exp</code>, <code>nbf</code>, <code>iss</code> and <code>aud</code> every request, with bounded skew.</li>
+      <li>Use strong, rotated keys — high-entropy HMAC secrets or adequate RSA/EC keys.</li>
+      <li>Validate <code>kid</code> against an allowlist; never use it as a file path or unescaped query.</li>
+      <li>Never fetch <code>jku</code>/<code>x5u</code> or trust an embedded <code>jwk</code> without pinning.</li>
+      <li>Keep lifetimes short; support revocation via <code>jti</code> or a denylist.</li>
+      <li>Send tokens only over HTTPS; store them away from XSS reach.</li>
+    </ul>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Limitations</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      The Workbench is local; it cannot prove a server accepts a variant —
+      only an authorized, observed request can. Large-scale cracking,
+      OAuth/OIDC discovery and full JWE support are deferred. A supplied-key
+      match is not proof the target trusts that key. The methodology behind
+      the other tools lives on the <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>These are the references I rely on when I need more than the summary above:</p>
+    <ul>
+      <li>
+        <a href="https://www.rfc-editor.org/rfc/rfc7519" target="_blank" rel="noopener noreferrer">RFC 7519 — JSON Web Token (JWT)</a>
+        — the claim definitions, including <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code> and <code>iat</code>.
+      </li>
+      <li>
+        <a href="https://www.rfc-editor.org/rfc/rfc7515" target="_blank" rel="noopener noreferrer">RFC 7515 — JSON Web Signature (JWS)</a>
+        — compact serialization, the <code>alg</code> header, and what a signature actually covers.
+      </li>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens" target="_blank" rel="noopener noreferrer">OWASP WSTG-SESS-10 — Testing JSON Web Tokens</a>
+        — the test procedure for weak secrets, algorithm confusion and accepted <code>alg:none</code>.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/347.html" target="_blank" rel="noopener noreferrer">CWE-347 — Improper Verification of Cryptographic Signature</a>
+        — the weakness behind accepting a token whose signature was not properly checked.
+      </li>
+      <li>
+        <a href="https://portswigger.net/web-security/jwt" target="_blank" rel="noopener noreferrer">PortSwigger Web Security Academy — JWT attacks</a>
+        — hands-on labs for <code>alg:none</code>, algorithm confusion, <code>kid</code> and <code>jwk</code> injection.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Test JWTs and systems you own
+      or have written permission to assess. The Workbench is local by design —
+      it will not send a token to a target or a third party.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

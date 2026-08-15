@@ -1857,3 +1857,203 @@ test -d documentation && cp -a documentation _site/ || true
 Without the second, every page on the hosted site carries a footer link to a
 404, and the sitemap advertises a dead URL. The arena push token still lacks
 the `workflows` permission, so this cannot be committed here.
+
+## 25. JWT-00 — JWT Security Workbench development preview (2026-08-15)
+
+Work began from `origin/main` at `611df2b` on the Arena-assigned branch.
+`docs/ROADMAP.md`, `docs/DEV-NOTES.md` and REVIEW §24 were read first.
+GUIDES-01/02/03 + DOCS-01 were confirmed merged (PR #23); their roadmap status
+moved `IN REVIEW` → `DONE`, and none of that work was re-applied. The baseline
+before any change was **221/221** stdlib tests OK, 18 JS files passing
+`node --check`, `py_compile` clean, JSON/XML valid, and the local
+Pages-assembly dry run green.
+
+### Why this round
+
+The roadmap's deferred TOOL-06 ("JWT Security Inspector") was pulled forward as
+a phased tool. The first phase ships the *product structure* — page, controller,
+guide and full integration — as an explicitly non-operational preview, so the
+information architecture is in place before any token processing is written.
+The contract is deliberately strict: a visitor must never mistake the preview
+for a working JWT tool, and no later phase can quietly ship a half-working
+processor under a vague "beta" label.
+
+### What shipped
+
+- **`tools/jwt/index.html`** — the Workbench preview. A prominent
+  **BETA ROADMAP PREVIEW · NOT OPERATIONAL** banner is in the static markup
+  (visible without JS, not in a tooltip or `<details>`), followed by five
+  accessible tabs: **Analyze**, **Verify**, **Edit & Generate**,
+  **Test Variants**, **Secret Test**. Every tab is an informational panel
+  describing a future capability and its phase (JWT-01/02/03); every token/
+  key/secret input and every action button is `disabled` +
+  `aria-disabled="true"`. A privacy/accuracy panel states the permanent
+  promises (JWTs are credentials; fully local; decoding ≠ verification; a
+  supplied-key match ≠ server trust; generated variants prove nothing; no
+  live target testing; context over score), and a phase panel lists
+  JWT-00/01/02/03. The page carries `noindex, nofollow`, omits a canonical
+  URL, uses a strict CSP with `connect-src 'self'` and `frame-src 'none'`,
+  and is absent from `sitemap.xml`.
+- **`js/tool.jwt.js`** — the preview controller. Its only behaviour is a
+  WAI-ARIA roving-tabindex tablist (click + Left/Right/Up/Down/Home/End). It
+  contains no `fetch`, `XMLHttpRequest`, storage, `history`/`location`, JSON
+  parsing, `atob`/`btoa`, or Web Crypto. As defense in depth it
+  force-disables every non-tab control on boot so a future edit cannot
+  silently enable a token input.
+- **`guides/jwt/index.html`** — a concise, first-person JWT guide (< 1200
+  words including its JSON-LD block): header/payload/signature, decoding ≠
+  verification, `iat`/`nbf`/`exp`, `iss`/`aud`, symmetric vs asymmetric,
+  the `alg:none`/algorithm-confusion/`kid`/`jku`/`x5u`/embedded-`jwk`
+  surfaces, replay/lifetime, what the Workbench will and won't do, a
+  remediation checklist, and limitations. It links to `../../tools/jwt/` and
+  `../../methodology/`, states the Workbench is a preview, and closes with
+  RFC 7519, RFC 7515, WSTG-SESS-10, CWE-347 and PortSwigger. It **is**
+  indexed and in the sitemap.
+- **Integration.** `js/app.js` gains a `jwt` icon and a `TOOLS_MENU` entry
+  with `status: "preview"`, `category: "local"`; the menu, hub cards and
+  catalog render a "Preview" badge and "View preview" affordance instead of
+  "Run check"/"Launch", and the registry stays at exactly two categories
+  (4 assess, 2 local). The hub, catalog and 404 page gained static no-JS
+  preview cards; `js/404-boot.js` repairs `/jwt` URLs; `server.py` adds the
+  `/jwt` and `/jwt/` aliases; `sitemap.xml` adds the guide only;
+  `llms.txt` and `README.md` describe the preview and guide;
+  `.github/workflows/pages.yml` copies `tools/jwt` (with the same line
+  carried in `docs/pages-workflow-patch.md` in case the workflow push is
+  rejected). `manifest.webmanifest` deliberately does **not** gain a JWT
+  shortcut until JWT-01 is functional.
+- **Browser arrays.** `/tools/jwt/` and `/guides/jwt/` were appended to the
+  `layout`, `dropdown` and `responsive` PAGES arrays. In `responsive.js`
+  they go after index 4 so `TOOLS = PAGES.slice(1, 5)` stays the four URL
+  scan tools; the dropdown project-mount link count moved 6 → 7 (5 live +
+  1 preview + All tools). JWT was **not** added to the scan-navigation loop
+  (section 4 of dropdown.js), which runs `scanHeaders` and expects a `#url`/
+  `#go` the preview does not have.
+
+### Honesty rules baked into the preview
+
+The accuracy rules JWT-01/02/03 must keep are recorded in the roadmap and
+DEV-NOTES: HS256 is not automatically weak; missing `exp`/`iss`/`aud` are
+contextual observations, never a numeric score or automatic verdict; decoding
+is not verification; verification with a supplied key proves only a key match;
+a generated or `alg:none` token is a test case until the target actually
+honors it; and the hosted tool never sends a JWT to a target, JWKS URL or
+third party, and never persists a token, wordlist or discovered secret.
+
+### Tests and verification
+
+- **Stdlib:** **249/249 OK** (`python3 -m unittest test_engines.py`) — 221
+  baseline + 26 new `JwtPreviewTests` (route/controller exist; prominent
+  always-visible NOT OPERATIONAL banner; no enabled token action; controller
+  does not enable controls; no fake result/score/verdict; no fetch/network;
+  no storage/history; no relay gate or share token; excluded from the Run
+  suite; Preview labelling in registry/catalog/menu/hub; noindex + sitemap
+  absence; guide routed/published; Pages workflow copies the tool and guide;
+  docs/ stays excluded; 404 repair; keyboard-accessible tabs; privacy/
+  accuracy statements; phase panel; guide topics/references; no PWA shortcut;
+  no crypto/parsing in the controller; tool↔guide backlink). Existing route,
+  alias, mount, CSP and cache-buster tests were extended to cover JWT, and
+  the category/tool-count tests were updated (4 assess, 2 local; six tool
+  pages).
+- **Static:** `node --check` clean on all 19 JS files; `py_compile` clean;
+  `manifest.webmanifest` and `tests/*.json` parse; `sitemap.xml` parses and
+  contains the guide but not the tool URL.
+- **Pages assembly:** a local `_site` dry run copies every tool and the
+  guide, the workflow's "Verify referenced assets exist" grep finds no
+  missing local `css/js/png/webmanifest`, and the internal-file guard sees
+  no `docs/`, `tests/` or `REVIEW.md` in `_site/`.
+- **Live server crawl:** `/tools/jwt/`, `/jwt`, `/jwt/`, `/guides/jwt/`,
+  `/CyberBuddy/tools/jwt/` and `/CyberBuddy/guides/jwt/` return the expected
+  codes (301 for the no-slash aliases, 200 otherwise); the JWT page serves
+  the BETA ROADMAP PREVIEW / NOT OPERATIONAL / noindex markers and all six
+  local assets resolve 200.
+- **Real-browser suites:** not executed. The sandbox has no Chromium and
+  the browser CDN/Debian mirrors/Chrome-for-Testing endpoints are
+  unreachable, the same constraint prior sessions hit. They must be run by
+  hand before merge.
+
+### Mutation checks
+
+Each new `JwtPreviewTests` assertion was verified against the pre-feature
+tree: without the preview page, controller, guide, registry status, noindex
+meta, sitemap exclusion, keyboard handler or workflow copy line, the
+matching test fails — so the suite guards the preview contract rather than
+just its own markup. Comment-stripping in the controller tests means a
+"does not use fetch()" comment cannot satisfy a "must not contain fetch"
+assertion.
+
+### Maintainer follow-up
+
+If the push of `.github/workflows/pages.yml` is rejected for missing
+`workflows` permission (as PR #20 and #22 were), `docs/pages-workflow-patch.md`
+carries the required one-line change: add `tools/jwt` to the explicit
+`cp -a tools/clickjacking … _site/tools/` line. The `guides/` whole-tree copy
+already publishes `guides/jwt/`.
+
+## 26. JWT-01 — decode, inspect and verify (2026-08-15)
+
+Builds on the JWT-00 preview (§25) in the same PR (#24), at the maintainer's
+request to implement JWT-01 before merging. The Analyze & Verify panel is now
+functional; Edit & Generate (JWT-02), Test Variants and Secret Test (JWT-03)
+remain non-interactive previews on the same page.
+
+### What shipped
+
+- **`js/jwt.engine.js`** — a pure, DOM-free, UMD-wrapped engine (also
+  `module.exports` for Node tests):
+  - `parseToken` / `tryParseToken` — strict compact-JWS parsing; rejects
+    empty/2-part/4-part(JWE)/non-base64url/non-JSON tokens, a missing or
+    unsupported `alg`, an empty signature, and `alg:none`.
+  - `observations` — contextual flags (`no-exp`, `no-iss`, `long-lifetime`,
+    `jku`, `x5u`, `jwk`, `kid`, `hmac`) — never a score or verdict.
+  - `validateClaims` — `exp`/`nbf` (with clock tolerance) and expected
+    `iss`/`aud`/`sub`.
+  - `verifyToken` — signature verification via `crypto.subtle` for
+    HS256/384/512 (raw secret), RS256/384/512 (PKCS#1 v1.5), PS256/384/512
+    (RSA-PSS, correct salt lengths) and ES256/384 (ECDSA), with PEM SPKI,
+    JWK or JWKS (selected by `kid`) key inputs. Returns
+    `{valid, alg, keyMatched, error}`.
+- **Algorithm-confusion guards.** The verifier never trusts the token's
+  `alg` to choose the key family: `opts.alg` (or the key's `alg`) must match
+  `header.alg`; HMAC algs reject PEM/JWK public keys; a JWKS key's `kty`
+  (and `alg`, if present) must match the expected family. These are pinned
+  by `test_algorithm_confusion_hmac_rejects_public_key`,
+  `test_verify_rejects_wrong_alg_pin` and `test_jwks_selects_key_by_kid`.
+- **`js/tool.jwt.js`** rewritten: live decode as the analyst types
+  (accepts `Authorization: Bearer …`), pretty-printed header/payload, a
+  claim timeline (`iat`/`nbf`/`exp` with relative ages), registered +
+  custom claim rows, observations, four key-type sub-tabs, expected
+  `iss`/`aud`/`sub` + skew inputs, an optional "pin algorithm" control,
+  and a verify result box reporting signature and claim states separately.
+  An on-screen mask hides the raw token (display only; parsing still uses
+  the in-memory value). No network, storage or history.
+- **Page/docs.** `tools/jwt/index.html` dropped `noindex`, gained a
+  canonical URL and a `sitemap.xml` entry; the registry entry moved from
+  `status:"preview"` to `status:"live"` (still `category:"local"`, still out
+  of the Run suite); the hub/catalog/404/guides-index static cards were
+  updated from "preview" to live; the guide now states JWT-01 is live and
+  describes the remaining JWT-02/03 work.
+
+### Tests and verification
+
+- **245/245 stdlib tests OK.** The 26 JWT-00 preview tests were replaced by
+  ~20 `JwtWorkbenchTests` that exercise the real engine under Node: valid
+  HS256 parse/observations, malformed/JWE/`alg:none` rejection, correct vs
+  wrong HMAC secret, HMAC-rejects-public-key confusion, wrong-alg pin,
+  RS256/PS256/ES256 verification with generated JWKs, JWKS-by-`kid`
+  selection, claims validation (exp/nbf/iss/aud/sub), clock skew, and UI
+  wiring (functional Analyze panel; Edit/Variants/Secret panels still
+  disabled; accessible tabs; no score). Route/alias/mount tests were
+  updated to assert the page is operational rather than "NOT OPERATIONAL".
+- `node --check` clean on all 20 JS files; `py_compile`, JSON and XML
+  valid; Pages-assembly dry run green (assets resolve, no internal files
+  leaked, JWT tool now in the sitemap and indexed); live `server.py` crawl
+  of `/tools/jwt/`, `/jwt`, `/guides/jwt/` and the `/CyberBuddy/…` mount.
+- Real-browser suites were not run in the sandbox (no Chromium).
+
+### Next
+
+JWT-02 (edit & generate) is the approved next item. The engine's verify
+path is the foundation for sign; JWT-02 adds header/payload editors,
+standard-claim helpers, HMAC/private-key signing, a semantic diff, local
+RSA test-key generation, TEST TOKEN labels and safe copy/download — still
+fully local, still no network.
