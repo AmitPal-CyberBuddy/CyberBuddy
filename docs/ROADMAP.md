@@ -415,8 +415,9 @@ PR.
 - **Last verified `origin/main`:** `e10eb2e` — PR #28 merged, which brought
   the JWT-02/JWT-03 work (previously PR #25) to `main`. The JWT-00 → JWT-03
   series is complete and shipped. This session started from a clean tree.
-- **Work in review:** **POLISH-01 (consistency sweep)** — branch
-  `arena/01a00768-cyberbuddy`. Not a numbered roadmap feature: a
+- **Work in review:** **POLISH-01 (consistency sweep)** — `IN REVIEW`,
+  branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not merged).
+  Not a numbered roadmap feature: a
   verification pass over the shipped suite plus the drift it exposed. No new
   tool, engine or scoring behaviour.
 - **Verified correct, unchanged:** JWT integration on `methodology/`,
