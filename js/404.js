@@ -7,7 +7,7 @@
       var guides = document.getElementById("guidesLink");
       if (guides) guides.href = base + "/guides/";
       var method = document.getElementById("methodLink");
-      if (method) method.href = base + "/#methodology";
+      if (method) method.href = base + "/methodology/";
       var home = document.getElementById("home");
       if (home) home.href = base + "/";
 

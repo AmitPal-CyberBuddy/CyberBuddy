@@ -3475,7 +3475,10 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertNotIn('id="jwtEditPayload" disabled', page)
         block = page[page.index('id="jwt-panel-edit"'):page.index("</section>", page.index('id="jwt-panel-edit"'))]
         self.assertNotIn("Coming in JWT-02", block)
-        self.assertIn("JWT-02 &middot; Live", block)
+        # The panel carries the live badge. Assert the marker class, not the
+        # internal ticket ID: badge wording is visitor-facing copy and may be
+        # reworded, but a preview panel must never get jwt-phase-live.
+        self.assertIn("jwt-phase jwt-phase-live", block)
 
     def test_variants_panel_is_functional(self):
         """JWT-03: the Test Variants panel builds labelled templates."""
@@ -3491,7 +3494,7 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertNotIn('id="jwtVarNone" disabled', page)
         block = page[page.index('id="jwt-panel-variants"'):page.index("</section>", page.index('id="jwt-panel-variants"'))]
         self.assertNotIn("Coming in JWT-03", block)
-        self.assertIn("JWT-03 &middot; Live", block)
+        self.assertIn("jwt-phase jwt-phase-live", block)
         self.assertIn("TEST TEMPLATE", block)
         self.assertIn("not a finding", block)
 

@@ -760,3 +760,37 @@ and the secret-test worker honest:
   `disabled` anymore, and `test_secret_panel_is_functional_and_bounded`
   asserts the Secret panel has no disabled controls. The PWA shortcut
   shipped with JWT-03 (`test_pwa_shortcut_added_now_the_workbench_is_complete`).
+
+## Cross-surface URL changes (POLISH-01)
+
+- **A URL is never in one file.** Changing where "Methodology" points meant
+  editing the header nav and footer in `js/app.js`, `llms.txt`,
+  `manifest.webmanifest`, `404.html`, `js/404.js` **and** the published
+  `Policy:` line in `.well-known/security.txt`. The last one is easy to
+  miss because it is a plain-text RFC 9116 field, not a link. Before
+  finishing a URL change, grep the old target across
+  `--include=*.html --include=*.js --include=*.txt --include=*.webmanifest`.
+- **Deep links need real anchor IDs.** `tools/audit_site.py` resolves
+  fragments against the target page's `id` set, so `/methodology/#scoring`
+  fails the build unless that `h2` carries `id="scoring"`. Add the id in the
+  same commit as the link.
+- **`audit_site.py` passes vacuously on a missing directory.** Running it
+  with no assembled `_site/` reports "Local link audit passed" and exits 0
+  because it globbed zero pages. Assemble the site the way
+  `.github/workflows/pages.yml` does (icons included — otherwise every page
+  reports a missing `icon-192.png`) and audit *that* directory.
+- **Display label vs raw risk.** `reportRiskLabel(data)` in `js/app.js` is
+  the only place allowed to translate a raw `risk` into what a human reads.
+  CORS + `low` renders `PASS`, because for CORS the headline is a
+  pass/fail judgement rather than a severity. It is applied to Markdown,
+  standalone HTML, CSV and the evidence-card hero; the
+  `cyberbuddy-report/v1` JSON envelope keeps the raw value so automation
+  is unaffected. If an export ever disagrees with the on-screen verdict,
+  it is because a new export path did not call this helper.
+- **Do not assert internal ticket IDs as page copy.** Two tests pinned the
+  literal badge text `JWT-02 &middot; Live`, which blocked renaming a
+  visitor-facing chip. Assert the structural marker (`jwt-phase-live`) that
+  encodes the *state*, and leave the wording free to change.
+- **Internal phase IDs stay in the repo.** JWT-0x identifiers belong in
+  `docs/`, commit messages and code comments — never in rendered page copy.
+  A visitor has no way to resolve "JWT-03".

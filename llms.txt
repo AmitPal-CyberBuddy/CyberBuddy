@@ -6,7 +6,7 @@
 - Tools catalog: https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/
 - Guides: https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/
 - Documentation: https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/
-- Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology
+- Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/
 - Source: https://github.com/AmitPal-CyberBuddy/CyberBuddy
 - Author: Amit Pal — https://amitpxl.medium.com/ · https://www.linkedin.com/in/amitpal-wb/
 - Contact: amitpal.secure@gmail.com
