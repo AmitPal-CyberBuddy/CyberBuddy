@@ -18,10 +18,10 @@ handoff” for the state at the end of that session.
 
 | Item | Value |
 | --- | --- |
-| Latest merged feature/PR | **GUIDES-01/02/03 + DOCS-01** (PR #23, merge commit `611df2b`) — five tool guides and the `/documentation/` page. Verified present in `origin/main` before this session; not re-applied. |
-| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (JWT-01: decode/inspect/verify)** |
+| Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |
+| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (JWT-01 decode/inspect/verify + JWT-02 edit/generate/sign)** |
 | Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 6) · Documentation (`/documentation/`) |
-| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests) |
+| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02 (13 new engine-signing + UI-wiring tests) |
 | JavaScript file total | **20** (13 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
 | Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
@@ -355,7 +355,7 @@ PR.
   choose the verifier (the algorithm-confusion trap).
 
 ### JWT-02 — Edit and generate
-- **Status:** `NEXT`
+- **Status:** `IN PROGRESS`
 - **Goal:** Modify header/payload claims and re-sign locally to build
   authorized test tokens.
 - **Scope:** Header/payload editors; standard-claim helpers (`iss`, `sub`,

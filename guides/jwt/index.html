@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>JWT guide — CyberBuddy</title>
-  <meta name="description" content="A short, practical guide to JSON Web Tokens: header, payload and signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, and the common JWT attack surfaces the CyberBuddy Workbench will test." />
+  <meta name="description" content="A short, practical guide to JSON Web Tokens: header, payload and signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, and the JWT attack surfaces the Workbench tests." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "JWT: decode, verify, and the attack surfaces that matter",
-      "description": "Header, payload and signature; decoding versus verification; alg=none, algorithm confusion, kid/jku/x5u and embedded JWK; and the Workbench's three phases.",
+      "description": "Header, payload and signature; decoding versus verification; and the common JWT attack surfaces.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/jwt/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
@@ -66,15 +66,16 @@
   <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>RFC 7519</strong> &middot; <strong>RFC 7515</strong> &middot; <strong>OWASP WSTG-SESS-10</strong> &middot; <strong>CWE-347</strong></p>
 
   <p class="reveal" style="--d: .12s;">
-    <a class="btn btn-primary btn-sm" href="../../tools/jwt/">Open the JWT Workbench (preview)</a>
+    <a class="btn btn-primary btn-sm" href="../../tools/jwt/">Open the JWT Workbench</a>
   </p>
 
   <div class="jwt-preview-note reveal card note" style="--d: .14s;">
-    <strong>The JWT Security Workbench can decode and verify today.</strong>
-    The page at <a href="../../tools/jwt/">/tools/jwt/</a> runs JWT-01 locally
-    in your browser — decode, inspect and verify a compact JWS with a key you
-    supply. Edit &amp; generate, test variants and bounded secret testing
-    (JWT-02/03) are still in development.
+    <strong>The Workbench can decode, verify and sign today.</strong>
+    The page at <a href="../../tools/jwt/">/tools/jwt/</a> runs JWT-01 and
+    JWT-02 locally — decode, inspect and verify a compact JWS, then edit
+    claims and re-sign with a key you supply or generate. Every output is a
+    TEST TOKEN until the target honors it; variants and secret testing
+    (JWT-03) are still in development.
   </div>
 
   <div class="section-head reveal">
@@ -101,7 +102,7 @@
       You can decode any well-formed JWT without a key; that shows the claims
       and declared algorithm, but says nothing about whether the signature is
       valid. A token that decodes cleanly can still be unsigned, tampered
-      with, or signed by a key the target does not trust — the decoded view is
+      with, or signed by a key the target does not trust — decoding is
       reconnaissance, not a result. A valid signature with a key <em>you</em>
       supplied proves only a match with that key, not that it is the key the
       target uses. The Verify tab says so plainly.
@@ -122,7 +123,7 @@
     </table>
     <p>
       Clock skew between issuer and verifier is real, so the Workbench exposes
-      a skew setting rather than ignoring it. A long lifetime widens the
+      a skew setting instead of ignoring it. A long lifetime widens the
       replay window if a token leaks. Missing <code>exp</code> is worth
       noting, but contextual — some tokens are intentionally long-lived.
     </p>
@@ -135,7 +136,7 @@
     <p>
       <code>iss</code> names who issued the token; <code>aud</code> names who
       it is for. A service that accepts a token minted for a different
-      audience is trusting a token it was never meant to receive. The
+      audience trusts a token it was never meant to receive. The
       Workbench lets you state the expected issuer/audience/subject and
       reports mismatches as claims findings, separate from the signature.
     </p>
@@ -149,9 +150,9 @@
       HMAC (<code>HS256/384/512</code>) uses a shared secret to sign and
       verify. RSA and EC (<code>RS256</code>, <code>PS256</code>,
       <code>ES256</code>) use a private key to sign and a public key to
-      verify. The Workbench verifies through the native Web Crypto API where
-      supported, with PEM, JWK and a pasted JWKS as inputs — no key leaves the
-      browser.
+      verify. The Workbench verifies and signs through the native Web Crypto
+      API where supported — PEM, JWK or a pasted JWKS to verify, a secret or
+      private key to sign. No key leaves the browser.
     </p>
   </article>
 
@@ -163,7 +164,7 @@
       <thead><tr><th scope="col">Surface</th><th scope="col">What to look for</th></tr></thead>
       <tbody>
         <tr><td class="k"><code>alg: none</code></td><td>A server that accepts an unsigned token after stripping the signature.</td></tr>
-        <tr><td class="k">Algorithm confusion</td><td>A token HMAC-signed with the victim's <em>public</em> key as the secret; possible only when the verifier treats an RSA public key as a shared HMAC secret.</td></tr>
+        <tr><td class="k">Algorithm confusion</td><td>A token HMAC-signed with the victim's <em>public</em> key as the secret — possible only when the verifier treats a public key as a shared secret.</td></tr>
         <tr><td class="k"><code>kid</code></td><td>Key-id pulled into a file path or SQL query; traversal or injection can choose the verifying key.</td></tr>
         <tr><td class="k"><code>jku</code> / <code>x5u</code></td><td>Header URLs pointing at a key set; fetched without strict allowlisting, an attacker URL supplies the key.</td></tr>
         <tr><td class="k">Embedded <code>jwk</code></td><td>A token carrying its own public key in the header and asking the server to trust it.</td></tr>
@@ -172,16 +173,15 @@
     <p>
       <strong>Presence is not proof.</strong> A <code>kid</code>,
       <code>jku</code> or embedded JWK is an attack surface, not an exploited
-      vulnerability; algorithm confusion stays "potential" until the server
-      accepts it. The Workbench labels these as test templates, never findings.
+      vulnerability; confusion stays potential until the server accepts it —
+      these are test templates, never findings.
     </p>
     <p>
-      <strong>HS256 is not automatically weak.</strong> A strong, high-entropy
-      shared secret over HTTPS is reasonable; the weakness is a guessable or
-      leaked secret, not the algorithm. Secret testing stays bounded
-      (HS256/384/512 only, a small built-in list plus your wordlist, in a Web
-      Worker with progress and cancel) and never persists the wordlist or a
-      discovered secret.
+      <strong>HS256 is not automatically weak.</strong> A strong high-entropy
+      secret over HTTPS is reasonable; the weakness is a guessable or leaked
+      secret, not the algorithm. Secret testing stays bounded — HS256/384/512
+      only, a small built-in list plus your wordlist, in a Web Worker with
+      progress and cancel — and never persists anything.
     </p>
   </article>
 
@@ -194,7 +194,7 @@
       the token is still okay to use; a stolen but unexpired token is valid.
       Short lifetimes, rotation, and a revocable <code>jti</code> bound the
       replay window. An <code>exp</code> you read from a decoded token does
-      not prove the server enforces it — that is behaviour you test.
+      not prove the server enforces it — that is what you test.
     </p>
   </article>
 
@@ -203,18 +203,19 @@
   </div>
   <article class="card reveal">
     <p>
-      <strong>JWT-01 is live.</strong> The Workbench decodes a compact JWS
-      into its header, payload, signature and a claim timeline, lists
-      contextual observations, and verifies HMAC, RSA-PKCS#1, RSA-PSS and
-      ECDSA signatures with a key you supply — all via Web Crypto. It never
-      trusts the token's <code>alg</code> header to choose the verifier, and
-      HMAC rejects public keys.
+      <strong>JWT-01 and JWT-02 are live.</strong> The Workbench decodes a
+      compact JWS into header, payload, signature and a claim timeline,
+      lists contextual observations, verifies HMAC, RSA-PKCS#1, RSA-PSS and
+      ECDSA signatures, and re-signs edited claims with a key you supply or
+      generate — all via Web Crypto. It never trusts the token's
+      <code>alg</code> header to choose the verifier, and HMAC rejects
+      public keys.
     </p>
     <p>
       Generating a modified token proves you can build the bytes, not that
-      the server accepts it. JWT-02 adds edit/generate, and JWT-03 adds test
-      variants and bounded HMAC secret testing. The hosted tool never sends
-      a JWT to a target, JWKS URL or third party.
+      the server accepts it — every output is a TEST TOKEN. JWT-03 adds
+      variants and bounded secret testing. The hosted tool never sends a JWT
+      to a target, JWKS URL or third party.
     </p>
   </article>
 
@@ -241,9 +242,8 @@
     <p>
       The Workbench is local; it cannot prove a server accepts a variant —
       only an authorized, observed request can. Large-scale cracking,
-      OAuth/OIDC discovery and full JWE support are deferred. A supplied-key
-      match is not proof the target trusts that key. The methodology behind
-      the other tools lives on the <a href="../../methodology/">methodology page</a>.
+      OAuth/OIDC discovery and full JWE support are deferred. The methodology
+      behind the other tools lives on the <a href="../../methodology/">methodology page</a>.
     </p>
   </article>
 

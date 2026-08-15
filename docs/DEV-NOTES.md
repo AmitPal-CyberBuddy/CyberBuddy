@@ -628,11 +628,68 @@ keep the decode/verify implementation honest:
 - **Test tokens are built inside Node with `crypto.createHmac`/`crypto.subtle`**
   — never hand-rolled base64. The HMAC helper must use **base64url** (not
   standard base64) for all three parts, or signatures silently won't verify.
-- **Preview panels stay disabled.** Edit & Generate (JWT-02), Test Variants and
-  Secret Test (JWT-03) still ship disabled controls; the test
-  `test_edit_generate_variants_secret_tabs_remain_preview` pins that. When
-  JWT-02/03 land, those controls become functional and the test changes then
-  (not before).
+- **Preview panels stay disabled.** Since JWT-02 landed, only Test Variants
+  and Secret Test (JWT-03) still ship disabled controls;
+  `test_variants_and_secret_tabs_remain_preview` pins that (it replaced the
+  old `test_edit_generate_variants_secret_tabs_remain_preview`). When JWT-03
+  lands, those controls become functional and the test changes then (not
+  before).
 - **PWA shortcut still omitted deliberately** (`test_no_pwa_shortcut_for_future_phases`)
   until the full workbench ships — JWT-01 decode/verify alone doesn't justify
   a home-screen shortcut.
+
+---
+
+## JWT-02 traps (edit & generate)
+
+The Edit & Generate panel is now functional. These traps keep signing honest and
+key material from leaking by accident:
+
+- **All crypto stays in the engine.** `signToken`, `generateRsaTestPair`,
+  `exportPrivateJwk`/`exportPublicJwk`, `diffClaims` and `randomJti` live in
+  `js/jwt.engine.js` next to the verify path; PEM private-key parsing is in
+  the engine, never the controller. The controller only binds DOM. The same
+  Node tests in `JwtWorkbenchTests` exercise sign→verify round-trips for
+  HS256/384/512, RS/PS (generated pair) and ES256 (private JWK).
+- **Signing mirrors the verify-side algorithm-confusion guard.** HS* signing
+  takes a string secret only and rejects PEM/JWK objects; RS/PS/ES signing
+  rejects public keys (JWK without `d`, SPKI PEM, JWKS) and PKCS#1/SEC1 PEM
+  (Web Crypto only imports PKCS#8). `header.alg` must agree with `opts.alg`
+  and `alg:none` is rejected — the engine neither signs nor produces it.
+- **The select and the header editor stay in sync, but the guard stays.**
+  Changing the signing algorithm rewrites `alg` in the header editor (when it
+  parses); editing the header syncs the select. If the header declares an alg
+  the select cannot offer (e.g. ES512), sign fails with a specific mismatch
+  error instead of silently signing with the wrong algorithm.
+- **A generated RSA pair is bound to one signature family.** Web Crypto
+  `generateKey` is per family, so a pair generated for RS256 cannot sign
+  PS256. `readEditKey` reports exactly that when the analyst switches the
+  algorithm, instead of a confusing import error.
+- **No accidental key export.** "Copy token" / "Download token" read only the
+  output textarea — `test_copy_download_never_touch_key_material` pins that
+  the token handlers never reference key material. Private JWK export is a
+  separate, confirmed (`confirm()`) action, and the generated key's public
+  JWK is the only key shown by default. Never put the private JWK into the
+  result textarea or the clipboard feedback path.
+- **TEST TOKEN is a label, not a mitigation.** Every signed output carries
+  the TEST TOKEN banner and the honesty line ("not proof of acceptance").
+  Keep it visible on success only — an error result must not show the banner
+  or a stale token.
+- **Diff before sign, always against the analyzed token.** The diff base is
+  `lastParsed` (live), so re-analyzing a different token re-bases the diff
+  automatically. A blank original (no token pasted) diffs against empty
+  objects and says so in the heading.
+- **Key sub-tabs are per-tablist.** There are two `.jwt-key-tabs` groups
+  (verify + edit) with the same `data-keytype` values; `initKeyTabs` scopes
+  panels by `aria-controls` per tablist. Don't select tabs globally — and
+  don't match panels by substring (`"jwk"` is a prefix of `"jwks"`), that
+  wired the JWK tab to the JWKS panel once.
+- **`role="tab"` count is pinned at 4+4+4.** Four panel tabs, four verify
+  key tabs, four edit key tabs. Adding a key type means updating
+  `test_accessible_tabs_and_key_subtabs`.
+- **The guide is one edit from the 1200-word ceiling.** The visible-word
+  count (tags stripped, JSON-LD included) sits at ~1195; every sentence added
+  to `guides/jwt/` must trim an equal amount elsewhere.
+- **Keep JWT-03 panels disabled.** `test_variants_and_secret_tabs_remain_preview`
+  pins that every control in the Test Variants and Secret Test panels ships
+  `disabled`; the PWA shortcut stays omitted until the full workbench ships.

@@ -20,7 +20,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
-| **JWT Security Workbench** | Decode, inspect and verify JWTs locally — compact JWS parsing, claim timeline, observations, and HMAC/RSA-PKCS#1/RSA-PSS/ECDSA signature verification with the key you supply. Edit/generate and secret testing are in development. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
+| **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. Secret testing is in development. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
 
 More tools slot in later — add one entry to the `TOOLS_MENU` registry in
 `js/app.js` (with a `category` of `assess` for URL-based target checks or
@@ -43,7 +43,7 @@ concise, not a full article library.
 | [`guides/cors/`](guides/cors/) | CORS Validator | OWASP WSTG-CLNT-07 · CWE-942 |
 | [`guides/csp/`](guides/csp/) | CSP Policy Auditor | OWASP WSTG-CONF-12 · CWE-79 |
 | [`guides/csrf/`](guides/csrf/) | CSRF PoC Generator | OWASP WSTG-SESS-05 · CWE-352 |
-| [`guides/jwt/`](guides/jwt/) | JWT Security Workbench (preview) | RFC 7519 · RFC 7515 · OWASP WSTG-SESS-10 · CWE-347 |
+| [`guides/jwt/`](guides/jwt/) | JWT Security Workbench | RFC 7519 · RFC 7515 · OWASP WSTG-SESS-10 · CWE-347 |
 
 ## Documentation page
 
@@ -60,7 +60,7 @@ python3 server.py
 # open http://127.0.0.1:8080/
 # catalog: /tools/
 # tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
-# JWT: /tools/jwt/  (decode, inspect & verify)
+# JWT: /tools/jwt/  (decode, inspect, verify, edit & generate)
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -100,7 +100,7 @@ guides/
   cors/index.html               # guide, paired with the CORS Validator
   csp/index.html                # guide, paired with the CSP Policy Auditor
   csrf/index.html               # guide, paired with the CSRF PoC Generator
-  jwt/index.html                # guide, paired with the JWT Security Workbench (preview)
+  jwt/index.html                # guide, paired with the JWT Security Workbench
 css/app.css                     # shared design system
 css/noscript.css                # no-JS fallback (reveal animations off)
 css/404.css                     # standalone styles for 404.html
@@ -113,7 +113,7 @@ js/tool.headers.js              # headers page controller
 js/tool.cors.js                 # CORS page controller
 js/tool.csp.js                  # CSP audit page controller
 js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
-js/tool.jwt.js                  # JWT Workbench preview-tab controller (preview only, no token processing)
+js/tool.jwt.js                  # JWT Workbench controller (analyze/verify + edit/generate/sign)
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   index.html                    # tools catalog (every tool in one directory)
@@ -122,7 +122,7 @@ tools/
   cors/index.html               # CORS probe + roadmap
   csp/index.html                # CSP policy audit report
   csrf/index.html               # CSRF PoC generator (local-only)
-  jwt/index.html                # JWT Security Workbench (development preview, noindex)
+  jwt/index.html                # JWT Security Workbench (decode/inspect/verify + edit/generate)
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
@@ -298,9 +298,12 @@ decodes, inspects and verifies JSON Web Tokens locally in your browser:
   `kid`). Expected `iss`/`aud`/`sub` and clock tolerance are validated
   separately. The token's `alg` header is never trusted to choose the
   verifier, and HMAC rejects public keys (algorithm-confusion guard).
-- **Edit & generate (JWT-02, planned)** — header/payload editors,
-  standard-claim helpers, semantic diff, HMAC/private-key signing, local RSA
-  test-key generation, explicit TEST TOKEN labels.
+- **Edit & generate (JWT-02, live)** — header/payload editors with a
+  semantic original-vs-modified diff, standard-claim helpers (`iss`, `sub`,
+  `aud`, `exp`, `nbf`, `iat`, `jti`), HMAC and private-key signing (PEM
+  PKCS#8 / private JWK) via Web Crypto, local RSA test-key generation,
+  explicit **TEST TOKEN** labels, and copy/download that never exports key
+  material by accident.
 - **Test variants & secret testing (JWT-03, planned)** — `alg:none`, claim
   manipulation, algorithm confusion, embedded JWK, JKU/X5U and `kid`
   templates; bounded HS256/384/512 secret testing in a Web Worker.

@@ -1,16 +1,21 @@
 /* ==========================================================================
-   CyberBuddy — JWT Security Workbench controller (JWT-01)
+   CyberBuddy — JWT Security Workbench controller (JWT-01 + JWT-02)
 
-   Functional: Analyze & Verify (decode, inspect, verify via Web Crypto).
-   Previews (non-interactive): Edit & Generate (JWT-02), Test Variants and
-   Secret Test (JWT-03). The pure decode/verify engine lives in
-   js/jwt.engine.js (DOM-free, also exercised under Node in test_engines.py).
+   Functional: Analyze & Verify (decode, inspect, verify via Web Crypto) and
+   Edit & Generate (edit header/payload, semantic diff, HMAC/private-key
+   signing, local RSA test-key generation, TEST TOKEN output with safe
+   copy/download). Previews (non-interactive): Test Variants and Secret Test
+   (JWT-03). The pure engine lives in js/jwt.engine.js (DOM-free, also
+   exercised under Node in test_engines.py). All crypto — including private
+   key import/export and test-key generation — lives in the engine; this
+   controller only binds DOM.
 
    Privacy guarantees baked in here:
      - no fetch/XMLHttpRequest/sendBeacon; connect-src is 'self' only;
      - no localStorage/sessionStorage/history/URL writing;
-     - the token is parsed in memory and never persisted;
-     - only the key the analyst supplies is used to verify.
+     - tokens and keys live in memory only and are never persisted;
+     - "Copy token" / "Download token" export the token alone — key export
+       is a separate, explicit, confirmed action (never accidental).
    ========================================================================== */
 "use strict";
 
@@ -160,6 +165,7 @@
       $("jwtDecodeEmpty").classList.remove("hidden");
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
+      refreshEditDiff();
       return;
     }
     var res = J.tryParseToken(raw);
@@ -168,6 +174,7 @@
       $("jwtDecodeEmpty").classList.remove("hidden");
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
+      refreshEditDiff();
       return;
     }
     showError(null);
@@ -179,6 +186,7 @@
     renderClaims(parsed.payload, parsed);
     renderObservations(J.observations(parsed));
     setDecodedState("Decoded", "jwt-state-decoded");
+    refreshEditDiff();
 
     // Reflect the token alg in the optional pin label.
     var pinLabel = $("jwtPinAlgLabel");
@@ -198,7 +206,7 @@
   }
 
   function activeKeyType() {
-    var active = document.querySelector(".jwt-key-tab.is-active");
+    var active = document.querySelector("#jwt-panel-analyze .jwt-key-tab.is-active");
     return active ? active.getAttribute("data-keytype") : "secret";
   }
 
@@ -279,7 +287,7 @@
   }
 
   // --- Roving-tabindex tab navigation (panels) ------------------------
-  function initTabs() {
+  function initTabs(onActivate) {
     var tablist = document.querySelector(".jwt-tablist");
     if (!tablist) return;
     var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
@@ -299,6 +307,7 @@
         else p.setAttribute("hidden", "");
       });
       if (focus) tab.focus();
+      if (onActivate && tab.getAttribute("aria-controls")) onActivate(tab.getAttribute("aria-controls"));
     }
 
     tabs.forEach(function (tab, i) {
@@ -314,22 +323,26 @@
     });
   }
 
-  // --- Key-type sub-tabs ---------------------------------------------
+  // --- Key-type sub-tabs (Verify panel + Edit panel; one per tablist) --
   function initKeyTabs() {
-    var tabs = Array.prototype.slice.call(document.querySelectorAll(".jwt-key-tab"));
-    var panels = Array.prototype.slice.call(document.querySelectorAll(".jwt-key-panel"));
-    tabs.forEach(function (tab) {
-      tab.addEventListener("click", function () {
-        tabs.forEach(function (t) {
-          var on = t === tab;
-          t.classList.toggle("is-active", on);
-          t.setAttribute("aria-selected", on ? "true" : "false");
-        });
-        var which = tab.getAttribute("data-keytype");
-        panels.forEach(function (p) {
-          var on = p.id === "jwt-key-" + which;
-          p.classList.toggle("hidden", !on);
-          if (on) p.removeAttribute("hidden"); else p.setAttribute("hidden", "");
+    var lists = Array.prototype.slice.call(document.querySelectorAll(".jwt-key-tabs"));
+    lists.forEach(function (list) {
+      var tabs = Array.prototype.slice.call(list.querySelectorAll(".jwt-key-tab"));
+      var panelsWrap = list.nextElementSibling;
+      var panels = panelsWrap && panelsWrap.classList.contains("jwt-key-panels")
+        ? Array.prototype.slice.call(panelsWrap.children) : [];
+      tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          tabs.forEach(function (t) {
+            var on = t === tab;
+            t.classList.toggle("is-active", on);
+            t.setAttribute("aria-selected", on ? "true" : "false");
+          });
+          panels.forEach(function (p) {
+            var on = p.id === tab.getAttribute("aria-controls");
+            p.classList.toggle("hidden", !on);
+            if (on) p.removeAttribute("hidden"); else p.setAttribute("hidden", "");
+          });
         });
       });
     });
@@ -357,10 +370,416 @@
     ta.addEventListener("focus", function () { if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); } });
   }
 
+  // ======================================================================
+  // JWT-02 — Edit & Generate
+  // ======================================================================
+
+  var editGenKey = null;      // {alg, privateKey, publicKey, publicJwk}
+  var editDirty = false;      // the analyst (or a helper) changed the editors
+  var editLoadedRaw = null;   // raw token last loaded into the editors
+
+  /* Parse an editor's JSON without showing errors (diff refresh is noisy
+     while typing). Returns the object or null. */
+  function silentParse(text) {
+    if (!text || !text.trim()) return null;
+    try {
+      var v = JSON.parse(text);
+      return (v && typeof v === "object" && !Array.isArray(v)) ? v : null;
+    } catch (e) { return null; }
+  }
+
+  /* Parse an editor's JSON for the sign flow, reporting errors to the
+     matching error line. Returns the object or null. */
+  function parseEditor(id, errId) {
+    var el = $(id);
+    var err = $(errId);
+    var text = el.value.trim();
+    if (!text) {
+      if (err) { err.textContent = "Paste JSON here."; err.classList.remove("hidden"); }
+      return null;
+    }
+    var v;
+    try { v = JSON.parse(text); }
+    catch (e) {
+      if (err) { err.textContent = "Not valid JSON: " + e.message; err.classList.remove("hidden"); }
+      return null;
+    }
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      if (err) { err.textContent = "Must be a JSON object."; err.classList.remove("hidden"); }
+      return null;
+    }
+    if (err) { err.textContent = ""; err.classList.add("hidden"); }
+    return v;
+  }
+
+  function fillEditTemplate() {
+    var now = Math.floor(Date.now() / 1000);
+    $("jwtEditHeader").value = prettyJson({ alg: "HS256", typ: "JWT" });
+    $("jwtEditPayload").value = prettyJson({ sub: "test-user", iat: now, exp: now + 3600, jti: J.randomJti() });
+    editDirty = false;
+    editLoadedRaw = "template";
+  }
+
+  function fmtVal(v) {
+    if (v == null) return "—";
+    if (typeof v === "object") { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+    return String(v);
+  }
+
+  function refreshEditDiff() {
+    var list = $("jwtEditDiffList");
+    if (!list) return;
+    var summary = $("jwtEditDiffSummary");
+    var base = lastParsed
+      ? { header: lastParsed.header, payload: lastParsed.payload }
+      : { header: {}, payload: {} };
+    var h = silentParse($("jwtEditHeader").value);
+    var p = silentParse($("jwtEditPayload").value);
+    list.innerHTML = "";
+    if (h === null || p === null) {
+      if (summary) summary.textContent = "Waiting for valid JSON in both editors — the semantic diff renders before you sign.";
+      return;
+    }
+    var counts = { added: 0, removed: 0, changed: 0 };
+    [["Header", J.diffClaims(base.header, h)], ["Payload", J.diffClaims(base.payload, p)]].forEach(function (pair) {
+      var rows = pair[1];
+      rows.forEach(function (r) { if (counts[r.kind] != null) counts[r.kind]++; });
+      var hd = document.createElement("p");
+      hd.className = "jwt-diff-head";
+      hd.textContent = pair[0] + (lastParsed ? " (original token → editor)" : " (new token — no original analyzed)");
+      list.appendChild(hd);
+      if (!rows.length) {
+        var empty = document.createElement("p");
+        empty.className = "jwt-diff-empty";
+        empty.textContent = "(empty)";
+        list.appendChild(empty);
+        return;
+      }
+      rows.forEach(function (r) {
+        var div = document.createElement("div");
+        div.className = "jwt-diff-row jwt-diff-" + r.kind;
+        var middle;
+        if (r.kind === "added") middle = "<em>added:</em> " + escapeHtml(fmtVal(r.to));
+        else if (r.kind === "removed") middle = "<em>was:</em> " + escapeHtml(fmtVal(r.from));
+        else if (r.kind === "changed") middle = "<em>was:</em> " + escapeHtml(fmtVal(r.from)) + " &rarr; <em>now:</em> " + escapeHtml(fmtVal(r.to));
+        else middle = escapeHtml(fmtVal(r.from));
+        div.innerHTML = "<span class=jwt-diff-kind>" +
+          { added: "+ add", removed: "− del", changed: "~ mod", unchanged: "· same" }[r.kind] + "</span>" +
+          "<span class=jwt-diff-claim><code>" + escapeHtml(r.claim) + "</code></span>" +
+          "<span class=jwt-diff-vals>" + middle + "</span>";
+        list.appendChild(div);
+      });
+    });
+    if (summary) {
+      if (counts.added + counts.removed + counts.changed === 0) {
+        summary.textContent = "No semantic changes vs the original token.";
+      } else {
+        summary.textContent = counts.added + " added · " + counts.removed +
+          " removed · " + counts.changed + " changed — review before signing.";
+      }
+    }
+  }
+
+  function loadEditFromToken() {
+    if (!lastParsed) {
+      var status = $("jwtEditDiffSummary");
+      if (status) status.textContent = "Paste and decode a token in the shared input first, then load it into the editors.";
+      return;
+    }
+    $("jwtEditHeader").value = prettyJson(lastParsed.header);
+    $("jwtEditPayload").value = prettyJson(lastParsed.payload);
+    editDirty = false;
+    editLoadedRaw = lastParsed.raw;
+    syncAlgSelectFromHeader();
+    refreshEditDiff();
+  }
+
+  function onEditPanelShown() {
+    var h = $("jwtEditHeader");
+    var p = $("jwtEditPayload");
+    if (!h || !p) return;
+    // Auto-load the analyzed token into untouched editors; never clobber
+    // edits the analyst has already made.
+    if (!editDirty) {
+      if (lastParsed && editLoadedRaw !== lastParsed.raw) loadEditFromToken();
+      else if (!editLoadedRaw) fillEditTemplate();
+    }
+    refreshEditDiff();
+  }
+
+  function syncAlgSelectFromHeader() {
+    var h = silentParse($("jwtEditHeader").value);
+    var sel = $("jwtSignAlg");
+    if (!h || !h.alg || !sel) return;
+    if (sel.value === h.alg) return;
+    var match = Array.prototype.some.call(sel.options, function (o) { return o.value === h.alg; });
+    if (match) sel.value = h.alg;
+  }
+
+  function syncHeaderAlgFromSelect() {
+    var h = silentParse($("jwtEditHeader").value);
+    var sel = $("jwtSignAlg");
+    if (!h || !sel) return;
+    h.alg = sel.value;
+    $("jwtEditHeader").value = prettyJson(h);
+    editDirty = true;
+    refreshEditDiff();
+  }
+
+  // --- Standard-claim helpers ----------------------------------------
+
+  function helperDefs() {
+    return [
+      ["iss", "jwtHelpIss"], ["sub", "jwtHelpSub"], ["aud", "jwtHelpAud"],
+      ["exp", "jwtHelpExp", true], ["nbf", "jwtHelpNbf", true],
+      ["iat", "jwtHelpIat", true], ["jti", "jwtHelpJti"]
+    ];
+  }
+
+  function applyHelpers() {
+    var p = parseEditor("jwtEditPayload", "jwtEditPayloadError");
+    if (!p) return;
+    var changed = false;
+    helperDefs().forEach(function (d) {
+      var claim = d[0], inputId = d[1], isTime = d[2];
+      var cb = $(inputId + "Use");
+      if (!cb || !cb.checked) return;
+      var v = $(inputId).value.trim();
+      if (v === "") {
+        if (Object.prototype.hasOwnProperty.call(p, claim)) { delete p[claim]; changed = true; }
+        return;
+      }
+      var out = v;
+      if (isTime) {
+        var n = Number(v);
+        if (!isFinite(n)) { out = null; }
+        else out = Math.floor(n);
+      }
+      if (out !== null && JSON.stringify(p[claim]) !== JSON.stringify(out)) { p[claim] = out; changed = true; }
+    });
+    if (changed) {
+      $("jwtEditPayload").value = prettyJson(p);
+      editDirty = true;
+      refreshEditDiff();
+    }
+  }
+
+  function quickHelper(claim, value) {
+    var def = helperDefs().filter(function (d) { return d[0] === claim; })[0];
+    if (!def) return;
+    $(def[1]).value = String(value);
+    var cb = $(def[1] + "Use");
+    if (cb) cb.checked = true;
+    applyHelpers();
+  }
+
+  // --- Signing --------------------------------------------------------
+
+  function activeEditKeyType() {
+    var active = document.querySelector(".jwt-edit-key-tabs .jwt-key-tab.is-active");
+    return active ? active.getAttribute("data-keytype") : "secret";
+  }
+
+  function readEditKey() {
+    var type = activeEditKeyType();
+    var alg = $("jwtSignAlg").value;
+    if (type === "secret") return { key: $("jwtEditSecret").value };
+    if (type === "pem") {
+      var v = $("jwtEditPem").value.trim();
+      return v ? { key: v } : { error: "Paste a PKCS#8 private key (-----BEGIN PRIVATE KEY-----)." };
+    }
+    if (type === "jwk") {
+      var t = $("jwtEditJwk").value.trim();
+      if (!t) return { error: "Paste a private JWK (it must include \"d\")." };
+      try { return { key: JSON.parse(t) }; }
+      catch (e) { return { error: "Private JWK is not valid JSON: " + e.message }; }
+    }
+    if (type === "generated") {
+      if (!editGenKey) return { error: "No generated key yet — generate a throwaway RSA test key first." };
+      if (!/^(RS|PS)/.test(alg)) return { error: "The generated key is an RSA key — select an RS*/PS* algorithm to sign with it." };
+      if (editGenKey.alg !== alg) return { error: "The generated key was created for " + editGenKey.alg + " — select that algorithm (RSA key families are not interchangeable in Web Crypto)." };
+      return { key: editGenKey.privateKey };
+    }
+    return { error: "Unknown key type" };
+  }
+
+  function setSignResult(ok, lines) {
+    var result = $("jwtEditResult");
+    if (!result) return;
+    result.classList.remove("hidden");
+    var banner = $("jwtTestBanner");
+    if (banner) banner.classList.toggle("hidden", !ok);
+    var ul = $("jwtEditResultLines");
+    if (ul) {
+      ul.className = "jwt-edit-lines " + (ok ? "ok" : "bad");
+      ul.innerHTML = lines.map(function (l) { return "<li>" + escapeHtml(l) + "</li>"; }).join("");
+    }
+  }
+
+  async function signEdit() {
+    var header = parseEditor("jwtEditHeader", "jwtEditHeaderError");
+    var payload = parseEditor("jwtEditPayload", "jwtEditPayloadError");
+    if (!header || !payload) {
+      $("jwtEditResult").classList.add("hidden");
+      return;
+    }
+    var alg = $("jwtSignAlg").value;
+    if (header.alg && header.alg !== alg) {
+      setSignResult(false, ["The header editor declares alg " + header.alg +
+        " but the signing algorithm is " + alg + " — they must agree."]);
+      return;
+    }
+    var read = readEditKey();
+    if (read.error) { setSignResult(false, [read.error]); return; }
+    if (read.key == null || read.key === "") {
+      setSignResult(false, ["Supply a key to sign."]);
+      return;
+    }
+
+    var btn = $("jwtSign");
+    if (btn) { btn.disabled = true; btn.textContent = "Signing…"; }
+    var res = await J.signToken(header, payload, read.key, { alg: alg });
+    if (btn) { btn.disabled = false; btn.textContent = "Sign & build test token"; }
+
+    if (!res || res.error) {
+      setSignResult(false, [res && res.error ? res.error : "Signing failed."]);
+      $("jwtEditToken").value = "";
+      return;
+    }
+    $("jwtEditToken").value = res.token;
+    $("jwtCopyStatus").textContent = "";
+    setSignResult(true, [
+      "Signed locally with " + res.alg + ".",
+      "This is a TEST TOKEN — a target may still reject it (key, claims or algorithm policy)."
+    ]);
+  }
+
+  // --- Safe copy / download (token only — never key material) ---------
+
+  function setClipboard(text, okMsg, failMsg) {
+    var status = $("jwtCopyStatus");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () {
+        if (status) status.textContent = okMsg;
+      }, function () {
+        if (status) status.textContent = failMsg;
+      });
+    }
+    if (status) status.textContent = failMsg;
+  }
+
+  function downloadText(name, text, type) {
+    var blob = new Blob([text], { type: type || "text/plain" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function copyToken() {
+    var ta = $("jwtEditToken");
+    if (!ta || !ta.value) return;
+    setClipboard(ta.value, "Token copied to clipboard.", "Copy failed — select the token text manually.");
+  }
+
+  function downloadToken() {
+    var ta = $("jwtEditToken");
+    if (!ta || !ta.value) return;
+    downloadText("cyberbuddy-test-token.jwt", ta.value + "\n", "text/plain");
+  }
+
+  // --- Generated throwaway RSA test key -------------------------------
+
+  async function generateEditKey() {
+    var btn = $("jwtGenKey");
+    var status = $("jwtGenKeyStatus");
+    var alg = $("jwtSignAlg").value;
+    if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+    var res = await J.generateRsaTestPair(alg);
+    if (btn) { btn.disabled = false; btn.textContent = "Generate RSA test key pair"; }
+    if (!res || res.error) {
+      if (status) status.textContent = (res && res.error) || "Generation failed.";
+      return;
+    }
+    editGenKey = res;
+    if (status) status.textContent = "2048-bit RSA test key pair ready for " + res.alg + " — held in memory only.";
+    $("jwtGenKeyPub").value = prettyJson(res.publicJwk);
+    $("jwtGenKeyPubWrap").classList.remove("hidden");
+    $("jwtGenKeyActions").classList.remove("hidden");
+  }
+
+  function copyPublicKey() {
+    var ta = $("jwtGenKeyPub");
+    if (!ta || !ta.value) return;
+    setClipboard(ta.value, "Public JWK copied to clipboard.", "Copy failed — select the JWK text manually.");
+  }
+
+  async function copyPrivateKey() {
+    if (!editGenKey) return;
+    if (!root.confirm("Copy the PRIVATE JWK of the throwaway test key? Anyone with it can sign as this key. Only do this for your own authorized testing.")) return;
+    try {
+      var jwk = await J.exportPrivateJwk(editGenKey.privateKey);
+      setClipboard(JSON.stringify(jwk, null, 2), "Private JWK copied to clipboard — treat it like a password.", "Copy failed.");
+    } catch (e) {
+      $("jwtGenKeyStatus").textContent = "Private key export failed: " + (e && e.message ? e.message : String(e));
+    }
+  }
+
+  async function downloadPrivateKey() {
+    if (!editGenKey) return;
+    if (!root.confirm("Download the PRIVATE JWK of the throwaway test key? Anyone with this file can sign as this key. Only do this for your own authorized testing.")) return;
+    try {
+      var jwk = await J.exportPrivateJwk(editGenKey.privateKey);
+      downloadText("throwaway-private-key.jwk.json", JSON.stringify(jwk, null, 2) + "\n", "application/json");
+    } catch (e) {
+      $("jwtGenKeyStatus").textContent = "Private key export failed: " + (e && e.message ? e.message : String(e));
+    }
+  }
+
+  // --- Boot -----------------------------------------------------------
+
+  function initEditPanel() {
+    var h = $("jwtEditHeader");
+    if (!h) return;
+    fillEditTemplate();
+
+    $("jwtEditLoad").addEventListener("click", loadEditFromToken);
+    $("jwtEditReset").addEventListener("click", function () {
+      fillEditTemplate();
+      refreshEditDiff();
+    });
+    h.addEventListener("input", function () { editDirty = true; syncAlgSelectFromHeader(); refreshEditDiff(); });
+    $("jwtEditPayload").addEventListener("input", function () { editDirty = true; refreshEditDiff(); });
+    $("jwtSignAlg").addEventListener("change", syncHeaderAlgFromSelect);
+
+    $("jwtHelpApply").addEventListener("click", applyHelpers);
+    $("jwtQuickIatNow").addEventListener("click", function () { quickHelper("iat", Math.floor(Date.now() / 1000)); });
+    $("jwtQuickExp1h").addEventListener("click", function () { quickHelper("exp", Math.floor(Date.now() / 1000) + 3600); });
+    $("jwtQuickExp24h").addEventListener("click", function () { quickHelper("exp", Math.floor(Date.now() / 1000) + 86400); });
+    $("jwtQuickJti").addEventListener("click", function () { quickHelper("jti", J.randomJti()); });
+
+    $("jwtSign").addEventListener("click", signEdit);
+    $("jwtCopyToken").addEventListener("click", copyToken);
+    $("jwtDlToken").addEventListener("click", downloadToken);
+
+    $("jwtGenKey").addEventListener("click", generateEditKey);
+    $("jwtCopyPub").addEventListener("click", copyPublicKey);
+    $("jwtCopyPriv").addEventListener("click", copyPrivateKey);
+    $("jwtDlPriv").addEventListener("click", downloadPrivateKey);
+
+    refreshEditDiff();
+  }
+
   function initJwt() {
     var ta = $("jwtToken");
     if (!ta) return;
-    initTabs();
+    initTabs(function (panelId) {
+      if (panelId === "jwt-panel-edit") onEditPanelShown();
+    });
     initKeyTabs();
     initMask();
     ta.addEventListener("input", parse);
@@ -370,7 +789,8 @@
     });
     var verifyBtn = $("jwtVerify");
     if (verifyBtn) verifyBtn.addEventListener("click", verify);
-    // Preview-panel controls are intentionally not wired: JWT-02/03.
+    initEditPanel();
+    // Preview-panel controls are intentionally not wired: JWT-03.
   }
 
   root.initJwt = initJwt;

@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- JWT-01: decode/inspect/verify is now functional. The page is
-       indexable again; Edit/Generate, Test Variants and Secret Test remain
-       non-operational previews (JWT-02/03). -->
+  <!-- JWT-01 (decode/inspect/verify) and JWT-02 (edit/generate/sign) are
+       functional and fully local. Test Variants and Secret Test remain
+       non-operational previews (JWT-03). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'" />
   <title>JWT Security Workbench — CyberBuddy</title>
-  <meta name="description" content="Decode, inspect and verify JSON Web Tokens locally in your browser. HMAC, RSA-PKCS#1, RSA-PSS and ECDSA verification with a key you supply — no token ever leaves the browser." />
+  <meta name="description" content="Decode, inspect, verify, edit and re-sign JSON Web Tokens locally in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the browser." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -53,9 +53,9 @@
   <p class="kicker reveal">Tool 06 · Local in your browser</p>
   <h1 class="reveal">JWT Security Workbench</h1>
   <p class="lead reveal" style="--d: .08s;">
-    Decode &middot; Audit &middot; Verify &mdash; locally in your browser.
-    Paste a JWT and inspect its claims; supply a key to verify its signature.
-    No token ever leaves this browser.
+    Decode &middot; Audit &middot; Verify &middot; Sign &mdash; locally in your
+    browser. Paste a JWT to inspect and verify it; edit and re-sign it to
+    build authorized <strong>TEST TOKEN</strong>s. Nothing leaves this browser.
   </p>
   <p class="std-line reveal" style="--d: .1s;">
     <strong>RFC 7519</strong> &middot; <strong>RFC 7515</strong>
@@ -80,8 +80,9 @@
     </p>
   </div>
 
-  <!-- Tab navigation. Analyze & Verify is functional; the other three are
-       JWT-02/03 previews and stay non-interactive. -->
+  <!-- Tab navigation. Analyze & Verify (JWT-01) and Edit & Generate (JWT-02)
+       are functional; Test Variants and Secret Test are JWT-03 previews and
+       stay non-interactive. -->
   <div class="jwt-tabs reveal" style="--d: .16s;">
     <div class="jwt-tablist" role="tablist" aria-label="JWT Workbench panels">
       <button type="button" role="tab" id="jwt-tab-analyze" class="jwt-tab is-active"
@@ -191,34 +192,184 @@
       </div>
     </section>
 
-    <!-- Edit & Generate (JWT-02, preview) -->
+    <!-- Edit & Generate (JWT-02, functional) -->
     <section role="tabpanel" id="jwt-panel-edit" aria-labelledby="jwt-tab-edit"
-      class="jwt-panel jwt-preview-panel" hidden tabindex="0">
+      class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Edit &amp; Generate</h2>
-        <span class="jwt-phase jwt-phase-02">JWT-02 &middot; Planned</span>
+        <span class="jwt-phase jwt-phase-live">JWT-02 &middot; Live</span>
       </div>
-      <div class="jwt-preview-banner">
-        <strong>Coming in JWT-02.</strong> Modify header/payload claims and
-        re-sign locally to build authorized test tokens. The controls below are
-        previews and are not active yet.
+      <div class="jwt-edit-note">
+        <strong>Local signing, test-token output.</strong> Edit the header and
+        payload, re-sign with a key you supply or generate, and get a
+        <strong>TEST TOKEN</strong> — building the bytes proves nothing until
+        the target honors them. Everything stays in this browser.
       </div>
+
       <div class="grid-2 jwt-sections-grid">
-        <label class="jwt-field is-disabled"><span>Header editor</span>
-          <textarea disabled aria-disabled="true" placeholder="Disabled in this preview"></textarea></label>
-        <label class="jwt-field is-disabled"><span>Payload editor</span>
-          <textarea disabled aria-disabled="true" placeholder="Disabled in this preview"></textarea></label>
+        <div class="jwt-edit-col">
+          <label class="jwt-field" for="jwtEditHeader">
+            <span>Header editor (JSON)</span>
+            <textarea id="jwtEditHeader" spellcheck="false"
+              aria-describedby="jwtEditHeaderError"></textarea>
+          </label>
+          <p id="jwtEditHeaderError" class="field-error hidden" role="alert"></p>
+        </div>
+        <div class="jwt-edit-col">
+          <label class="jwt-field" for="jwtEditPayload">
+            <span>Payload editor (JSON)</span>
+            <textarea id="jwtEditPayload" spellcheck="false"
+              aria-describedby="jwtEditPayloadError"></textarea>
+          </label>
+          <p id="jwtEditPayloadError" class="field-error hidden" role="alert"></p>
+        </div>
       </div>
+      <div class="jwt-btn-row">
+        <button type="button" id="jwtEditLoad" class="btn">Load from analyzed token</button>
+        <button type="button" id="jwtEditReset" class="btn">Reset to template</button>
+      </div>
+
       <article class="card inset-card">
-        <h3 class="card-title">Planned capabilities</h3>
-        <ul class="scope-list">
-          <li>Standard-claim helpers (<code>iss</code>, <code>sub</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>, <code>iat</code>, <code>jti</code>).</li>
-          <li>Signing for HMAC and private-key algorithms via Web Crypto.</li>
-          <li>Local RSA test-key generation for throwaway, authorized testing.</li>
-          <li>An original-versus-modified semantic diff before you sign.</li>
-          <li>Explicit <strong>TEST TOKEN</strong> labels and safe copy/download.</li>
-        </ul>
+        <h3 class="card-title">Standard-claim helpers</h3>
+        <p class="card note">Tick <em>set</em> next to a claim and press
+          <strong>Apply</strong> to write it into the payload editor. An empty
+          value removes the claim. Time claims are epoch seconds.</p>
+        <div class="jwt-help-grid">
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpIssUse" />
+            <span class="jwt-help-k">iss</span>
+            <input type="text" id="jwtHelpIss" autocomplete="off" placeholder="https://issuer.example" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpSubUse" />
+            <span class="jwt-help-k">sub</span>
+            <input type="text" id="jwtHelpSub" autocomplete="off" placeholder="user-123" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpAudUse" />
+            <span class="jwt-help-k">aud</span>
+            <input type="text" id="jwtHelpAud" autocomplete="off" placeholder="my-api" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpExpUse" />
+            <span class="jwt-help-k">exp</span>
+            <input type="number" id="jwtHelpExp" placeholder="epoch seconds" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpNbfUse" />
+            <span class="jwt-help-k">nbf</span>
+            <input type="number" id="jwtHelpNbf" placeholder="epoch seconds" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpIatUse" />
+            <span class="jwt-help-k">iat</span>
+            <input type="number" id="jwtHelpIat" placeholder="epoch seconds" /></label>
+          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpJtiUse" />
+            <span class="jwt-help-k">jti</span>
+            <input type="text" id="jwtHelpJti" autocomplete="off" placeholder="unique id" /></label>
+        </div>
+        <div class="jwt-btn-row">
+          <button type="button" id="jwtHelpApply" class="btn btn-primary">Apply helpers to payload</button>
+          <button type="button" id="jwtQuickIatNow" class="btn">iat = now</button>
+          <button type="button" id="jwtQuickExp1h" class="btn">exp = now + 1h</button>
+          <button type="button" id="jwtQuickExp24h" class="btn">exp = now + 24h</button>
+          <button type="button" id="jwtQuickJti" class="btn">jti = random</button>
+        </div>
       </article>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Original &rarr; modified diff</h3>
+        <p id="jwtEditDiffSummary" class="card note">Load a token or edit the
+          payload; the semantic diff renders here before you sign.</p>
+        <div id="jwtEditDiffList" class="jwt-diff-list"></div>
+      </article>
+
+      <article class="card inset-card">
+        <h3 class="card-title">Sign &amp; build the test token</h3>
+        <p class="card note">Signing runs in this browser via Web Crypto. The
+          header's <code>alg</code> and the selected algorithm must agree;
+          <code>alg:none</code> stays rejected.</p>
+        <label class="jwt-field"><span>Signing algorithm</span>
+          <select id="jwtSignAlg" class="jwt-select">
+            <optgroup label="HMAC">
+              <option value="HS256" selected>HS256 — HMAC-SHA256</option>
+              <option value="HS384">HS384 — HMAC-SHA384</option>
+              <option value="HS512">HS512 — HMAC-SHA512</option>
+            </optgroup>
+            <optgroup label="RSA (PKCS#1 v1.5)">
+              <option value="RS256">RS256 — RSASSA-PKCS1-v1_5 + SHA-256</option>
+              <option value="RS384">RS384 — RSASSA-PKCS1-v1_5 + SHA-384</option>
+              <option value="RS512">RS512 — RSASSA-PKCS1-v1_5 + SHA-512</option>
+            </optgroup>
+            <optgroup label="RSA-PSS">
+              <option value="PS256">PS256 — RSA-PSS + SHA-256</option>
+              <option value="PS384">PS384 — RSA-PSS + SHA-384</option>
+              <option value="PS512">PS512 — RSA-PSS + SHA-512</option>
+            </optgroup>
+            <optgroup label="ECDSA">
+              <option value="ES256">ES256 — ECDSA P-256 + SHA-256</option>
+              <option value="ES384">ES384 — ECDSA P-384 + SHA-384</option>
+            </optgroup>
+          </select>
+        </label>
+
+        <div class="jwt-key-tabs jwt-edit-key-tabs" role="tablist" aria-label="Signing key type">
+          <button type="button" role="tab" id="jwt-edit-key-secret-tab" class="jwt-key-tab is-active"
+            data-keytype="secret" aria-selected="true" aria-controls="jwt-edit-key-secret">HMAC secret</button>
+          <button type="button" role="tab" id="jwt-edit-key-pem-tab" class="jwt-key-tab"
+            data-keytype="pem" aria-selected="false" aria-controls="jwt-edit-key-pem">Private key (PEM)</button>
+          <button type="button" role="tab" id="jwt-edit-key-jwk-tab" class="jwt-key-tab"
+            data-keytype="jwk" aria-selected="false" aria-controls="jwt-edit-key-jwk">Private JWK</button>
+          <button type="button" role="tab" id="jwt-edit-key-generated-tab" class="jwt-key-tab"
+            data-keytype="generated" aria-selected="false" aria-controls="jwt-edit-key-generated">Generated test key</button>
+        </div>
+        <div class="jwt-key-panels">
+          <div id="jwt-edit-key-secret" class="jwt-key-panel" role="tabpanel">
+            <label class="jwt-field"><span>HMAC shared secret (HS256/384/512)</span>
+              <input type="password" id="jwtEditSecret" autocomplete="off" placeholder="Shared secret" /></label>
+          </div>
+          <div id="jwt-edit-key-pem" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <label class="jwt-field"><span>Private key — PEM PKCS#8 (BEGIN PRIVATE KEY)</span>
+              <textarea id="jwtEditPem" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"></textarea></label>
+            <p class="jwt-field-note">Web Crypto cannot read PKCS#1 ("RSA PRIVATE KEY"),
+              SEC1 ("EC PRIVATE KEY") or encrypted PEM — convert to PKCS#8 first, e.g.
+              <code>openssl pkcs8 -topk8 -nocrypt -in key.pem</code>.</p>
+          </div>
+          <div id="jwt-edit-key-jwk" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <label class="jwt-field"><span>Private JWK (JSON; must include "d")</span>
+              <textarea id="jwtEditJwk" spellcheck="false" placeholder='{"kty":"RSA","n":"…","e":"AQAB","d":"…"}'></textarea></label>
+            <p class="jwt-field-note">A JWK without <code>d</code> is a public key and cannot sign.</p>
+          </div>
+          <div id="jwt-edit-key-generated" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <p class="jwt-field-note">Generate a throwaway RSA key pair
+              <em>in this tab</em> for authorized testing. The private key stays
+              in memory unless you explicitly copy or download it. Never reuse a
+              test key for real credentials.</p>
+            <div class="jwt-btn-row">
+              <button type="button" id="jwtGenKey" class="btn btn-primary">Generate RSA test key pair</button>
+            </div>
+            <p id="jwtGenKeyStatus" class="jwt-gen-status" role="status"></p>
+            <div id="jwtGenKeyPubWrap" class="hidden">
+              <label class="jwt-field"><span>Public JWK (safe to share; verify the token with it)</span>
+                <textarea id="jwtGenKeyPub" readonly class="jwt-gen-pub"></textarea></label>
+            </div>
+            <div id="jwtGenKeyActions" class="jwt-btn-row hidden">
+              <button type="button" id="jwtCopyPub" class="btn">Copy public JWK</button>
+              <button type="button" id="jwtCopyPriv" class="btn">Copy private JWK&hellip;</button>
+              <button type="button" id="jwtDlPriv" class="btn">Download private JWK&hellip;</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="jwt-verify-actions">
+          <button type="button" id="jwtSign" class="btn btn-primary">Sign &amp; build test token</button>
+        </div>
+      </article>
+
+      <div id="jwtEditResult" class="jwt-edit-result hidden" role="status" aria-live="polite">
+        <div id="jwtTestBanner" class="jwt-test-banner">
+          <strong>TEST TOKEN</strong> &mdash; generated locally for authorized
+          testing. It is not proof of acceptance: the target decides whether
+          it honors this token, its claims and its signature.
+        </div>
+        <label class="jwt-field"><span>Generated token (compact JWS)</span>
+          <textarea id="jwtEditToken" readonly class="jwt-edit-output"></textarea></label>
+        <div class="jwt-btn-row">
+          <button type="button" id="jwtCopyToken" class="btn">Copy token</button>
+          <button type="button" id="jwtDlToken" class="btn">Download token</button>
+          <span id="jwtCopyStatus" class="jwt-copy-status" role="status"></span>
+        </div>
+        <ul id="jwtEditResultLines" class="jwt-edit-lines"></ul>
+      </div>
     </section>
 
     <!-- Test Variants (JWT-03, preview) -->
@@ -304,9 +455,11 @@
           issued it.</li>
         <li><strong>A valid signature with a key you supply proves only a
           match with that key</strong>, not that the target trusts it.</li>
-        <li><strong>Generated variants (JWT-02/03) will not prove server
-          acceptance</strong> &mdash; a re-signed or <code>alg:none</code>
-          token is a test case until the target actually honors it.</li>
+        <li><strong>A generated or re-signed token (JWT-02) is a TEST
+          TOKEN, not proof of acceptance</strong> &mdash; building the bytes
+          proves nothing until the target actually honors the token, its
+          claims and its signature. Test variants and secret testing
+          (JWT-03) stay template-based when they land.</li>
         <li><strong>Live target testing is not part of the hosted tool.</strong>
           CyberBuddy will not send a JWT to a target, a JWKS URL or a third party.</li>
         <li><strong>Context over score.</strong> There is no numeric security
@@ -322,26 +475,26 @@
   <section class="jwt-phases reveal" style="--d: .2s;">
     <div class="section-head"><h2>Implementation phases</h2></div>
     <div class="jwt-phase-grid">
-      <article class="card inset-card jwt-phase-card jwt-phase-next">
+      <article class="card inset-card jwt-phase-card">
         <span class="jwt-phase-tag">JWT-00 &middot; Shipped</span>
         <h3>Workbench preview</h3>
         <p>Project integration and the three-phase plan.</p>
       </article>
-      <article class="card inset-card jwt-phase-card jwt-phase-current">
+      <article class="card inset-card jwt-phase-card">
         <span class="jwt-phase-tag">JWT-01 &middot; Live</span>
         <h3>Decode, inspect &amp; verify</h3>
         <p>Strict compact-JWS parsing, header/payload display, claim timeline,
           observations, and HMAC/RSA/PSS/ECDSA verification via Web Crypto. No
           persistence, no network.</p>
       </article>
-      <article class="card inset-card jwt-phase-card">
-        <span class="jwt-phase-tag">JWT-02 &middot; Planned</span>
+      <article class="card inset-card jwt-phase-card jwt-phase-current">
+        <span class="jwt-phase-tag">JWT-02 &middot; Live</span>
         <h3>Edit &amp; generate</h3>
         <p>Header/payload editors, standard-claim helpers, semantic diff,
           HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
           labels, safe copy/download.</p>
       </article>
-      <article class="card inset-card jwt-phase-card">
+      <article class="card inset-card jwt-phase-card jwt-phase-next">
         <span class="jwt-phase-tag">JWT-03 &middot; Planned</span>
         <h3>Test variants &amp; bounded secret testing</h3>
         <p><code>alg:none</code>, claim manipulation, algorithm confusion,

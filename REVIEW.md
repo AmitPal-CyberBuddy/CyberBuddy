@@ -2057,3 +2057,92 @@ path is the foundation for sign; JWT-02 adds header/payload editors,
 standard-claim helpers, HMAC/private-key signing, a semantic diff, local
 RSA test-key generation, TEST TOKEN labels and safe copy/download — still
 fully local, still no network.
+
+## 27. JWT-02 — edit and generate (2026-08-15)
+
+Builds on JWT-01 (§26). The Edit & Generate panel is now functional: the
+Workbench edits header/payload claims, shows a semantic diff, and re-signs
+locally — HMAC with a shared secret, RSA/EC with a private key, or a locally
+generated throwaway RSA pair. Test Variants and Secret Test (JWT-03) remain
+non-interactive previews on the same page.
+
+### What shipped
+
+- **`js/jwt.engine.js` (extended)** — all signing logic stays in the pure,
+  DOM-free engine, exercised under Node by the same `JwtWorkbenchTests`
+  harness:
+  - `signToken(header, payload, key, opts)` — builds the compact JWS and
+    signs HS256/384/512 (string secret), RS/PS/ES (private key) via
+    `crypto.subtle`. Resolves `{token, alg, header, payload}` or `{error}`.
+  - Private-key input: PEM PKCS#8 (`BEGIN PRIVATE KEY`) or a JWK carrying
+    `d`. PKCS#1/SEC1 PEM ("RSA/EC PRIVATE KEY"), encrypted PEM, SPKI public
+    PEM, JWK-without-`d` and JWKS are all rejected with specific errors;
+    `alg:none`, a missing/unsupported `alg` and `opts.alg` mismatches are
+    rejected too.
+  - `generateRsaTestPair(alg)` — local 2048-bit RSA pair for throwaway
+    testing (RS*/PS* families), returned with only the public JWK exported;
+    `exportPrivateJwk`/`exportPublicJwk` exist for explicit user-requested
+    export.
+  - `diffClaims(original, modified)` — semantic top-level-claim diff
+    (added/removed/changed/unchanged, JSON-serialization comparison) plus
+    `randomJti()` for the helpers.
+- **`js/tool.jwt.js` (extended)** — the controller wires the Edit panel
+  only; all crypto stays in the engine. Header/payload editors (auto-loaded
+  from the analyzed token or a fresh template), standard-claim helpers
+  (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti` with quick "now/+1h/+24h/
+  random jti" buttons), a live original→modified diff (re-based on the
+  currently analyzed token), an algorithm select kept in sync with the
+  header editor (mismatch guard still fails closed), four signing key
+  sub-tabs (HMAC secret / PEM PKCS#8 / private JWK / generated test key),
+  and a result box with the **TEST TOKEN** banner, copy/download of the
+  token alone, and confirmed-only private JWK copy/download. Still no
+  `fetch`, storage, history or URL state.
+- **`tools/jwt/index.html`** — the Edit & Generate section is functional
+  (enabled controls, "JWT-02 · Live" phase tag); the lead, meta description,
+  privacy bullet and the implementation-phase grid were updated (JWT-01
+  plain "Live", JWT-02 current, JWT-03 next). The Analyze & Verify panel is
+  unchanged and keeps working. CSP stays `connect-src 'self'`.
+- **Guide/docs.** `guides/jwt/` now states JWT-01+JWT-02 are live (button
+  label no longer says "preview", status note and "will/won't do" updated,
+  visible word count 1195 of the 1200 ceiling). README (tool table, guide
+  row, file-tree comments, JWT section) and `llms.txt` updated; sitemap and
+  `manifest.webmanifest` unchanged (the PWA shortcut stays out until the
+  full workbench ships).
+
+### Accuracy rules kept
+
+The verify-side guards carry into signing: HS* never accepts a PEM/JWK key,
+asymmetric signing never accepts public material, `header.alg` must agree
+with the pinned algorithm, and `alg:none` is unproducible. A signed token is
+labelled **TEST TOKEN** and the UI states it proves nothing until the target
+honors it. Key export is explicit and confirmed — "Copy token" / "Download
+token" handlers touch only the token textarea, pinned by a structural test.
+
+### Tests and verification
+
+- **258/258 stdlib tests OK** (`python3 -m unittest test_engines.py`) — 13
+  new `JwtWorkbenchTests`: Node-driven sign→verify round-trips (HS256 + wrong
+  secret, HS384/512, RS256/PS256 with the generated pair, ES256 with a
+  private JWK), rejection of `alg:none`/missing/unsupported alg, HS-rejects-
+  public-key, wrong-alg-pin, public-key-material rejection (JWK without `d`,
+  SPKI, PKCS#1, JWKS), `diffClaims` semantics, `randomJti` shape/uniqueness;
+  UI wiring (functional edit panel, variants/secret panels still disabled,
+  TEST TOKEN + honesty strings, private-export confirmation, token
+  copy/download never touching key material, tab counts 4+4+4).
+- `node --check` clean on all 20 JS files; `py_compile`, JSON and XML valid;
+  Pages-assembly dry run green; live `server.py` crawl of the JWT routes.
+- **Controller smoke test under Node** (DOM shim, since the sandbox has no
+  Chromium): boot, decode, verify, edit-tab auto-load, helper apply, HMAC
+  sign + banner + roundtrip, token copy without confirmation, RSA keygen →
+  RS256 sign → verify with the exported public JWK, confirmed private JWK
+  copy, `alg:none` rejection and the header/select mismatch guard all pass.
+- Real-browser suites were not run in the sandbox (no Chromium) — run them
+  by hand before merge.
+
+### Notes for JWT-03
+
+`generateRsaTestPair` returns the pair for exactly one RSA family; the
+variant builder (JWT-03) will reuse `signToken` with `header.alg` pinned and
+must keep its outputs labelled as templates, never findings. The secret-test
+Worker is still out of scope here; the Test Variants and Secret Test panels
+stay disabled and the PWA shortcut stays out.
