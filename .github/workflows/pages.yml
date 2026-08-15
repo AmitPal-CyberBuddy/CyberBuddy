@@ -60,7 +60,7 @@ jobs:
 
           # Guides section: /guides/ index plus one guide directory per topic.
           # Copy the whole tree so future guides need no workflow change.
-          test -d guides && cp -a guides _site/ || true
+          test -d guides && cp -a guides _site/ || true    # ← EDIT 3: publish the guides
 
           # Cached reports for configured targets (skipped if the build step
           # found no targets / network failed).
