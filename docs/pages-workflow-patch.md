@@ -6,14 +6,15 @@ rejected by the server. Everything else ships normally. This file carries the
 workflow edit that could not be pushed, for a maintainer to apply by hand
 (the same mechanism used in PR #20 for the CSRF tool and PR #22 for IA-01).
 
-This patch is for **GUIDES-01 — public Guides foundation + Clickjacking pilot
-guide**.
+This patch is for **GUIDES-01/02/03 — the public Guides section, now one
+guide per tool**.
 
 ## The required edit
 
 One change to `.github/workflows/pages.yml`, in the *Assemble static site*
-step. `guides/` is a new published top-level section (`/guides/` and
-`/guides/clickjacking/`) and nothing copies it into `_site/` yet:
+step. `guides/` is a new published top-level section (`/guides/` plus
+`/guides/{clickjacking,headers,cors,csp,csrf}/`) and nothing copies it into
+`_site/` yet:
 
 ```yaml
 # before
@@ -32,12 +33,12 @@ step. `guides/` is a new published top-level section (`/guides/` and
 
 Without this the deployed site serves the header “Guides” link, the footer
 Learn → Guides link, the hub “Short guides on this site →” link, the 404
-Guides card and the Clickjacking tool's guide backlink — all of them 404 on
-the hosted site. Local `server.py` is unaffected (it already routes
-`/guides/`, `/guides` and `/CyberBuddy/guides/`).
+Guides card and the guide backlink on **all five** tool pages — every one of
+them 404s on the hosted site. Local `server.py` is unaffected (it already
+routes `/guides/`, `/guides` and `/CyberBuddy/guides/`).
 
-`sitemap.xml` already lists `/guides/` and `/guides/clickjacking/`, so search
-engines will start requesting those URLs as soon as the next deploy runs.
+`sitemap.xml` already lists all six guide URLs (`/guides/` and one per tool),
+so search engines will start requesting them as soon as the next deploy runs.
 Apply this edit before merging, or the sitemap advertises two dead URLs.
 
 The *Verify referenced assets exist* step will also catch the mistake in the

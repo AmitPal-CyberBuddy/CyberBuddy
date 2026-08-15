@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Security headers guide — CyberBuddy</title>
+  <meta name="description" content="A short security headers guide: which response headers actually carry weight, how the A–F score is built, what HSTS and nosniff really buy you, and how to confirm the posture with the CyberBuddy Security Headers scan." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/headers/" />
+  <meta property="og:title" content="Security headers guide — CyberBuddy" />
+  <meta property="og:description" content="Which response headers actually carry weight, how the A–F grade is built, and how to turn a scan into a finding." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/headers/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Security headers guide — CyberBuddy" />
+  <meta name="twitter:description" content="Which response headers actually carry weight, how the A–F grade is built, and how to turn a scan into a finding." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Security headers: what the grade is actually measuring",
+      "description": "Which response headers carry weight, how the A–F score is built, what HSTS and nosniff really buy you, and how to confirm the posture with the CyberBuddy Security Headers scan.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/headers/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/headers/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">Security headers: what the grade is actually measuring</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    A header scan is easy to run and easy to misread. A missing header is not
+    automatically a finding, and a present one is not automatically a control.
+    What matters is which headers carry weight, and what their values say.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-CONF-07 / CONF-12</strong> &middot; <strong>CWE-693</strong> &mdash; protection mechanism failure</p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/headers/">Open the Security Headers scan</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>Why a header is a control</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Response headers are the only security policy a browser applies before
+      your JavaScript gets a vote. They decide whether a page can be framed,
+      whether a script from another origin may run, whether the connection may
+      silently fall back to HTTP, and whether a mistyped
+      <code>Content-Type</code> gets guessed into something executable. None of
+      them fix a vulnerability in the application — they narrow what an
+      existing bug can reach, which is exactly why their absence maps to
+      CWE-693, a protection mechanism that is missing, insufficient, or simply
+      not applied on one code path.
+    </p>
+    <p>
+      That last case is the one I see most: the headers are right on
+      <code>/login</code> and absent on <code>/api</code>, or present on the
+      HTTPS response and missing from the HTTP redirect that got the user
+      there. Scan more than the homepage.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>What the score weighs</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="Header weights">
+      <thead>
+        <tr><th scope="col">Header</th><th scope="col">Weight</th><th scope="col">What earns full marks</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">Content-Security-Policy</td>
+          <td>25</td>
+          <td>An enforced policy with a restrictive script source. Report-Only alone does not count.</td>
+        </tr>
+        <tr>
+          <td class="k">X-Frame-Options</td>
+          <td>15</td>
+          <td><code>DENY</code> or <code>SAMEORIGIN</code>. If CSP <code>frame-ancestors</code> already restricts framing, a missing value costs 5 instead of 15.</td>
+        </tr>
+        <tr>
+          <td class="k">Strict-Transport-Security</td>
+          <td>15</td>
+          <td><code>max-age</code> of at least 180 days plus <code>includeSubDomains</code>, on HTTPS only.</td>
+        </tr>
+        <tr>
+          <td class="k">X-Content-Type-Options</td>
+          <td>10</td>
+          <td><code>nosniff</code>. There is no other valid value.</td>
+        </tr>
+        <tr>
+          <td class="k">Referrer-Policy</td>
+          <td>10</td>
+          <td>A policy that does not leak the full URL cross-origin — <code>strict-origin-when-cross-origin</code> is the sane default.</td>
+        </tr>
+        <tr>
+          <td class="k">Permissions-Policy · COOP · COEP · CORP</td>
+          <td>5 each</td>
+          <td>Present and meaningful. These are hardening, not headline findings.</td>
+        </tr>
+        <tr>
+          <td class="k">Cookie flags</td>
+          <td>5</td>
+          <td>Session cookies carrying <code>Secure</code>, <code>HttpOnly</code> and a <code>SameSite</code> value.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      Grades fall out of the remaining score: <strong>A</strong> at 90 or
+      above, <strong>B</strong> at 75, <strong>C</strong> at 60,
+      <strong>D</strong> at 45, <strong>F</strong> below that. A and B report
+      low risk, C and D medium, F high. The weights and the full deduction
+      table are on the <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The three I argue about most</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      <strong>HSTS.</strong> Without it, the first request to
+      <code>http://</code> is interceptable and the user can click through a
+      certificate warning. <code>max-age=31536000; includeSubDomains</code> is
+      the value to ask for. Two rules people get wrong: browsers ignore the
+      header entirely when it arrives over plain HTTP, so it must not be on the
+      redirect response — only on the HTTPS one that follows; and
+      <code>includeSubDomains</code> does not cover the parent domain, so
+      <code>www.example.com</code> still needs its own header.
+    </p>
+    <p>
+      <strong>X-Content-Type-Options.</strong> One value,
+      <code>nosniff</code>, and it only helps if the
+      <code>Content-Type</code> you send is correct and carries a charset.
+      A JSON endpoint labelled <code>text/html</code> is a bug that nosniff
+      will happily enforce.
+    </p>
+    <p>
+      <strong>X-XSS-Protection.</strong> Scanners still flag it as missing.
+      OWASP recommends sending <code>0</code> — the legacy auditor it enables
+      has itself introduced XSS on otherwise-safe pages. Do not treat its
+      absence as a finding.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Confirm it with the scan</h2>
+  </div>
+  <article class="card reveal">
+    <ol>
+      <li>Open the <a href="../../tools/headers/">Security Headers</a> tool and paste a URL you are authorized to test.</li>
+      <li>Press <strong>Scan</strong>. It is a read-only <code>GET</code>; the grade is computed from the response headers alone.</li>
+      <li>Read each finding's <em>evidence</em> line — it prints the raw header value that produced the verdict, which is what a developer will ask for.</li>
+      <li>Re-scan an authenticated path and an API path, not just <code>/</code>. Header configuration is per-response, and that is where it diverges.</li>
+      <li>Export the report card. It carries the target, final URL, HTTP status, timestamp and the engine that produced the result.</li>
+    </ol>
+    <p>
+      A deep dive on the CSP value itself belongs in the
+      <a href="../csp/">CSP guide</a>; framing belongs in the
+      <a href="../clickjacking/">clickjacking guide</a>. This scan tells you
+      which controls exist. Those two tell you whether they hold.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The fix</h2>
+  </div>
+  <article class="card reveal">
+    <p>Set these at the edge, on every response, and let the app override only where it must:</p>
+    <pre><code>Content-Security-Policy: default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Cache-Control: no-store</code></pre>
+    <p>
+      <code>no-store</code> only where responses are sensitive —
+      <code>no-cache</code> does not prevent storage, it just forces
+      revalidation. Then re-scan: the grade moves, and the report card is your
+      before-and-after evidence.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      I keep this short on purpose. When a value is disputed, these are the
+      references I open:
+    </p>
+    <ul>
+      <li>
+        <a href="https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP HTTP Security Response Headers Cheat Sheet</a>
+        — recommended values header by header, including why
+        <code>X-XSS-Protection: 0</code> is the advice.
+      </li>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/07-Test_HTTP_Strict_Transport_Security" target="_blank" rel="noopener noreferrer">OWASP WSTG-CONF-07 — Test HTTP Strict Transport Security</a>
+        — the HSTS test procedure and directive detail.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/693.html" target="_blank" rel="noopener noreferrer">CWE-693 — Protection Mechanism Failure</a>
+        — the identifier to cite; note it is a Pillar, so map to a more
+        specific CWE when one fits.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security" target="_blank" rel="noopener noreferrer">MDN — <code>Strict-Transport-Security</code></a>
+        and
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy" target="_blank" rel="noopener noreferrer">MDN — <code>Referrer-Policy</code></a>
+        — exact syntax, defaults and expiry behaviour.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie" target="_blank" rel="noopener noreferrer">MDN — <code>Set-Cookie</code></a>
+        — what <code>Secure</code>, <code>HttpOnly</code>,
+        <code>SameSite</code> and the cookie prefixes actually enforce.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Scan systems you own or have
+      written permission to assess. The scan sends read-only requests, but
+      permission is still yours to obtain.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

@@ -51,7 +51,11 @@ const PAGES = [
   ["catalog", "/tools/"],
   // Appended after index 4 on purpose: TOOLS below is PAGES.slice(1, 5).
   ["guides", "/guides/"],
-  ["guide-clickjacking", "/guides/clickjacking/"]
+  ["guide-clickjacking", "/guides/clickjacking/"],
+  ["guide-headers", "/guides/headers/"],
+  ["guide-cors", "/guides/cors/"],
+  ["guide-csp", "/guides/csp/"],
+  ["guide-csrf", "/guides/csrf/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 

@@ -60,10 +60,10 @@
   <p class="lead reveal" style="--d: .08s;">
     Short, practical notes that sit next to the tools. Each guide explains one
     weakness in a few minutes, shows how to confirm it with the matching
-    CyberBuddy check, and links to the long-form write-up for depth.
+    CyberBuddy check, and points at the primary references when you need depth.
   </p>
   <p class="std-line reveal" style="--d: .1s;">
-    <span class="count" id="guideCount">01 live</span> · concise by design · deep dives live on Medium
+    <span class="count" id="guideCount">05 live</span> · one per tool · concise by design
   </p>
 
   <div class="section-head reveal">
@@ -90,17 +90,75 @@
       <a class="btn btn-primary btn-sm" href="clickjacking/">Read the Clickjacking guide</a>
     </article>
 
-    <article class="card tool-catalog-card tool-card--ghost reveal" style="--d: .12s;">
+    <article class="card tool-catalog-card reveal" style="--d: .12s;">
       <div class="tool-catalog-head">
-        <h3>More guides coming</h3>
-        <span class="cat-badge cat-local">soon</span>
+        <h3>Security Headers</h3>
+        <span class="cat-badge cat-assess">Assess targets</span>
       </div>
       <p class="tool-catalog-purpose">
-        Security Headers, CSP, CORS and CSRF guides follow the same shape:
-        one weakness, one tool, one screenshot you can paste into a report.
-        Until I write them, the tools themselves are the fastest way in.
+        Which response headers earn their place, why
+        <code>X-XSS-Protection</code> belongs at <code>0</code>, and how to
+        read a grade without treating it as a score to farm.
       </p>
-      <a class="btn btn-ghost btn-sm" href="../tools/">Browse the tools →</a>
+      <dl class="catalog-meta">
+        <dt>Read</dt><dd>~5 minutes</dd>
+        <dt>Tool</dt><dd>Security Headers</dd>
+        <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CONF-07</span><span class="std-id">CWE-693</span></dd>
+      </dl>
+      <a class="btn btn-primary btn-sm" href="headers/">Read the Security Headers guide</a>
+    </article>
+
+    <article class="card tool-catalog-card reveal" style="--d: .18s;">
+      <div class="tool-catalog-head">
+        <h3>CORS</h3>
+        <span class="cat-badge cat-assess">Assess targets</span>
+      </div>
+      <p class="tool-catalog-purpose">
+        How a reflected <code>Origin</code> plus credentials turns into a full
+        read of authenticated responses, and the five ways allowlists get
+        written wrong.
+      </p>
+      <dl class="catalog-meta">
+        <dt>Read</dt><dd>~5 minutes</dd>
+        <dt>Tool</dt><dd>CORS Validator</dd>
+        <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CLNT-07</span><span class="std-id">CWE-942</span></dd>
+      </dl>
+      <a class="btn btn-primary btn-sm" href="cors/">Read the CORS guide</a>
+    </article>
+
+    <article class="card tool-catalog-card reveal" style="--d: .24s;">
+      <div class="tool-catalog-head">
+        <h3>CSP</h3>
+        <span class="cat-badge cat-assess">Assess targets</span>
+      </div>
+      <p class="tool-catalog-purpose">
+        Reading a policy for what it actually blocks: fallback chains,
+        <code>'unsafe-inline'</code> versus nonces, and the directives a
+        <code>&lt;meta&gt;</code> tag silently drops.
+      </p>
+      <dl class="catalog-meta">
+        <dt>Read</dt><dd>~5 minutes</dd>
+        <dt>Tool</dt><dd>CSP Policy Auditor</dd>
+        <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CONF-12</span><span class="std-id">CWE-79</span></dd>
+      </dl>
+      <a class="btn btn-primary btn-sm" href="csp/">Read the CSP guide</a>
+    </article>
+
+    <article class="card tool-catalog-card reveal" style="--d: .3s;">
+      <div class="tool-catalog-head">
+        <h3>CSRF</h3>
+        <span class="cat-badge cat-local">Local utilities</span>
+      </div>
+      <p class="tool-catalog-purpose">
+        The three conditions an action must meet to be forgeable, and how to
+        turn a raw request into the proof-of-concept a developer can run.
+      </p>
+      <dl class="catalog-meta">
+        <dt>Read</dt><dd>~5 minutes</dd>
+        <dt>Tool</dt><dd>CSRF PoC Generator</dd>
+        <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-SESS-05</span><span class="std-id">CWE-352</span></dd>
+      </dl>
+      <a class="btn btn-primary btn-sm" href="csrf/">Read the CSRF guide</a>
     </article>
 
   </div>

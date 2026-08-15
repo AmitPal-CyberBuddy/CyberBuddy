@@ -30,12 +30,18 @@ and catalog fallbacks.
 
 ## Guides
 
-Short, tool-connected notes live under `/guides/`. Each guide covers one
-weakness, points at the tool that confirms it, and closes with primary
-references (OWASP, CWE, MDN, specs) for depth — they are deliberately
-concise, not a full article library. The pilot guide is
-[`guides/clickjacking/`](guides/clickjacking/), paired with the Clickjacking
-Validator.
+Short, tool-connected notes live under `/guides/` — one per tool. Each guide
+covers one weakness, points at the tool that confirms it, and closes with
+primary references (OWASP, CWE, MDN, specs) for depth — they are deliberately
+concise, not a full article library.
+
+| Guide | Pairs with | Standards |
+| --- | --- | --- |
+| [`guides/clickjacking/`](guides/clickjacking/) | Clickjacking Validator | OWASP WSTG-CLNT-09 · CWE-1021 |
+| [`guides/headers/`](guides/headers/) | Security Headers | OWASP WSTG-CONF-07 · CWE-693 |
+| [`guides/cors/`](guides/cors/) | CORS Validator | OWASP WSTG-CLNT-07 · CWE-942 |
+| [`guides/csp/`](guides/csp/) | CSP Policy Auditor | OWASP WSTG-CONF-12 · CWE-79 |
+| [`guides/csrf/`](guides/csrf/) | CSRF PoC Generator | OWASP WSTG-SESS-05 · CWE-352 |
 
 ## Quick start (full scans)
 
@@ -77,7 +83,11 @@ index.html                      # hub (includes #methodology scoring notes)
 methodology/index.html          # full methodology page (also published to Pages)
 guides/
   index.html                    # guides index (short, tool-connected notes)
-  clickjacking/index.html       # pilot guide, paired with the Clickjacking Validator
+  clickjacking/index.html       # guide, paired with the Clickjacking Validator
+  headers/index.html            # guide, paired with Security Headers
+  cors/index.html               # guide, paired with the CORS Validator
+  csp/index.html                # guide, paired with the CSP Policy Auditor
+  csrf/index.html               # guide, paired with the CSRF PoC Generator
 css/app.css                     # shared design system
 css/noscript.css                # no-JS fallback (reveal animations off)
 css/404.css                     # standalone styles for 404.html

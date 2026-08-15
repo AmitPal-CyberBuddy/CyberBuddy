@@ -30,6 +30,10 @@ const PAGES = [
   ["methodology", "/methodology/"],
   ["guides", "/guides/"],
   ["guide-clickjacking", "/guides/clickjacking/"],
+  ["guide-headers", "/guides/headers/"],
+  ["guide-cors", "/guides/cors/"],
+  ["guide-csp", "/guides/csp/"],
+  ["guide-csrf", "/guides/csrf/"],
   ["404", "/404.html"]
 ];
 const TOOLS = [

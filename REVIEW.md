@@ -1556,7 +1556,7 @@ by the guard above.
 
 ---
 
-## 23. GUIDES-01 — Guides foundation + Clickjacking pilot (2026-08-15)
+## 23. GUIDES-01/02/03 — Guides foundation + a guide for every tool (2026-08-15)
 
 Work began from `origin/main` at `17e66e2` on the Arena-assigned branch
 `arena/01a003bd-cyberbuddy`. `docs/ROADMAP.md`, `docs/DEV-NOTES.md` and
@@ -1686,3 +1686,65 @@ Without it the header and footer Guides links, the 404 card, the tool backlink
 and two `sitemap.xml` URLs all 404 on `amitpal-cyberbuddy.github.io`. The arena
 push token still lacks the `workflows` permission, so this cannot be committed
 here — the same constraint PR #20 and PR #22 hit.
+
+### Extension — the remaining four guides (GUIDES-02 + GUIDES-03)
+
+After reviewing the pilot the maintainer lifted GUIDES-01's "exactly one pilot
+guide" non-goal: shipping a Guides section where four of five tools have no
+guide is worse than shipping none. GUIDES-02 (Headers, CSP) and GUIDES-03
+(CORS, CSRF) were therefore pulled into this PR, all four built on the pilot's
+template — attack in one paragraph → a `method-table` of the ways it goes
+wrong → a numbered *confirm it with the tool* walkthrough ending at the
+exportable report card → the fix as a copyable block → *go deeper*.
+
+- **`guides/headers/`** (~5 min) — which headers earn their place and which
+  are cargo cult. `X-XSS-Protection` belongs at `0` because the legacy auditor
+  could itself introduce XSS; `no-cache` does not prevent caching, `no-store`
+  does; HSTS is ignored entirely when served over plain HTTP, so the header on
+  the redirect response is wasted; `Referrer-Policy`'s default *and* its
+  invalid-value fallback are both `strict-origin-when-cross-origin`. The grade
+  is framed as a reading aid, not a number to farm — CWE-693 is cited as
+  thematic context only, since it is a Pillar whose mapping is DISCOURAGED
+  upstream.
+- **`guides/csp/`** (~5 min) — reading a policy for what it *actually* blocks:
+  the `script-src` → `script-src-elem`/`-attr` and `default-src` fallback
+  chains, why an allowlist with a JSONP-capable CDN is not a policy, why
+  `'unsafe-inline'` is ignored when a nonce is present, Report-Only versus
+  enforced, and the directives a `<meta>` tag silently drops
+  (`frame-ancestors`, `sandbox`, reporting).
+- **`guides/cors/`** (~5 min) — CORS governs *reading*, and is not a CSRF
+  defence. Reflected `Origin` plus `Access-Control-Allow-Credentials: true` is
+  a full read of authenticated responses; the allowlist failure modes
+  (prefix/suffix/regex matching, an allowlisted `null` reachable from a
+  sandboxed iframe, wildcard with credentials) each get a row, and the missing
+  `Vary: Origin` cache-poisoning case is called out as a separate finding that
+  never sets headline risk — matching the engine.
+- **`guides/csrf/`** (~5 min) — the three conditions that must all hold, why
+  the PoC file *is* the finding, and exactly what READY / LIMITED / NOT
+  DIRECTLY REPRESENTABLE mean (JSON bodies force a preflight; multipart with a
+  file field needs the victim to choose a file). Ends on the point that
+  outranks every mitigation: an XSS anywhere in the origin defeats all of them.
+
+Every tool page now carries a `p.guide-link` backlink beneath its standards
+line, so the guide/tool link is bidirectional for all five. The guides index
+lost its ghost card, gained four real cards and now reads `05 live`; its
+`std-line` no longer claims deep dives "live on Medium", which was the same
+overclaim the pilot's *go deeper* block was corrected for.
+
+`GuidesTests` was generalised rather than duplicated. A `GUIDES` table maps
+each slug to its tool slug, the standards its page must cite and the exact
+reference URLs it must link; every test loops over that table. Two consequences
+worth keeping: `test_scope_is_one_guide_per_tool` now asserts the set of
+`guides/*` directories equals the set of `tools/*` directories — adding a tool
+without a guide fails the suite — and the external-link check still requires
+every `<a href="http…">` in every guide to carry exactly
+`target="_blank" rel="noopener noreferrer"`. All 22 reference URLs were fetched
+and verified before being pinned. Still 23 tests, now covering five pages;
+the whole suite is **203/203 OK**.
+
+The four new guide URLs were added to the `layout`, `dropdown` and
+`responsive` PAGES arrays (again appended at the end in `responsive.js`, where
+`TOOLS = PAGES.slice(1, 5)`), and `sitemap.xml`, `llms.txt` and `README.md`
+now list all five guides. The maintainer follow-up above is unchanged and
+still required: without `cp -a guides _site/` the whole section, now six pages
+instead of two, 404s in production.

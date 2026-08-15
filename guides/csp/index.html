@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Content Security Policy guide — CyberBuddy</title>
+  <meta name="description" content="A short CSP guide: why a policy can exist and still stop nothing, which directives are load-bearing, how nonce and strict-dynamic policies beat host allowlists, and how to audit one with the CyberBuddy CSP Policy Auditor." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csp/" />
+  <meta property="og:title" content="Content Security Policy guide — CyberBuddy" />
+  <meta property="og:description" content="Why a CSP can exist and still stop nothing, which directives are load-bearing, and how to audit a policy in one pass." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csp/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Content Security Policy guide — CyberBuddy" />
+  <meta name="twitter:description" content="Why a CSP can exist and still stop nothing, which directives are load-bearing, and how to audit a policy in one pass." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "CSP: reading a policy for what it actually blocks",
+      "description": "Why a CSP can exist and still stop nothing, which directives are load-bearing, how nonce and strict-dynamic policies beat host allowlists, and how to audit one with the CyberBuddy CSP Policy Auditor.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csp/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/csp/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">CSP: reading a policy for what it actually blocks</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Almost every site I test has a Content-Security-Policy. Far fewer have one
+    that would stop an injected script. The gap between “a CSP is present” and
+    “the CSP is a control” is where the finding lives.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-CONF-12</strong> &middot; <strong>CWE-79</strong> &middot; <strong>CWE-693</strong></p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/csp/">Open the CSP Policy Auditor</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>What a CSP is for</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      CSP is a second layer. It does not remove an XSS bug; it decides whether
+      the injected payload can execute or exfiltrate. A strong policy makes an
+      otherwise trivial injection unexploitable, and a weak one makes the
+      header pure decoration. It is defence in depth, never a substitute for
+      output encoding — that is the framing OWASP uses, and it is the framing I
+      use when a client asks whether the CSP “fixes” the XSS.
+    </p>
+    <p>
+      Three delivery mechanisms exist: the
+      <code>Content-Security-Policy</code> response header (full feature set,
+      preferred), <code>Content-Security-Policy-Report-Only</code>, and a
+      <code>&lt;meta http-equiv&gt;</code> tag. Only the first one blocks
+      anything. Report-Only records violations and enforces nothing, and a
+      <code>&lt;meta&gt;</code> policy silently cannot express
+      <code>frame-ancestors</code>, <code>sandbox</code>,
+      <code>report-uri</code> or <code>report-to</code>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The directives that decide the verdict</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="Load-bearing CSP directives">
+      <thead>
+        <tr><th scope="col">Directive</th><th scope="col">What it governs</th><th scope="col">What sinks it</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">script-src</td>
+          <td>Which scripts may execute. The one directive that decides whether XSS is exploitable.</td>
+          <td><code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>, <code>*</code>, <code>data:</code>, <code>http:</code>, or a bare <code>https:</code>.</td>
+        </tr>
+        <tr>
+          <td class="k">default-src</td>
+          <td>Fallback for fetch directives that are absent — including <code>script-src</code>.</td>
+          <td>Absent with no <code>script-src</code>: scripts are unrestricted.</td>
+        </tr>
+        <tr>
+          <td class="k">object-src</td>
+          <td>Plugin and legacy embed content.</td>
+          <td>Anything other than <code>'none'</code>, in practice.</td>
+        </tr>
+        <tr>
+          <td class="k">base-uri</td>
+          <td>Whether an injected <code>&lt;base&gt;</code> can re-point every relative script URL.</td>
+          <td>Missing. This is the quiet bypass of an otherwise strict policy.</td>
+        </tr>
+        <tr>
+          <td class="k">frame-ancestors</td>
+          <td>Who may frame the page.</td>
+          <td><code>*</code>, or missing — no other directive falls back to it.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      Two details the auditor is strict about. <code>'unsafe-inline'</code> is
+      <em>ignored</em> by browsers when a nonce or hash is also present, so it
+      is reported as information rather than a finding — it is legacy padding,
+      not a hole. And <code>'strict-dynamic'</code> without a nonce or hash to
+      anchor it has nothing to propagate trust from, which is a real weakness
+      rather than a modern policy.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Allowlists lose; nonces win</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Host allowlists fail in ways nobody audits for. A permitted CDN that
+      serves a JSONP endpoint hands an attacker arbitrary execution inside your
+      policy. A wildcard subdomain covers whatever gets taken over next quarter.
+      Every new third party widens the list, and the list is never narrowed
+      again.
+    </p>
+    <p>
+      A strict policy replaces the list with per-response trust: a fresh random
+      nonce (or a hash) on each script, <code>'strict-dynamic'</code> so
+      trusted scripts can still load their own dependencies, plus
+      <code>object-src 'none'</code> and <code>base-uri 'none'</code> to close
+      the two classic escapes. Reuse of a nonce across responses defeats the
+      whole scheme — it must be unpredictable and per-response.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Confirm it with the auditor</h2>
+  </div>
+  <article class="card reveal">
+    <ol>
+      <li>Open the <a href="../../tools/csp/">CSP Policy Auditor</a> and paste a URL you are authorized to test.</li>
+      <li>Press <strong>Audit CSP</strong>. It is a read-only <code>GET</code> and it reads the enforced header, not a policy you paste in.</li>
+      <li>Check the first row: if there is no enforced policy, a Report-Only header is called out separately — that combination is a finding, not a pass.</li>
+      <li>Read the <em>effective</em> script source. Where both <code>script-src</code> and <code>default-src</code> exist, only the one the browser will apply is scored.</li>
+      <li>Export the report card. Each check carries the directive value it judged, so a developer can reproduce the verdict.</li>
+    </ol>
+    <p>
+      Severities roll up the way you would expect: one high-severity issue
+      makes the policy high risk, medium makes it medium, everything else low.
+      Where a site sends multiple enforced policies, the auditor combines them
+      conjunctively — a resource must pass all of them, so one strict policy
+      can supply a control another omits. The rules are on the
+      <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The fix</h2>
+  </div>
+  <article class="card reveal">
+    <p>A strict starting policy, served as a response header:</p>
+    <pre><code>Content-Security-Policy:
+  script-src 'nonce-{random}' 'strict-dynamic' https: 'unsafe-inline';
+  object-src 'none';
+  base-uri 'none';
+  frame-ancestors 'none'</code></pre>
+    <p>
+      The trailing <code>https:</code> and <code>'unsafe-inline'</code> are
+      deliberate backwards-compatibility padding: browsers that understand
+      nonces and <code>'strict-dynamic'</code> ignore both. Roll it out in
+      Report-Only first, watch the violation reports, then move it to the
+      enforcing header — and re-audit, because a policy that never leaves
+      Report-Only has never blocked anything.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      That is enough to grade a policy and write it up. When I need the
+      underlying detail — or need to prove a bypass is real — I start here:
+    </p>
+    <ul>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/12-Test_for_Content_Security_Policy" target="_blank" rel="noopener noreferrer">OWASP WSTG-CONF-12 — Test for Content Security Policy</a>
+        — the test procedure, plus the bypass patterns worth trying.
+      </li>
+      <li>
+        <a href="https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP Content Security Policy Cheat Sheet</a>
+        — delivery mechanisms, directive-by-directive guidance and what a
+        <code>&lt;meta&gt;</code> policy cannot do.
+      </li>
+      <li>
+        <a href="https://web.dev/articles/strict-csp" target="_blank" rel="noopener noreferrer">web.dev — Mitigate XSS with a strict CSP</a>
+        — the nonce and <code>'strict-dynamic'</code> rollout in practice,
+        including the Report-Only staging step.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy" target="_blank" rel="noopener noreferrer">MDN — <code>Content-Security-Policy</code></a>
+        — every directive, and which ones fall back to
+        <code>default-src</code>.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/79.html" target="_blank" rel="noopener noreferrer">CWE-79 — Cross-site Scripting</a>
+        and
+        <a href="https://cwe.mitre.org/data/definitions/693.html" target="_blank" rel="noopener noreferrer">CWE-693 — Protection Mechanism Failure</a>
+        — the identifiers to cite depending on whether you found the injection
+        or only the weak policy.
+      </li>
+      <li>
+        <a href="https://w3c.github.io/webappsec-csp/" target="_blank" rel="noopener noreferrer">CSP Level 3 specification</a>
+        — the normative text, for when an implementation and a scanner
+        disagree.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Audit systems you own or have
+      written permission to assess. The auditor sends read-only requests, but
+      permission is still yours to obtain.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

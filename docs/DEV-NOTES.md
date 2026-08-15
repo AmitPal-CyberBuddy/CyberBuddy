@@ -401,7 +401,7 @@ should remain shared.
   the JS registry is still the single JS source. Keep the fallback and the
   registry in sync when tool metadata changes.
 
-## GUIDES-01 traps — the Guides section
+## GUIDES traps — the Guides section
 
 - **A guide is only useful if it is connected.** The contract for every guide
   is three links: *up* to `/guides/`, *across* to the tool that confirms the
@@ -430,10 +430,11 @@ should remain shared.
   the register (“I walk through how I separate…”).
   `test_guides_are_written_in_first_person_not_as_a_narrator` bans
   “maintainer”/“the author's” in guide prose and requires a first-person “I”.
-- **Concise is a tested property, not a wish.** `test_pilot_stays_short` caps
-  the pilot's visible word count. GUIDES-02/03 must copy the pilot's shape
-  (attack in one paragraph → the controls → confirm with the tool → the fix →
-  go deeper), not grow it.
+- **Concise is a tested property, not a wish.** `test_guides_stay_short` caps
+  every guide's visible word count at 1200 words. All five copy the pilot's
+  shape (attack in one paragraph → the controls / the ways it goes wrong →
+  confirm with the tool → the fix → go deeper). Do not let one grow into an
+  article.
 - **Guide facts must track the engine.** The pilot's risk sentence mirrors
   `clickjacking_validator.py`'s `score()` ladder (permissive/absent
   `frame-ancestors` = High, X-Frame-Options only = Medium, restrictive
@@ -461,3 +462,30 @@ should remain shared.
 - **Footer stays category-based.** *Guides* is one entry in the Learn column —
   never one entry per guide. `test_footer_learn_column_links_to_guides`
   asserts the column contains `/guides/` and no `/guides/<slug>/`.
+- **`GuidesTests` is table-driven — extend the table, not the tests.** The
+  class holds a `GUIDES` dict mapping each slug to `(tool slug, standards,
+  reference URLs)`, and every test loops over it. Adding a guide means one new
+  entry; adding a *tool* means one new entry too, because
+  `test_scope_is_one_guide_per_tool` asserts `sorted(guides/*) ==
+  sorted(tools/*)`. That is deliberate: a tool without a guide should fail the
+  suite rather than ship silently.
+- **Every guide needs the `p.guide-link` backlink on its tool page.** It goes
+  immediately after the tool's `p.std-line` (around line 55) as
+  `<p class="guide-link reveal" style="--d: .12s;">New to this check? Read the
+  <a href="../../guides/<slug>/">N-minute … guide</a> first.</p>`. The
+  `.guide-link` rule lives at `css/app.css:1695`; the subsequent `--d` delays
+  on that page were left alone on purpose — the stagger is decorative, not
+  sequential.
+- **CWE-693 is a Pillar and its mapping is DISCOURAGED upstream.** The headers
+  and CSP tools already carry it in their standards line for continuity, but a
+  guide must present it as thematic context and cite the concrete ID (CWE-79
+  for CSP, CWE-1021 for clickjacking, CWE-942 for CORS, CWE-352 for CSRF) as
+  the one to put in a report.
+- **Guide risk language must mirror the engine, for all five.** CORS:
+  reflected `Origin` + credentials = High, reflection alone or wildcard +
+  credentials = Medium, everything else Low, and missing `Vary: Origin` is a
+  separate finding that never sets headline risk. CSRF: READY / LIMITED / NOT
+  DIRECTLY REPRESENTABLE, where `application/json` and multipart-with-file are
+  what produce LIMITED. Headers: A≥90 B≥75 C≥60 D≥45 else F, A/B low, C/D
+  medium, F high. Change a scorer and the matching guide is a third place to
+  update, after the tool page and the methodology page.

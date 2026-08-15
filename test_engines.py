@@ -2079,22 +2079,114 @@ class ToolCatalogTests(unittest.TestCase):
 
 
 class GuidesTests(unittest.TestCase):
-    """GUIDES-01: the public Guides foundation + the Clickjacking pilot.
+    """The public Guides section: one guide per tool.
 
     The point of a guide is that it is *connected*: reachable from the global
     nav, paired with the tool that confirms the finding, and honest about
-    where the long-form writing lives (Medium). It is deliberately concise —
-    this is a foundation and one pilot, not an article library.
+    where the depth comes from (primary references, not a blog that has no
+    post on the topic). Guides stay deliberately concise — five short notes,
+    not an article library.
     """
 
     INDEX = ROOT / "guides" / "index.html"
-    PILOT = ROOT / "guides" / "clickjacking" / "index.html"
+
+    #: slug -> (tool slug, standards that must appear, primary references)
+    GUIDES = {
+        "clickjacking": (
+            "clickjacking",
+            ("WSTG-CLNT-09", "CWE-1021"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/11-Client-side_Testing"
+                "/09-Testing_for_Clickjacking",
+                "https://cwe.mitre.org/data/definitions/1021.html",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Clickjacking_Defense_Cheat_Sheet.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Content-Security-Policy/frame-ancestors",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/X-Frame-Options",
+                "https://w3c.github.io/webappsec-csp/",
+                "https://portswigger.net/web-security/clickjacking",
+            ),
+        ),
+        "headers": (
+            "headers",
+            ("WSTG-CONF-07", "CWE-693"),
+            (
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "HTTP_Headers_Cheat_Sheet.html",
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing"
+                "/02-Configuration_and_Deployment_Management_Testing"
+                "/07-Test_HTTP_Strict_Transport_Security",
+                "https://cwe.mitre.org/data/definitions/693.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Strict-Transport-Security",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Referrer-Policy",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Set-Cookie",
+            ),
+        ),
+        "cors": (
+            "cors",
+            ("WSTG-CLNT-07", "CWE-942"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/11-Client-side_Testing"
+                "/07-Testing_Cross_Origin_Resource_Sharing",
+                "https://cwe.mitre.org/data/definitions/942.html",
+                "https://portswigger.net/web-security/cors",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Access-Control-Allow-Origin",
+            ),
+        ),
+        "csp": (
+            "csp",
+            ("WSTG-CONF-12", "CWE-79"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing"
+                "/02-Configuration_and_Deployment_Management_Testing"
+                "/12-Test_for_Content_Security_Policy",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Content_Security_Policy_Cheat_Sheet.html",
+                "https://cwe.mitre.org/data/definitions/79.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Content-Security-Policy",
+                "https://w3c.github.io/webappsec-csp/",
+            ),
+        ),
+        "csrf": (
+            "csrf",
+            ("WSTG-SESS-05", "CWE-352"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/06-Session_Management_Testing"
+                "/05-Testing_for_Cross_Site_Request_Forgery",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+                "https://cwe.mitre.org/data/definitions/352.html",
+                "https://portswigger.net/web-security/csrf",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Set-Cookie",
+            ),
+        ),
+    }
 
     def _index(self) -> str:
         return self.INDEX.read_text(encoding="utf-8")
 
-    def _pilot(self) -> str:
-        return self.PILOT.read_text(encoding="utf-8")
+    def _guide(self, slug: str) -> str:
+        return (ROOT / "guides" / slug / "index.html").read_text(encoding="utf-8")
+
+    def _pages(self):
+        """(name, html) for the index and every guide."""
+        yield "index", self._index()
+        for slug in sorted(self.GUIDES):
+            yield slug, self._guide(slug)
 
     def _app(self) -> str:
         return (ROOT / "js" / "app.js").read_text(encoding="utf-8")
@@ -2117,7 +2209,8 @@ class GuidesTests(unittest.TestCase):
         learn = body[body.index('aria-label="Learn"'):]
         self.assertIn("/guides/", learn)
         # Still a section link only: no per-guide entries.
-        self.assertNotIn("/guides/clickjacking/", learn)
+        for slug in self.GUIDES:
+            self.assertNotIn("/guides/%s/" % slug, learn)
 
     def test_hub_links_to_guides(self):
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
@@ -2132,13 +2225,16 @@ class GuidesTests(unittest.TestCase):
 
     # --- pages exist and use the shared shell ---------------------------
 
-    def test_both_pages_exist(self):
+    def test_every_page_exists(self):
         self.assertTrue(self.INDEX.is_file(), self.INDEX)
-        self.assertTrue(self.PILOT.is_file(), self.PILOT)
+        for slug in self.GUIDES:
+            path = ROOT / "guides" / slug / "index.html"
+            with self.subTest(guide=slug):
+                self.assertTrue(path.is_file(), path)
 
     def test_pages_use_the_established_shell(self):
-        for page, data_page in ((self._index(), "/guides/"),
-                                (self._pilot(), "/guides/clickjacking/")):
+        for name, page in self._pages():
+            data_page = "/guides/" if name == "index" else "/guides/%s/" % name
             with self.subTest(page=data_page):
                 self.assertIn('data-page="%s"' % data_page, page)
                 self.assertIn("theme-boot.js", page)
@@ -2148,8 +2244,9 @@ class GuidesTests(unittest.TestCase):
                 self.assertIn("frame-src 'none'", page)
 
     def test_pages_have_canonical_and_social_metadata(self):
-        for page, url in ((self._index(), "/CyberBuddy/guides/"),
-                          (self._pilot(), "/CyberBuddy/guides/clickjacking/")):
+        for name, page in self._pages():
+            url = "/CyberBuddy/guides/" if name == "index" \
+                else "/CyberBuddy/guides/%s/" % name
             with self.subTest(url=url):
                 self.assertIn('rel="canonical" href="https://amitpal-cyberbuddy.github.io'
                               + url + '"', page)
@@ -2158,18 +2255,21 @@ class GuidesTests(unittest.TestCase):
 
     # --- content presence ------------------------------------------------
 
-    def test_index_lists_the_pilot_guide(self):
+    def test_index_lists_every_guide(self):
         index = self._index()
-        self.assertIn('href="clickjacking/"', index)
-        self.assertIn("Clickjacking", index)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn('href="%s/"' % slug, index)
 
-    def test_scope_is_one_pilot_guide(self):
-        """Non-goal guard: exactly one guide directory ships in GUIDES-01."""
+    def test_scope_is_one_guide_per_tool(self):
+        """Every tool has a guide, and no guide exists without a tool."""
         dirs = sorted(p.name for p in (ROOT / "guides").iterdir() if p.is_dir())
-        self.assertEqual(dirs, ["clickjacking"])
+        self.assertEqual(dirs, sorted(self.GUIDES))
+        tools = sorted(p.name for p in (ROOT / "tools").iterdir() if p.is_dir())
+        self.assertEqual(dirs, tools)
 
-    def test_pilot_covers_both_framing_controls(self):
-        pilot = self._pilot()
+    def test_clickjacking_guide_covers_both_framing_controls(self):
+        page = self._guide("clickjacking")
         for needle in (
             "X-Frame-Options",
             "frame-ancestors",
@@ -2177,99 +2277,104 @@ class GuidesTests(unittest.TestCase):
             "SAMEORIGIN",
             "DENY",
         ):
-            self.assertIn(needle, pilot, needle)
+            self.assertIn(needle, page, needle)
 
-    def test_pilot_carries_the_standards_line(self):
+    def test_every_guide_carries_its_standards_line(self):
         """Same standards identity the tool uses, so the guide and the report
         cite one thing."""
-        pilot = self._pilot()
-        self.assertIn("WSTG-CLNT-09", pilot)
-        self.assertIn("CWE-1021", pilot)
+        for slug, (_tool, standards, _refs) in self.GUIDES.items():
+            page = self._guide(slug)
+            for std in standards:
+                with self.subTest(guide=slug, standard=std):
+                    self.assertIn(std, page)
 
-    def test_pilot_states_the_authorization_boundary(self):
-        self.assertIn("Authorized testing only", self._pilot())
-        self.assertIn("Authorized testing only", self._index())
+    def test_pages_state_the_authorization_boundary(self):
+        for name, page in self._pages():
+            with self.subTest(page=name):
+                self.assertIn("Authorized testing only", page)
 
-    def test_pilot_stays_short(self):
-        """Concise by design: the pilot is a few minutes of reading, not a
+    def test_guides_stay_short(self):
+        """Concise by design: a guide is a few minutes of reading, not a
         long-form article."""
-        text = re.sub(r"<[^>]+>", " ", self._pilot())
-        words = len(text.split())
-        self.assertLess(words, 1200, words)
+        for slug in self.GUIDES:
+            text = re.sub(r"<[^>]+>", " ", self._guide(slug))
+            words = len(text.split())
+            with self.subTest(guide=slug, words=words):
+                self.assertLess(words, 1200, words)
 
     # --- the connections that make a guide useful ------------------------
 
     def test_guide_links_to_the_matching_tool(self):
-        pilot = self._pilot()
-        self.assertIn('href="../../tools/clickjacking/"', pilot)
+        for slug, (tool, _standards, _refs) in self.GUIDES.items():
+            with self.subTest(guide=slug):
+                self.assertIn('href="../../tools/%s/"' % tool, self._guide(slug))
 
     def test_tool_links_back_to_the_guide(self):
-        tool = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('href="../../guides/clickjacking/"', tool)
+        for slug, (tool, _standards, _refs) in self.GUIDES.items():
+            page = (ROOT / "tools" / tool / "index.html").read_text(encoding="utf-8")
+            with self.subTest(tool=tool):
+                self.assertIn('href="../../guides/%s/"' % slug, page)
 
     def test_guides_never_sell_the_blog_as_a_per_tool_deep_dive(self):
         """Only two Medium posts exist (request smuggling vs pipelining, and
-        client-side encryption). Neither is about clickjacking, so pointing a
+        client-side encryption). Neither matches a guide topic, so pointing a
         guide's "Go deeper" at the profile root promises a write-up that is
         not there. A blog link belongs in a guide only when a post on that
         exact topic exists."""
-        for name, page in (("index", self._index()), ("pilot", self._pilot())):
+        for name, page in self._pages():
             with self.subTest(page=name):
                 self.assertNotIn("medium.com", page)
 
-    def test_pilot_goes_deeper_via_real_primary_references(self):
-        """The "Go deeper" block must cite sources that actually document this
+    def test_guides_go_deeper_via_real_primary_references(self):
+        """The "Go deeper" block must cite sources that actually document the
         weakness, each opened safely in a new tab."""
-        pilot = self._pilot()
-        for url in (
-            "https://owasp.org/www-project-web-security-testing-guide/latest"
-            "/4-Web_Application_Security_Testing/11-Client-side_Testing"
-            "/09-Testing_for_Clickjacking",
-            "https://cwe.mitre.org/data/definitions/1021.html",
-            "https://cheatsheetseries.owasp.org/cheatsheets/"
-            "Clickjacking_Defense_Cheat_Sheet.html",
-            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
-            "/Headers/Content-Security-Policy/frame-ancestors",
-            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
-            "/Headers/X-Frame-Options",
-            "https://w3c.github.io/webappsec-csp/",
-            "https://portswigger.net/web-security/clickjacking",
-        ):
-            with self.subTest(url=url):
-                self.assertIn(url, pilot)
-        for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', pilot):
-            with self.subTest(link=external):
-                self.assertIn('href="' + external + '" target="_blank" '
-                              'rel="noopener noreferrer"', pilot)
+        for slug, (_tool, _standards, refs) in self.GUIDES.items():
+            page = self._guide(slug)
+            for url in refs:
+                with self.subTest(guide=slug, url=url):
+                    self.assertIn(url, page)
+            for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', page):
+                with self.subTest(guide=slug, link=external):
+                    self.assertIn('href="' + external + '" target="_blank" '
+                                  'rel="noopener noreferrer"', page)
 
     def test_guides_are_written_in_first_person_not_as_a_narrator(self):
-        """These are the author's own notes. Copy that refers to "the
-        maintainer" reads like an assistant describing someone else's site."""
-        for name, page in (("index", self._index()), ("pilot", self._pilot())):
+        """These are my own notes. Copy that refers to "the maintainer" reads
+        like an assistant describing someone else's site."""
+        for name, page in self._pages():
             prose = re.sub(r"<[^>]+>", " ", page)
             with self.subTest(page=name):
                 for tell in ("maintainer", "the author's", "this website's owner"):
                     self.assertNotIn(tell, prose.lower(), tell)
                 self.assertRegex(prose, r"\bI\b")
 
-    def test_guide_points_at_the_scoring_methodology(self):
-        self.assertIn('href="../../methodology/"', self._pilot())
+    def test_guides_point_at_the_scoring_methodology(self):
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn('href="../../methodology/"', self._guide(slug))
 
     # --- discoverability --------------------------------------------------
 
-    def test_sitemap_lists_both_guide_urls(self):
+    def test_sitemap_lists_every_guide_url(self):
         sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
         self.assertIn("/CyberBuddy/guides/</loc>", sitemap)
-        self.assertIn("/CyberBuddy/guides/clickjacking/</loc>", sitemap)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("/CyberBuddy/guides/%s/</loc>" % slug, sitemap)
 
     def test_llms_txt_describes_the_guides_section(self):
         text = (ROOT / "llms.txt").read_text(encoding="utf-8")
         self.assertIn("/guides/", text)
-        self.assertIn("/guides/clickjacking/", text)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("/guides/%s/" % slug, text)
 
     def test_readme_documents_the_section(self):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("guides/", text)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("guides/%s/" % slug, text)
 
     def test_server_serves_the_section(self):
         text = (ROOT / "server.py").read_text(encoding="utf-8")
