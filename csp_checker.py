@@ -10,11 +10,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from urllib.parse import urlparse
 
-from clickjacking_validator import fetch_headers, normalize_url, validate_target
+from clickjacking_validator import fetch_headers, normalize_url, redact_userinfo, validate_target
+from security_headers import grade_for
+
+
+# Deductions applied to the 0-100 score, one per actionable finding, by its
+# severity. These are *configuration-posture* weights (how much a single gap
+# drags the policy down), not a vulnerability-severity rating: a misconfigured
+# CSP is a defence-in-depth weakness, so the numeric score is the honest way
+# to present it rather than "HIGH/MEDIUM/LOW" that reads like exploitability.
+_CSP_DEDUCTIONS = {"high": 20, "medium": 10, "low": 5}
+
+
+def _csp_score(checks: list[CspCheck]) -> int:
+    """Derive a 0-100 posture score from the findings' severities."""
+    total = 0
+    for check in checks:
+        if check.status in {"missing", "weak", "error"}:
+            total += _CSP_DEDUCTIONS.get(check.severity, 0)
+    return max(0, 100 - total)
 
 
 SUGGESTED_POLICY = (
@@ -49,6 +68,8 @@ class CspResult:
     status_code: int | None
     checks: list[CspCheck] = field(default_factory=list)
     risk: str = "unknown"
+    score: int | None = None
+    grade: str = ""
     summary: str = ""
     policy: str = ""
     report_only_policy: str = ""
@@ -302,7 +323,10 @@ def _check_styles(directives: dict[str, list[str]]) -> CspCheck:
 
 
 def _check_mixed_content(directives: dict[str, list[str]], final_url: str) -> CspCheck:
-    if urlparse(final_url).scheme != "https":
+    # A pasted header has no delivery context: no URL was fetched, so we can
+    # neither confirm HTTPS nor flag cleartext delivery. Fall through to the
+    # directive-level cleartext-source check instead of a false HTTP finding.
+    if final_url and urlparse(final_url).scheme != "https":
         return CspCheck(
             "Mixed-content control", "weak",
             "The final page is delivered over HTTP, so the CSP itself can be stripped or modified in transit.",
@@ -423,7 +447,9 @@ def grade_csp_from_map(
     else:
         parsed = [parse_policy(item) for item in policies]
         directives = parsed[0][0]
-        delivery_status = "ok" if urlparse(final).scheme == "https" else "weak"
+        # A pasted header (final == "") has no delivery context; the policy's
+        # presence is what matters, not whether the page is served over HTTPS.
+        delivery_status = "ok" if (not final or urlparse(final).scheme == "https") else "weak"
         checks.append(CspCheck(
             "Enforced response policy",
             delivery_status,
@@ -490,12 +516,15 @@ def grade_csp_from_map(
         for key in ("content-security-policy", "content-security-policy-report-only")
         if key in normalized
     }
+    score = _csp_score(checks)
     return CspResult(
         url=url,
         final_url=final,
         status_code=status_code,
         checks=checks,
         risk=risk,
+        score=score,
+        grade=grade_for(score),
         summary=summary,
         policy=policy,
         report_only_policy=report_only,
@@ -504,18 +533,43 @@ def grade_csp_from_map(
     )
 
 
+def grade_csp_from_header(value: str) -> CspResult:
+    """Audit a pasted Content-Security-Policy header value with no network.
+
+    Accepts the raw value with or without a ``Content-Security-Policy:`` (or
+    ``Content-Security-Policy-Report-Only:``) label, mirroring the hosted
+    ``gradeCspFromHeader`` in js/app.js. There is no target, so the result has
+    no URL or HTTP status and skips the transport-delivery checks.
+    """
+    text = (value or "").strip()
+    match = re.match(r"(?is)^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$", text)
+    if match:
+        name, body = match.group(1).lower(), match.group(2).strip()
+    else:
+        name, body = "", text
+    headers: dict[str, str] = {}
+    if name == "content-security-policy-report-only":
+        headers["content-security-policy-report-only"] = body
+    else:
+        headers["content-security-policy"] = body
+    result = grade_csp_from_map("", None, "", headers)
+    result._pasted = True  # type: ignore[attr-defined]
+    return result
+
+
 def scan_csp(
     url: str,
     timeout: float = 15.0,
     insecure: bool = False,
     allow_private: bool = True,
 ) -> CspResult:
+    safe_url = redact_userinfo(url)
     try:
         url = normalize_url(url)
         validate_target(url, allow_private=allow_private)
     except ValueError as exc:
         return CspResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[CspCheck("request", "error", str(exc), severity="high")],
             risk="unknown", summary=str(exc),
         )
@@ -525,7 +579,7 @@ def scan_csp(
         )
     except Exception as exc:  # noqa: BLE001 — network errors belong in the report
         return CspResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[CspCheck("request", "error", f"Request failed: {exc}", severity="high")],
             risk="unknown", summary=f"Request failed: {exc}",
         )

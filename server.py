@@ -37,9 +37,9 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit, urlunsplit
 
-from clickjacking_validator import normalize_url, scan_url, validate_target
+from clickjacking_validator import normalize_url, redact_userinfo, scan_url, validate_target
 from cors_validator import scan_cors
 from csp_checker import scan_csp
 from security_headers import scan_headers
@@ -121,6 +121,34 @@ def _under_root(path: Path) -> bool:
         return False
 
 
+def redact_log_target(line: str) -> str:
+    """Redact a credential in a request line (the `url` query parameter) so a
+    pasted `https://user:secret@…` target never reaches the console or a log
+    file. Only rewrites the request target; never touches status/size."""
+    try:
+        head, target, tail = line.split(" ", 2)
+    except ValueError:
+        return line
+    try:
+        parts = urlsplit(target)
+        if not parts.query:
+            return line
+        redacted = []
+        for pair in parts.query.split("&"):
+            if "=" not in pair:
+                redacted.append(pair)
+                continue
+            key, value = pair.split("=", 1)
+            if key == "url":
+                value = quote(redact_userinfo(unquote(value)), safe="")
+            redacted.append(f"{key}={value}")
+        target = urlunsplit((parts.scheme, parts.netloc, parts.path,
+                             "&".join(redacted), parts.fragment))
+        return f"{head} {target} {tail}"
+    except Exception:
+        return line
+
+
 def strip_mount(path: str) -> str:
     """Drop a known public mount prefix (/CyberBuddy) from the request path."""
     for prefix in MOUNT_PREFIXES:
@@ -150,6 +178,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
 
     def log_message(self, fmt: str, *args) -> None:
+        args = tuple(redact_log_target(a) if isinstance(a, str) else a for a in args)
         print("[http] " + fmt % args)
 
     # CyberBuddy grades these headers on other sites, so it ships them itself.

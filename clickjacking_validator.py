@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from http_session import dns_resolve, get_session_pool
 
@@ -64,6 +64,23 @@ class ScanResult:
         return asdict(self)
 
 
+def redact_userinfo(url: str) -> str:
+    """Strip any user:pass@ from a URL so a credential never reaches a report,
+    log, or export — including when the URL is about to be rejected for
+    carrying one. Mirrors ``redactUrlCredentials`` in js/app.js."""
+    try:
+        parts = urlsplit(url)
+        if parts.username or parts.password:
+            host = parts.hostname or ""
+            if parts.port is not None:
+                host = f"{host}:{parts.port}"
+            return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    except ValueError:
+        pass
+    # Fallback for malformed input: strip a leading userinfo segment.
+    return re.sub(r"^(https?://)[^/@\s]+@", r"\1", url, flags=re.IGNORECASE)
+
+
 def normalize_url(raw: str) -> str:
     raw = raw.strip()
     if not raw:
@@ -78,6 +95,8 @@ def normalize_url(raw: str) -> str:
         raise ValueError(f"invalid URL: {raw}")
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"only http(s) URLs are allowed: {raw}")
+    if parsed.username or parsed.password:
+        raise ValueError("remove the username and password from the URL before scanning")
     return raw
 
 
@@ -473,11 +492,12 @@ def scan_url(
     insecure: bool,
     allow_private: bool = True,
 ) -> ScanResult:
+    safe_url = redact_userinfo(url)
     try:
         url = normalize_url(url)
         validate_target(url, allow_private=allow_private)
     except ValueError as exc:
-        return ScanResult(url=url, final_url=url, status_code=None, findings=[
+        return ScanResult(url=safe_url, final_url=safe_url, status_code=None, findings=[
             Finding(name="request", status="error", detail=str(exc))
         ], risk="unknown", summary=str(exc))
 
@@ -487,8 +507,8 @@ def scan_url(
         )
     except Exception as exc:  # noqa: BLE001 — surface network errors to the user
         return ScanResult(
-            url=url,
-            final_url=url,
+            url=safe_url,
+            final_url=safe_url,
             status_code=None,
             findings=[Finding(name="request", status="error", detail=f"Request failed: {exc}")],
             risk="unknown",

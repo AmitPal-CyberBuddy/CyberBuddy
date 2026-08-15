@@ -825,6 +825,22 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
   border-radius: var(--radius-sm); padding: 10px 12px;
 }
 
+/* Paste-a-header mode on the CSP tool: a label + textarea matching the
+   other form controls, without pulling in the .field URL-input layout. */
+.csp-paste-label {
+  font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+}
+.csp-paste-input {
+  width: 100%; min-height: 84px; resize: vertical;
+  font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.55; color: var(--ink);
+  background: var(--input-bg); border: 1px solid var(--line-strong); border-radius: 12px;
+  padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.csp-paste-input:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.csp-paste-input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px var(--high-bg); }
+.paste-csp .pages-note-body > div { display: flex; justify-content: flex-end; }
+
 /* Frame stage */
 .stage {
   position: relative; width: 100%; height: 440px;
