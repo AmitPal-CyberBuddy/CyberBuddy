@@ -14,7 +14,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from urllib.parse import urlparse
 
-from clickjacking_validator import fetch_headers, normalize_url, validate_target
+from clickjacking_validator import fetch_headers, normalize_url, redact_userinfo, validate_target
 
 
 SUGGESTED_POLICY = (
@@ -510,12 +510,13 @@ def scan_csp(
     insecure: bool = False,
     allow_private: bool = True,
 ) -> CspResult:
+    safe_url = redact_userinfo(url)
     try:
         url = normalize_url(url)
         validate_target(url, allow_private=allow_private)
     except ValueError as exc:
         return CspResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[CspCheck("request", "error", str(exc), severity="high")],
             risk="unknown", summary=str(exc),
         )
@@ -525,7 +526,7 @@ def scan_csp(
         )
     except Exception as exc:  # noqa: BLE001 — network errors belong in the report
         return CspResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[CspCheck("request", "error", f"Request failed: {exc}", severity="high")],
             risk="unknown", summary=f"Request failed: {exc}",
         )

@@ -22,6 +22,7 @@ from clickjacking_validator import (
     fetch_headers,
     normalize_url,
     parse_csp,
+    redact_userinfo,
     validate_target,
 )
 
@@ -520,12 +521,13 @@ def scan_headers(
     insecure: bool = False,
     allow_private: bool = True,
 ) -> HeadersResult:
+    safe_url = redact_userinfo(url)
     try:
         url = normalize_url(url)
         validate_target(url, allow_private=allow_private)
     except ValueError as exc:
         return HeadersResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[Check("request", "error", str(exc))],
             grade="F", risk="unknown", summary=str(exc),
         )
@@ -536,7 +538,7 @@ def scan_headers(
         )
     except Exception as exc:  # noqa: BLE001 — surface network errors
         return HeadersResult(
-            url=url, final_url=url, status_code=None,
+            url=safe_url, final_url=safe_url, status_code=None,
             checks=[Check("request", "error", f"Request failed: {exc}")],
             grade="F", risk="unknown", summary=f"Request failed: {exc}",
         )

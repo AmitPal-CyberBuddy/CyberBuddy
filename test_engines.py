@@ -71,6 +71,61 @@ class NormalizeUrlTests(unittest.TestCase):
             normalize_url("   ")
 
 
+class CredentialRedactionTests(unittest.TestCase):
+    """A credential-bearing URL must be rejected by the Python engine exactly
+    as the hosted frontend rejects it, and a credential must never be echoed
+    into a report, log or export — not even in the error result for a URL
+    that was just rejected for carrying one."""
+
+    def test_normalize_url_rejects_credentials(self):
+        with self.assertRaises(ValueError):
+            normalize_url("https://user:secret@example.com/")
+        with self.assertRaises(ValueError):
+            normalize_url("http://alice:password@127.0.0.1:8080/x")
+
+    def test_redact_userinfo_strips_credentials(self):
+        from clickjacking_validator import redact_userinfo
+
+        self.assertEqual(
+            redact_userinfo("https://user:secret@example.com/private?x=1"),
+            "https://example.com/private?x=1",
+        )
+        self.assertEqual(redact_userinfo("https://example.com/"), "https://example.com/")
+
+    def test_every_scan_rejects_and_redacts_credentials(self):
+        """All four engines must neither accept a credential URL nor leak the
+        credential in the resulting report (url, final_url, summary, detail)."""
+        from clickjacking_validator import redact_userinfo, scan_url
+        from cors_validator import scan_cors
+        from csp_checker import scan_csp
+        from security_headers import scan_headers
+
+        target = "https://alice:hunter2@example.com/private"
+        for fn in (scan_url, scan_headers, scan_cors, scan_csp):
+            result = fn(target, timeout=5, insecure=False, allow_private=True)
+            payload = json.dumps(result.to_dict())
+            self.assertNotIn("hunter2", payload, fn.__name__)
+            self.assertNotIn("alice", payload, fn.__name__)
+            self.assertIn("remove the username and password", payload, fn.__name__)
+            # The echoed URL is redacted to the origin, never the credential.
+            self.assertIn("https://example.com/private", payload, fn.__name__)
+
+    def test_server_log_redacts_the_url_param(self):
+        from server import redact_log_target
+
+        self.assertEqual(
+            redact_log_target(
+                'GET /api/headers?url=https%3A%2F%2Falice%3Ahunter2%40example.com%2F HTTP/1.1'
+            ),
+            "GET /api/headers?url=https%3A%2F%2Fexample.com%2F HTTP/1.1",
+        )
+        # No url param → untouched.
+        self.assertEqual(
+            redact_log_target("GET /api/health HTTP/1.1"),
+            "GET /api/health HTTP/1.1",
+        )
+
+
 class ValidateTargetTests(unittest.TestCase):
     def test_blocks_metadata_ip(self):
         with self.assertRaises(ValueError):
@@ -3526,6 +3581,70 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertTrue(any("jwt" in u for u in urls), urls)
         names = [s.get("name", "") for s in manifest.get("shortcuts", [])]
         self.assertTrue(any("JWT" in n for n in names), names)
+
+
+class PagesAssetVerificationTests(unittest.TestCase):
+    """The Pages workflow's "Verify referenced assets exist" step must accept
+    root-relative references (404.html points at /CyberBuddy/… assets so it
+    still works from a deeply nested missing URL), and every local asset
+    reference in the published tree must resolve to a real file.
+
+    This is the regression guard for the deploy that failed on
+    "Referenced assets are missing from _site" because the step only knew how
+    to resolve relative hrefs and reported 404.html's absolute
+    /CyberBuddy/js/404.js (etc.) as missing.
+    """
+
+    ASSET_RE = re.compile(r'(?:href|src)="([^"#][^"]*\.(?:css|js|png|webmanifest)(?:\?[^"]*)?)"')
+    SKIP_TOP = {"_site", "node_modules", ".git", "__pycache__"}
+
+    def _html_files(self):
+        for path in sorted(ROOT.rglob("*.html")):
+            rel = path.relative_to(ROOT)
+            if rel.parts and rel.parts[0] in self.SKIP_TOP:
+                continue
+            yield path
+
+    def test_every_local_asset_reference_resolves(self):
+        """Mirror the workflow's asset check over the source tree (the same
+        files the assemble step copies into _site/), covering both relative
+        and root-relative /CyberBuddy/ references."""
+        for page in self._html_files():
+            text = page.read_text(encoding="utf-8", errors="replace")
+            for m in self.ASSET_RE.finditer(text):
+                ref = m.group(1).split("?", 1)[0]
+                if ref.startswith(("http:", "https:", "//", "data:")):
+                    continue
+                if ref.startswith("/"):
+                    # Root-relative: drop the leading slash and the GitHub
+                    # Pages repo-name segment, then resolve from the root.
+                    rel = ref.lstrip("/")
+                    parts = rel.split("/", 1)
+                    if parts[0] == "CyberBuddy":
+                        rel = parts[1] if len(parts) > 1 else ""
+                    target = ROOT / rel
+                else:
+                    target = page.parent / ref
+                self.assertTrue(
+                    target.is_file(),
+                    f"{page.relative_to(ROOT)} -> {ref}",
+                )
+
+    def test_workflow_asset_check_handles_root_relative_paths(self):
+        """The workflow step must resolve /CyberBuddy/… references, otherwise
+        404.html fails the build every deploy. The arena push token cannot
+        commit .github/workflows/**, so the fix may live in the workflow (a
+        maintainer applied it) or in docs/pages-workflow-patch.md (pending)."""
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertTrue(
+            'rel="${ref#/}"' in workflow or 'rel="${ref#/}"' in patch,
+            "root-relative asset check fix is neither applied nor documented",
+        )
+        self.assertTrue(
+            '[ -f "_site/$rel" ]' in workflow or '[ -f "_site/$rel" ]' in patch,
+            "root-relative asset check fix is neither applied nor documented",
+        )
 
 
 class PagesExclusionTests(unittest.TestCase):

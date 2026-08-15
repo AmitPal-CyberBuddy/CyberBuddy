@@ -81,6 +81,62 @@ The *Verify referenced assets exist* step will also catch the mistake in the
 other direction: if `guides/` is copied but `css/`/`js/` are not, the build
 fails rather than shipping an unstyled guide.
 
+## POST-MERGE FIX — root-relative asset check (apply if not already present)
+
+The nested-404 fix (in the `main` history after the guides/documentation
+patch landed) rewrote `404.html` to use **root-relative** asset references —
+`/CyberBuddy/js/404.js`, `/CyberBuddy/css/404.css`, `/CyberBuddy/icon-192.png`,
+etc. — so the 404 page keeps its styling and icons even when GitHub Pages
+serves it from a deeply nested missing URL.
+
+The *Verify referenced assets exist* step only knew how to resolve **relative**
+`href`/`src` values (`[ -f "$dir/$ref" ]`), so it reported every one of those
+absolute `/CyberBuddy/…` references as missing and **failed the deploy** at
+the guard — which is why the live site still serves the old relative-link 404
+that breaks under nested paths.
+
+Add a root-relative branch to that step's inner `case` so absolute references
+resolve against `_site` after the Pages base is stripped (matching
+`tools/audit_site.py`, which already does this):
+
+```yaml
+# before
+                while IFS= read -r ref; do
+                  case "$ref" in
+                    http*|//*|data:*) continue ;;
+                  esac
+                  [ -f "$dir/$ref" ] || echo "  $page -> $ref"
+                done
+# after
+                while IFS= read -r ref; do
+                  case "$ref" in
+                    http*|//*|data:*) continue ;;
+                    /*)
+                      # Root-relative references are written against the
+                      # GitHub Pages base (/CyberBuddy/). Strip the leading
+                      # slash and the repo-name segment, then resolve from
+                      # the artifact root, matching tools/audit_site.py.
+                      rel="${ref#/}"      # CyberBuddy/js/404.js
+                      rel="${rel#*/}"     # js/404.js
+                      [ -f "_site/$rel" ] || echo "  $page -> $ref"
+                      ;;
+                    *)
+                      [ -f "$dir/$ref" ] || echo "  $page -> $ref"
+                      ;;
+                  esac
+                done
+```
+
+Until this is applied, **every push to `main` fails the Pages build**, so the
+post-merge state (the new DNS/HAR roadmap, the JWT workbench completion, the
+nested-404 fix, and the per-tool export improvements) never reaches the live
+site. The companion guard is
+`test_engines.PagesAssetVerificationTests.test_every_local_asset_reference_resolves`,
+which fails if any page references an asset that is not copied into the site,
+and
+`test_workflow_asset_check_handles_root_relative_paths`, which passes once
+either the workflow or this patch carries the fix.
+
 ## Already applied — no action needed
 
 These IA-01 edits are live in `main` and are listed only so a diff of this
