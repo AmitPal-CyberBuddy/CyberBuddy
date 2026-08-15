@@ -71,8 +71,7 @@ TOOL_ALIASES = {
     "/clickjacking/": "/tools/clickjacking/",
     "/csrf": "/tools/csrf/",
     "/csrf/": "/tools/csrf/",
-    # JWT Security Workbench is a DEVELOPMENT PREVIEW (JWT-00): the alias
-    # points at the preview page, which is noindex and non-operational.
+    # JWT Security Workbench (local-only decode, verify, sign and test).
     "/jwt": "/tools/jwt/",
     "/jwt/": "/tools/jwt/",
 }
@@ -435,7 +434,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"CORS:         http://127.0.0.1:{PORT}/tools/cors/")
     print(f"CSP:          http://127.0.0.1:{PORT}/tools/csp/")
     print(f"CSRF:         http://127.0.0.1:{PORT}/tools/csrf/")
-    print(f"JWT (preview):http://127.0.0.1:{PORT}/tools/jwt/  (development preview, not operational)")
+    print(f"JWT Workbench:http://127.0.0.1:{PORT}/tools/jwt/")
     print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/health")
     if not loopback:
         print("WARNING: bound on a non-loopback address. Private-IP scans are "

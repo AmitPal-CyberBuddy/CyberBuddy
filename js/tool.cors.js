@@ -53,6 +53,15 @@
     const t0 = (window.performance && typeof performance.now === "function")
       ? performance.now() : null;
 
+    // A direct CORS probe does not use a relay, but the hosted NXDOMAIN
+    // preflight uses public DNS. Reuse the same explicit privacy gate.
+    const consent = await ensureRelayConsent(url);
+    if (consent === "deny") {
+      setVerdict("UNKNOWN", "Hosted DNS/header lookups were declined. Run python3 server.py for a local scan.");
+      setLoading($("go"), false);
+      return;
+    }
+
     const engine = await apiCors(url);
     if (engine && t0 != null) {
       engine._duration_ms = Math.max(1, Math.round(performance.now() - t0));

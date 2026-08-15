@@ -77,6 +77,12 @@ python3 server.py --host 0.0.0.0 --allow-private
 That serves the hub, all tool pages, and the JSON APIs that make header scans
 possible (browsers can't read cross-origin response headers on their own).
 
+The hub suite can run all four URL assessments or any selected subset; the
+selection is preserved in share links with the target URL. On GitHub Pages,
+a consent-gated A/AAAA lookup through Google Public DNS distinguishes
+NXDOMAIN / domains with no web address from ordinary CORS or relay failures.
+The Python engine performs its own authoritative system-DNS check locally.
+
 URL fields accept bare public domains (`example.com` becomes
 `https://example.com`) and local host/port input (`localhost:8080` becomes
 `http://localhost:8080`). Public hostnames need a dot and plausible TLD; IP
@@ -333,8 +339,10 @@ The **Export** menu offers:
 | --- | --- | --- |
 | Print / Save as PDF | Full card, paper layout, colours and the PoC overlay preserved | everywhere |
 | Download evidence card (PNG) | Tool-specific card drawn from the scan data — no live frame | everywhere |
-| Copy report (Markdown) | Paste-ready findings table | everywhere |
-| Copy JSON | Raw result object | everywhere |
+| Copy / download Markdown | Paste-ready metadata, context, findings, evidence and recommendations | everywhere |
+| Copy / download JSON | Versioned `cyberbuddy-report/v1` envelope for automation | everywhere |
+| Download CSV | Spreadsheet-safe metadata and findings (formula injection neutralized) | everywhere |
+| Download standalone HTML | Script-free, printable and portable report | everywhere |
 
 A cross-origin iframe **cannot** be rasterised in JavaScript: canvas pixels would
 be tainted, and `html2canvas` does not render iframes. CyberBuddy therefore does

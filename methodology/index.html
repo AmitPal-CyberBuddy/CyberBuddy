@@ -230,7 +230,10 @@
       and tenant IDs live), and marks anything a relay returns as
       <span class="unverified-flag">unverified</span>. Relays used:
       <code>hackertarget.com</code>, <code>allorigins.win</code>,
-      <code>corsproxy.io</code>, <code>codetabs.com</code>.
+      <code>corsproxy.io</code>, <code>codetabs.com</code>. After consent, the
+      hosted fallback also sends the hostname to <code>dns.google</code> for
+      A/AAAA lookup. This lets CyberBuddy identify NXDOMAIN and domains with
+      no web address instead of presenting a misleading security grade.
     </p>
     <p>
       For a scan where nothing leaves your machine, run

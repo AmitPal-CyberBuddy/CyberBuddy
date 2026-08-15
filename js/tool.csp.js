@@ -7,13 +7,14 @@
   function $(id) { return document.getElementById(id); }
 
   function setVerdict(data) {
-    const risk = (data.risk || "unknown").toLowerCase();
-    $("verdict").textContent = risk.toUpperCase();
+    const unreachable = !!data._unreachable;
+    const risk = unreachable ? "unreachable" : (data.risk || "unknown").toLowerCase();
+    $("verdict").textContent = unreachable ? "UNREACHABLE" : risk.toUpperCase();
     $("verdict").className = "risk " + risk;
     $("verdictBanner").className = "verdict-banner " + risk;
     bump($("verdict"));
 
-    let label = "CSP posture: UNABLE TO DETERMINE";
+    let label = unreachable ? "CSP posture: NOT GRADED — target unreachable" : "CSP posture: UNABLE TO DETERMINE";
     if (risk === "low") label = "CSP posture: RESTRICTIVE — no obvious dangerous source pattern";
     else if (risk === "medium") label = "CSP posture: NEEDS HARDENING — review directive gaps";
     else if (risk === "high") label = "CSP posture: HIGH-RISK — enforcement or script controls are weak";

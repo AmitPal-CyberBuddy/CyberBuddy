@@ -13,20 +13,28 @@
     $("results").classList.remove("hidden");
     setSourceChip(data);
 
-    const score = data.score != null ? data.score : 0;
-    const grade = (data.grade || "F").toUpperCase();
-    const risk = (data.risk || "unknown").toUpperCase();
+    const unreachable = !!data._unreachable;
+    const score = data.score != null ? data.score : null;
+    const grade = data.grade ? data.grade.toUpperCase() : "—";
+    const risk = unreachable ? "UNREACHABLE" : (data.risk || "unknown").toUpperCase();
 
-    renderGauge($("gauge"), score, grade);
+    if (unreachable) {
+      $("gauge").innerHTML = '<div class="score-gauge gauge-f" role="img" aria-label="No score — target unreachable">' +
+        '<svg viewBox="0 0 120 120" aria-hidden="true"><circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
+        '<text class="gauge-num" x="60" y="58" style="font-size:15px">no</text><text class="gauge-num" x="60" y="76" style="font-size:15px">data</text></svg>' +
+        '<span class="gauge-band">not graded</span></div>';
+    } else {
+      renderGauge($("gauge"), score != null ? score : 0, grade);
+    }
 
     $("grade").textContent = grade;
-    $("grade").className = "grade " + (gradeFor(score) || grade.toLowerCase());
+    $("grade").className = "grade " + (unreachable ? "unknown" : (gradeFor(score) || grade.toLowerCase()));
     bump($("grade"));
 
     $("risk").textContent = risk;
-    $("risk").className = "risk " + (data.risk || "unknown");
+    $("risk").className = "risk " + (unreachable ? "unreachable" : (data.risk || "unknown"));
     bump($("risk"));
-    $("verdict").className = "verdict-banner " + (data.risk || "unknown");
+    $("verdict").className = "verdict-banner " + (unreachable ? "unreachable" : (data.risk || "unknown"));
 
     $("mTarget").textContent = data.url || "—";
     $("mFinal").textContent = data.final_url || "—";

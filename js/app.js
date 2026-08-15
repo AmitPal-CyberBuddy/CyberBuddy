@@ -309,10 +309,8 @@ const TOOLS_MENU = [
     std: ["OWASP WSTG-SESS-05", "CWE-352"]
   },
   {
-    // JWT-01: decode, inspect and verify is functional; edit/generate
-    // (JWT-02) and variants/secret-test (JWT-03) remain previews on the
-    // same page. category "local" — it never scans a target or joins the
-    // Run suite.
+    // JWT-03: all Workbench panels are functional. category "local" — it
+    // never scans a target or joins the URL assessment suite.
     href: "/tools/jwt/",
     label: "JWT Security Workbench",
     status: "live",
@@ -320,13 +318,13 @@ const TOOLS_MENU = [
     category: "local",
     input: "JWT / Bearer token",
     mode: "Local in your browser — no token leaves the page",
-    evidence: "Decoded header/payload, claim timeline, observations, and HMAC/RSA-PSS/ECDSA signature verification",
-    desc: "Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. Edit/generate and secret testing are coming soon.",
-    tags: ["JWT", "decode", "verify", "HMAC", "RSA", "ECDSA", "JWKS"],
+    evidence: "Decoded claims, signature verification, semantic diff, signed variants, and bounded secret-test results",
+    desc: "Decode, inspect, verify, edit, re-sign and test JWTs locally — HMAC, RSA, RSA-PSS and ECDSA via Web Crypto, with no token or key leaving your browser.",
+    tags: ["JWT", "decode", "verify", "sign", "variants", "secret test"],
     std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];
-const TOOLS_SOON = ["TLS / SSL Analyzer", "Subdomain Enumeration"];
+const TOOLS_SOON = ["DNS & Domain Security Analyzer", "HAR Security Analyzer"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
@@ -700,6 +698,9 @@ async function detectEngine() {
 }
 
 async function apiCall(path, url) {
+  // Once detection has proved this is static Pages, avoid a guaranteed HTML
+  // 404 for every selected tool. This saves requests and prevents noisy logs.
+  if (!API_BASE && window.__cbEngine && window.__cbEngine.mode === "live") return null;
   try {
     const res = await fetch(apiUrl(path) + "?" + new URLSearchParams({ url }), apiHeadersInit());
     const ctype = (res.headers.get("content-type") || "").toLowerCase();
@@ -756,6 +757,71 @@ function unreachableDetail(data) {
   return (err && err.detail) || (data && data.summary) || "No response received.";
 }
 
+/* On a static Pages deployment a failed fetch cannot distinguish NXDOMAIN
+   from CORS, a timeout, or a relay outage. Before falling back to browser
+   graders, query public DNS (only after the existing relay/privacy consent)
+   so a made-up domain gets an honest, terminal UNREACHABLE result. DNS is a
+   hint rather than a security boundary; the Python engine remains authoritative. */
+const dnsChecksInFlight = new Map();
+
+async function hostedDomainStatus(url) {
+  let host = "";
+  try { host = new URL(url).hostname.replace(/\.$/, ""); } catch (_) { return null; }
+  if (!host || host === "localhost" || host.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return null;
+  if (window.__cbEngine && window.__cbEngine.mode === "python") return null;
+  if (dnsChecksInFlight.has(host)) return dnsChecksInFlight.get(host);
+
+  const query = async (type) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    try {
+      const endpoint = "https://dns.google/resolve?" + new URLSearchParams({ name: host, type: type });
+      const res = await fetch(endpoint, { cache: "no-store", signal: ctrl.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return { status: Number(data.Status), answers: Array.isArray(data.Answer) ? data.Answer.length : 0 };
+    } catch (_) { return null; }
+    finally { clearTimeout(timer); }
+  };
+
+  const task = Promise.all([query("A"), query("AAAA")]).then((answers) => {
+    const known = answers.filter(Boolean);
+    if (!known.length) return null; // DNS provider unavailable: continue normally.
+    if (known.some((item) => item.answers > 0)) return { exists: true, host: host };
+    if (known.every((item) => item.status === 3)) {
+      return { exists: false, host: host, detail: "DNS reports NXDOMAIN — the domain does not exist." };
+    }
+    if (known.every((item) => item.status === 0 && item.answers === 0)) {
+      return { exists: false, host: host, detail: "DNS returned no IPv4 or IPv6 web address for this domain." };
+    }
+    return null;
+  }).finally(() => dnsChecksInFlight.delete(host));
+  dnsChecksInFlight.set(host, task);
+  return task;
+}
+
+function unreachableScanResult(kind, url, detail) {
+  const item = { name: "Target reachability", status: "error", detail: detail, evidence: "DNS" };
+  const common = {
+    url: url, final_url: url, status_code: null, risk: "unknown",
+    summary: "Target not reachable. " + detail, headers: {}, _source: "browser", _unreachable: true
+  };
+  if (kind === "scan") common.findings = [item];
+  else common.checks = [item];
+  // An unreachable host has no score or grade; assigning 0/F would falsely
+  // describe transport failure as a measured security posture.
+  if (kind === "csp") Object.assign(common, {
+    policy: "", report_only_policy: "", directives: {}, suggested_policy: CSP_SUGGESTED_POLICY
+  });
+  if (kind === "cors") common.origins_tested = [];
+  return common;
+}
+
+async function hostedUnreachable(kind, url) {
+  const dns = await hostedDomainStatus(url);
+  return dns && dns.exists === false ? unreachableScanResult(kind, url, dns.detail) : null;
+}
+
 async function apiScan(url) {
   const local = await apiCall("/api/scan", url);
   if (isUsableScan(local, "scan")) {
@@ -770,6 +836,8 @@ async function apiScan(url) {
     cached.clickjacking._cached_at = cached.generated_at || "";
     return cached.clickjacking;
   }
+  const unreachable = await hostedUnreachable("scan", url);
+  if (unreachable) return unreachable;
   return gradeClickjackingLive(url);
 }
 
@@ -787,6 +855,8 @@ async function apiHeaders(url) {
     cached.headers._cached_at = cached.generated_at || "";
     return cached.headers;
   }
+  const unreachable = await hostedUnreachable("headers", url);
+  if (unreachable) return unreachable;
   return gradeHeadersLive(url);
 }
 
@@ -804,6 +874,8 @@ async function apiCors(url) {
     cached.cors._cached_at = cached.generated_at || "";
     return cached.cors;
   }
+  const unreachable = await hostedUnreachable("cors", url);
+  if (unreachable) return unreachable;
   return probeCorsLive(url);
 }
 
@@ -834,6 +906,8 @@ async function apiCsp(url) {
     derived._cached_at = cached.generated_at || "";
     return derived;
   }
+  const unreachable = await hostedUnreachable("csp", url);
+  if (unreachable) return unreachable;
   return gradeCspLive(url);
 }
 
@@ -1444,7 +1518,12 @@ function redactUrlCredentials(raw) {
   }
 }
 
+function redactCredentialText(raw) {
+  return String(raw == null ? "" : raw).replace(/\b(https?:\/\/)[^\s/@]+@/gi, "$1");
+}
+
 function reportSafeCopy(data) {
+  if (typeof data === "string") return redactCredentialText(data);
   if (!data || typeof data !== "object") return data;
   if (Array.isArray(data)) return data.map(reportSafeCopy);
   const out = {};
@@ -1500,6 +1579,17 @@ function buildEvidenceCardSpec(data, toolName) {
   const caveats = [];
   if (data.confirmation === "manual") caveats.push(["Confirmation", "analyst-attested visual observation"]);
   if (isUnverified(data)) caveats.push(["Caveat", "relay data — not independently verified"]);
+  if (data._unreachable) {
+    const title = kind === "clickjacking" ? "CLICKJACKING VALIDATOR"
+      : kind === "headers" ? "SECURITY HEADERS"
+      : kind === "cors" ? "CORS VALIDATOR"
+      : kind === "csp" ? "CSP POLICY AUDITOR" : "CYBERBUDDY";
+    return {
+      kind: kind, title: title, hero: "TARGET UNREACHABLE · NOT GRADED", risk: "unknown",
+      meta: commonMeta.concat(caveats), summary: data.summary || "No target response was received.",
+      contextTitle: "", context: [], rowsTitle: "REACHABILITY EVIDENCE", rows: reportRows(data)
+    };
+  }
 
   if (kind === "clickjacking") {
     const protection = risk === "low" ? "PROTECTION ENABLED"
@@ -1642,7 +1732,7 @@ function buildEvidenceCard(data, toolName) {
 
   ctx.font = mono;
   const wrapText = (text, maxW) => {
-    const source = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+    const source = redactCredentialText(text).replace(/\s+/g, " ").trim();
     if (!source) return [];
     const words = source.split(" ");
     const out = [];
@@ -1663,14 +1753,16 @@ function buildEvidenceCard(data, toolName) {
   const measureRows = (rows) => (rows || []).map((row) => ({
     row: row,
     detail: wrapText(row.detail, W - pad * 2 - 210),
-    evidence: row.evidence ? wrapText(row.evidence, W - pad * 2 - 210).slice(0, 5) : []
+    evidence: row.evidence ? wrapText("Evidence: " + row.evidence, W - pad * 2 - 210).slice(0, 8) : [],
+    recommendation: reportRecommendation(row)
+      ? wrapText("Recommendation: " + reportRecommendation(row), W - pad * 2 - 210).slice(0, 8) : []
   }));
   const measuredContext = measureRows(spec.context);
   const measuredRows = measureRows(spec.rows);
   const meta = spec.meta.map(([key, value]) => ({ key: key, lines: wrapText(value, W - pad * 2 - 160) }));
   const summary = wrapText(spec.summary, W - pad * 2);
   const rowsHeight = (items) => items.reduce((height, item) =>
-    height + lineH * (1 + Math.max(1, item.detail.length) + item.evidence.length) + 15, 0);
+    height + lineH * (1 + Math.max(1, item.detail.length) + item.evidence.length + item.recommendation.length) + 15, 0);
   const H = Math.max(430,
     205 + meta.reduce((height, item) => height + lineH * Math.max(1, item.lines.length), 0) +
     (summary.length ? summary.length * lineH + 34 : 0) +
@@ -1761,6 +1853,11 @@ function buildEvidenceCard(data, toolName) {
         ctx.fillText(line, pad + 110, y);
         y += lineH;
       });
+      ctx.fillStyle = C.brand;
+      item.recommendation.forEach((line) => {
+        ctx.fillText(line, pad + 110, y);
+        y += lineH;
+      });
       y += 15;
     });
   };
@@ -1804,9 +1901,18 @@ function initExportMenu(toolName, getData) {
     "Download evidence card (PNG)<span>Tool-specific evidence drawn from scan data</span></button>" +
     '<div class="export-menu-divider"></div>' +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="md">' +
-    "Copy report (Markdown)<span>Paste into your report</span></button>" +
+    "Copy Markdown<span>Paste-ready findings, evidence and recommendations</span></button>" +
     '<button type="button" class="export-menu-item" role="menuitem" data-act="json">' +
-    "Copy JSON<span>Raw result object</span></button>" +
+    "Copy JSON<span>Versioned, machine-readable report</span></button>" +
+    '<div class="export-menu-divider"></div>' +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="md-file">' +
+    "Download Markdown (.md)<span>Portable report source</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="json-file">' +
+    "Download JSON (.json)<span>Versioned structured report</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="csv">' +
+    "Download CSV (.csv)<span>Spreadsheet-safe findings and metadata</span></button>" +
+    '<button type="button" class="export-menu-item" role="menuitem" data-act="html">' +
+    "Download HTML (.html)<span>Standalone, printable report with no scripts</span></button>" +
     "</div></details>";
 
   const details = document.getElementById("exportDetails");
@@ -1822,6 +1928,18 @@ function initExportMenu(toolName, getData) {
       if (act === "card") { await downloadEvidenceCard(data, toolName, item); return; }
       if (act === "md") { await copyMarkdown(data, item); return; }
       if (act === "json") { await copyJsonReport(data, item); return; }
+      if (act === "md-file") {
+        downloadTextReport(toMarkdown(data), "text/markdown;charset=utf-8", "cyberbuddy-report", data, "md", item, "Markdown saved ✓"); return;
+      }
+      if (act === "json-file") {
+        downloadTextReport(JSON.stringify(reportExportEnvelope(data), null, 2), "application/json;charset=utf-8", "cyberbuddy-report", data, "json", item, "JSON saved ✓"); return;
+      }
+      if (act === "csv") {
+        downloadTextReport(toCsv(data), "text/csv;charset=utf-8", "cyberbuddy-report", data, "csv", item, "CSV saved ✓"); return;
+      }
+      if (act === "html") {
+        downloadTextReport(toStandaloneHtml(data), "text/html;charset=utf-8", "cyberbuddy-report", data, "html", item, "HTML saved ✓");
+      }
     });
   });
 
@@ -1850,18 +1968,83 @@ function markdownKind(data) {
   return "generic";
 }
 
+function reportToolTitle(data) {
+  const kind = markdownKind(data);
+  return kind === "headers" ? "Security Headers"
+    : kind === "csp" ? "CSP Policy Auditor"
+    : kind === "cors" ? "CORS Validator"
+    : kind === "clickjacking" ? "Clickjacking Validator"
+    : "CyberBuddy";
+}
+
+function reportRows(data) {
+  if (!data) return [];
+  if (Array.isArray(data.checks)) return data.checks;
+  if (Array.isArray(data.findings)) return data.findings;
+  return [];
+}
+
+function reportSeverity(item) {
+  if (typeof findingSeverity === "function") return findingSeverity(item).label;
+  if (item && item.severity) return String(item.severity).toUpperCase();
+  const status = String(item && item.status || "info").toLowerCase();
+  if (status === "ok" || status === "protected") return "PASS";
+  if (status === "missing" || status === "error") return "HIGH";
+  if (status === "weak") return "MEDIUM";
+  return "INFO";
+}
+
+function reportRecommendation(item) {
+  if (item && item.recommendation) return String(item.recommendation);
+  if (typeof RECOMMENDATIONS !== "undefined" && item && RECOMMENDATIONS[item.name]) {
+    return RECOMMENDATIONS[item.name];
+  }
+  return "";
+}
+
+function reportExportEnvelope(data) {
+  return {
+    schema_version: "cyberbuddy-report/v1",
+    tool: reportToolTitle(data),
+    generated_at: new Date().toISOString(),
+    authorized_testing_only: true,
+    assessment: reportSafeCopy(data)
+  };
+}
+
 function mdCell(s) {
-  return String(s == null ? "" : s).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+  return redactCredentialText(s).replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+}
+
+function reportContextMarkdown(data, kind, lines) {
+  if (data._unreachable) {
+    lines.push("", "> **Reachability:** The target was not reachable. No security posture should be inferred from this report.");
+  }
+  if (kind === "clickjacking" && data.frame_observation) {
+    const observed = data.frame_observation;
+    const rendered = observed.rendered === true ? "Yes — analyst attested"
+      : observed.rendered === false ? "No — analyst attested" : "Not confirmed";
+    lines.push("", "## Frame observation", "", "- **Rendered:** " + rendered,
+      "- **Browser event:** " + mdCell(observed.event || "—"),
+      "- **Frame peek:** " + mdCell(observed.peek || "—"));
+  }
+  if (kind === "cors") {
+    lines.push("", "## Probe context", "",
+      "- **Origins tested:** " + mdCell((data.origins_tested || []).join(" · ") || "—"),
+      "- **Coverage:** " + ((data.origins_tested || []).length >= 2
+        ? "Two-origin reflection test" : "Single-origin browser probe — not proof of reflection"));
+  }
+  if (kind === "csp") {
+    lines.push("", "## Policy evidence", "", "### Enforced policy", "",
+      "```", String(data.policy || "(not present)"), "```", "", "### Report-only policy", "",
+      "```", String(data.report_only_policy || "(not present)"), "```");
+  }
 }
 
 function toMarkdown(data) {
   if (!data) return "No scan data.";
   const kind = markdownKind(data);
-  const title = kind === "headers" ? "Security Headers"
-    : kind === "csp" ? "CSP Policy Auditor"
-    : kind === "cors" ? "CORS Validator"
-    : kind === "clickjacking" ? "Clickjacking Validator"
-    : "CyberBuddy";
+  const title = reportToolTitle(data);
   const risk = (data.risk || "unknown").toUpperCase();
   const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
   const lines = [
@@ -1875,29 +2058,80 @@ function toMarkdown(data) {
     "- **Generated:** " + fmtStampUtc()
   ];
   if (data.confirmation === "manual") {
-    lines.push(
-      "- **Confirmation:** analyst-attested (visual frame check, not measured from headers)"
-    );
+    lines.push("- **Confirmation:** analyst-attested (visual frame check, not measured from headers)");
   }
   if (isUnverified(data)) {
-    lines.push(
-      "- **Caveat:** header values were proxied by a third-party relay and are " +
-      "not independently verified. Re-run against `server.py` before relying on them."
-    );
+    lines.push("- **Caveat:** header values were proxied by a third-party relay and are " +
+      "not independently verified. Re-run against `server.py` before relying on them.");
   }
   if (data.summary) lines.push("", "## Summary", "", data.summary);
-  const rows = kind === "headers" ? (data.checks || [])
-    : kind === "cors" ? (data.checks || [])
-    : (data.findings || []);
+  reportContextMarkdown(data, kind, lines);
+  const rows = reportRows(data);
   if (rows.length) {
-    lines.push("", "## Findings", "", "| Check | Status | Assessment | Evidence |", "| --- | --- | --- | --- |");
+    lines.push("", "## Findings", "",
+      "| Check | Status | Severity | Assessment | Evidence | Recommendation |",
+      "| --- | --- | --- | --- | --- | --- |");
     rows.forEach((c) => {
       lines.push("| " + mdCell(c.name) + " | " + mdCell(c.status) + " | " +
-        mdCell(c.detail) + " | " + mdCell(c.evidence) + " |");
+        mdCell(c.severity || reportSeverity(c)) + " | " + mdCell(c.detail) + " | " +
+        mdCell(c.evidence) + " | " + mdCell(reportRecommendation(c)) + " |");
     });
   }
-  lines.push("", "---", "Generated with CyberBuddy — authorized testing only.");
+  lines.push("", "---", "Generated with CyberBuddy — authorized testing only. Results are advisory.");
   return lines.join("\n");
+}
+
+function csvSafe(value) {
+  let text = redactCredentialText(value).replace(/\r?\n/g, " ");
+  // Spreadsheet formula injection: exported target evidence is untrusted.
+  if (/^[\t\r ]*[=+\-@]/.test(text)) text = "'" + text;
+  return '"' + text.replace(/"/g, '""') + '"';
+}
+
+function toCsv(data) {
+  if (!data) return "";
+  const rows = [["record_type", "name", "status", "severity", "assessment", "evidence", "recommendation"]];
+  const meta = {
+    tool: reportToolTitle(data), target: redactUrlCredentials(data.url),
+    final_url: redactUrlCredentials(data.final_url || data.url),
+    http_status: data.status_code != null ? data.status_code : "",
+    risk: data.risk || "unknown", grade: data.grade || "", score: data.score ?? "",
+    source: sourceLabel(data), generated: new Date().toISOString(), summary: data.summary || ""
+  };
+  Object.keys(meta).forEach((key) => rows.push(["metadata", key, "", "", meta[key], "", ""]));
+  reportRows(data).forEach((item) => rows.push([
+    "finding", item.name || "", item.status || "", item.severity || reportSeverity(item),
+    item.detail || "", item.evidence || "", reportRecommendation(item)
+  ]));
+  return "\uFEFF" + rows.map((row) => row.map(csvSafe).join(",")).join("\r\n");
+}
+
+function toStandaloneHtml(data) {
+  if (!data) return "";
+  const safe = (value) => esc(redactCredentialText(value));
+  const findings = reportRows(data).map((item) =>
+    "<tr><td>" + safe(item.name) + "</td><td><strong>" + safe(item.status) +
+    "</strong></td><td>" + safe(item.severity || reportSeverity(item)) +
+    "</td><td>" + safe(item.detail) + "</td><td><code>" + safe(item.evidence) +
+    "</code></td><td>" + safe(reportRecommendation(item)) + "</td></tr>").join("");
+  const policy = Object.prototype.hasOwnProperty.call(data, "policy")
+    ? "<h2>Policy evidence</h2><h3>Enforced</h3><pre>" + safe(data.policy || "(not present)") +
+      "</pre><h3>Report-only</h3><pre>" + safe(data.report_only_policy || "(not present)") + "</pre>" : "";
+  const caveat = isUnverified(data)
+    ? '<p class="caveat"><strong>Unverified:</strong> relay-provided headers; confirm with the Python engine.</p>' : "";
+  return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\">" +
+    "<title>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</title><style>" +
+    "body{font:15px/1.55 system-ui,sans-serif;color:#172033;max-width:1200px;margin:40px auto;padding:0 24px}h1{margin-bottom:8px}h2{margin-top:32px}dl{display:grid;grid-template-columns:140px 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}.risk{text-transform:uppercase;font-weight:800}.caveat{padding:12px;border-left:4px solid #b54708;background:#fff7ed}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border:1px solid #d7dde7;text-align:left;vertical-align:top}th{background:#eef2f7}code,pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:2px 4px}pre{padding:12px}@media print{body{margin:0;max-width:none}tr{break-inside:avoid}}</style></head><body>" +
+    "<h1>CyberBuddy — " + safe(reportToolTitle(data)) + " Report</h1><p>Authorized testing only · results are advisory</p>" + caveat +
+    "<dl><dt>Target</dt><dd>" + safe(redactUrlCredentials(data.url)) + "</dd><dt>Final URL</dt><dd>" +
+    safe(redactUrlCredentials(data.final_url || data.url)) + "</dd><dt>HTTP status</dt><dd>" +
+    safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
+    safe(data.risk || "unknown") + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
+    "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(new Date().toISOString()) +
+    "</dd></dl><h2>Summary</h2><p>" + safe(data.summary || "No summary provided.") + "</p>" + policy +
+    "<h2>Findings</h2><table><thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Assessment</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>" +
+    findings + "</tbody></table></body></html>";
 }
 
 async function copyText(text) {
@@ -1934,6 +2168,17 @@ function flashBtn(btn, ok, okLabel) {
   }, 1600);
 }
 
+function downloadTextReport(text, mime, prefix, data, extension, btn, label) {
+  try {
+    downloadBlob(new Blob([text], { type: mime }), stampName(prefix, data && data.url, extension));
+    flashBtn(btn, true, label || "Report saved ✓");
+    return true;
+  } catch (_) {
+    flashBtn(btn, false, "");
+    return false;
+  }
+}
+
 async function copyMarkdown(data, btn) {
   const ok = await copyText(toMarkdown(data));
   flashBtn(btn, ok);
@@ -1942,7 +2187,7 @@ async function copyMarkdown(data, btn) {
 
 async function copyJsonReport(data, btn) {
   if (!data) return false;
-  const ok = await copyText(JSON.stringify(reportSafeCopy(data), null, 2));
+  const ok = await copyText(JSON.stringify(reportExportEnvelope(data), null, 2));
   flashBtn(btn, ok, "JSON copied ✓");
   return ok;
 }
@@ -3236,8 +3481,32 @@ function initSuite() {
   const toolbar = document.getElementById("suiteToolbar");
   const shareBtn = document.getElementById("suiteShare");
   const copyBtn = document.getElementById("suiteCopy");
+  const toolInputs = Array.from(document.querySelectorAll('input[name="suiteTool"]'));
+  const pickerError = document.getElementById("suitePickerError");
+  const selectAll = document.getElementById("suiteSelectAll");
+  const selectedTools = () => toolInputs.filter((el) => el.checked).map((el) => el.value);
+  const updatePicker = () => {
+    const count = selectedTools().length;
+    go.textContent = count ? "Run " + count + (count === 1 ? " tool" : " tools") : "Choose tools";
+    go.disabled = count === 0;
+    if (pickerError) pickerError.classList.toggle("hidden", count !== 0);
+    if (pickerError) pickerError.textContent = count ? "" : "Select at least one assessment tool.";
+    toolInputs.forEach((el) => {
+      const label = el.closest("label");
+      if (label) label.classList.toggle("is-selected", el.checked);
+    });
+    if (selectAll) selectAll.textContent = count === toolInputs.length ? "Clear all" : "Select all";
+  };
+  toolInputs.forEach((el) => el.addEventListener("change", updatePicker));
+  if (selectAll) selectAll.addEventListener("click", () => {
+    const check = selectedTools().length !== toolInputs.length;
+    toolInputs.forEach((el) => { el.checked = check; });
+    updatePicker();
+  });
 
   async function run() {
+    const active = selectedTools();
+    if (!active.length) { updatePicker(); return; }
     const url = validateUrlField(input);
     if (!url) return;
     pushUrlParam(url);
@@ -3278,11 +3547,14 @@ function initSuite() {
     setStage("consent", consent === "skip" ? "skipped" : "done",
       consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
 
-    setStage("collect", "active", "headers · CSP · CORS · framing — read-only GETs");
-    // CSP needs the same response fields as Security Headers. Reuse that
-    // result in the suite instead of sending a duplicate GET to the target.
-    const headersTask = apiHeaders(url).catch(() => null);
-    const cspTask = headersTask.then((headersResult) => {
+    const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP" };
+    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — read-only GETs");
+    const wants = (key) => active.includes(key);
+    // CSP and Security Headers consume the same response fields. When both
+    // are selected, reuse one header read rather than contacting the target twice.
+    const headersTask = wants("headers") || wants("csp")
+      ? apiHeaders(url).catch(() => null) : Promise.resolve(null);
+    const cspTask = wants("csp") ? headersTask.then((headersResult) => {
       if (headersResult && headersResult.status_code != null && headersResult.headers) {
         const cspResult = gradeCspFromMap(
           url,
@@ -3295,40 +3567,33 @@ function initSuite() {
         return cspResult;
       }
       if (headersResult && headersResult._unreachable) {
-        return markUnreachable({
-          url: headersResult.url,
-          final_url: headersResult.final_url,
-          status_code: null,
-          checks: headersResult.checks || [],
-          risk: "unknown",
-          summary: headersResult.summary || "Target not reachable.",
-          policy: "",
-          report_only_policy: "",
-          directives: {},
-          suggested_policy: CSP_SUGGESTED_POLICY,
-          headers: {}
-        }, headersResult._source);
+        return unreachableScanResult("csp", url, unreachableDetail(headersResult));
       }
       return apiCsp(url).catch(() => null);
-    });
-    const [cj, hd, cr, cp] = await Promise.all([
-      apiScan(url).catch(() => null),
+    }) : Promise.resolve(null);
+    const [cj, headerRead, cr, cp] = await Promise.all([
+      wants("clickjacking") ? apiScan(url).catch(() => null) : null,
       headersTask,
-      apiCors(url).catch(() => null),
+      wants("cors") ? apiCors(url).catch(() => null) : null,
       cspTask
     ]);
+    const hd = wants("headers") ? headerRead : null;
     setStage("collect", "done");
     setStage("evaluate", "done", "OWASP-aligned checks applied");
 
-    lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr, csp: cp };
+    lastSuite = { url: url, active: active, clickjacking: cj, headers: hd, cors: cr, csp: cp };
+    const params = new URLSearchParams(window.location.search);
+    params.set("url", url);
+    params.set("tools", active.join(","));
+    history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
     const base = appBase();
-    out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) +
-      '<div class="suite-grid">' +
-      suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) +
-      suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) +
-      suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) +
-      suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) +
-      "</div>";
+    const cards = [
+      wants("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
+      wants("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
+      wants("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
+      wants("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : ""
+    ].join("");
+    out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) + '<div class="suite-grid">' + cards + "</div>";
     addRecentScan(url, recentScanSummary(lastSuite));
     renderRecentScans();
     if (toolbar) toolbar.classList.remove("hidden");
@@ -3346,21 +3611,19 @@ function initSuite() {
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
       if (!lastSuite) return;
-      const parts = [
-        toMarkdown(lastSuite.clickjacking),
-        "",
-        toMarkdown(lastSuite.headers),
-        "",
-        toMarkdown(lastSuite.cors),
-        "",
-        toMarkdown(lastSuite.csp)
-      ];
-      const ok = await copyText(parts.join("\n"));
+      const parts = (lastSuite.active || []).map((key) => toMarkdown(lastSuite[key]));
+      const ok = await copyText(parts.join("\n\n"));
       flashBtn(copyBtn, ok, "Suite copied ✓");
     });
   }
   initSuggestedTargets();
-  const initial = new URLSearchParams(location.search).get("url");
+  const initialParams = new URLSearchParams(location.search);
+  const requestedTools = (initialParams.get("tools") || "").split(",").filter(Boolean);
+  if (requestedTools.length) {
+    toolInputs.forEach((el) => { el.checked = requestedTools.includes(el.value); });
+  }
+  updatePicker();
+  const initial = initialParams.get("url");
   if (initial) {
     input.value = initial;
     if (validateUrlField(input, false)) run();
@@ -3472,25 +3735,28 @@ function suiteToolChip(label, data, withScore) {
 function suiteSummaryHtml(s, engineNote) {
   const hd = s.headers;
   const worst = worstSuiteTool(s);
+  const headersSelected = !s.active || s.active.includes("headers");
   const gauge = hd && hd.score != null
     ? gaugeHtml(hd.score, hd.grade, true)
     : '<div class="score-gauge gauge-f"><svg viewBox="0 0 120 120" aria-hidden="true">' +
       '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
-      '<text class="gauge-num" x="60" y="58" style="font-size:15px">no</text>' +
-      '<text class="gauge-num" x="60" y="76" style="font-size:15px">data</text>' +
-      '</svg><span class="gauge-band">headers unavailable</span></div>';
+      '<text class="gauge-num" x="60" y="58" style="font-size:15px">' + (headersSelected ? "no" : "not") + '</text>' +
+      '<text class="gauge-num" x="60" y="76" style="font-size:15px">' + (headersSelected ? "data" : "run") + '</text>' +
+      '</svg><span class="gauge-band">headers ' + (headersSelected ? "unavailable" : "not selected") + '</span></div>';
+  const selectedCount = (s.active || []).length || [s.clickjacking, s.headers, s.cors, s.csp].filter(Boolean).length;
   const verdict = worst
     ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
       esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
-      '<span class="suite-summary-worst">worst-case risk across the four scan tools — ' +
-      esc(worst[0]) + "</span>"
+      '<span class="suite-summary-worst">worst-case risk across ' + selectedCount +
+      (selectedCount === 1 ? " selected tool — " : " selected tools — ") + esc(worst[0]) + "</span>"
     : '<span class="risk unknown">UNKNOWN</span>' +
-      '<span class="suite-summary-worst">no tool returned a result</span>';
+      '<span class="suite-summary-worst">no selected tool returned a result</span>';
+  const active = s.active || ["clickjacking", "headers", "cors", "csp"];
   const chips =
-    suiteToolChip("Clickjacking", s.clickjacking, false) +
-    suiteToolChip("Headers", s.headers, true) +
-    suiteToolChip("CORS", s.cors, false) +
-    suiteToolChip("CSP", s.csp, false);
+    (active.includes("clickjacking") ? suiteToolChip("Clickjacking", s.clickjacking, false) : "") +
+    (active.includes("headers") ? suiteToolChip("Headers", s.headers, true) : "") +
+    (active.includes("cors") ? suiteToolChip("CORS", s.cors, false) : "") +
+    (active.includes("csp") ? suiteToolChip("CSP", s.csp, false) : "");
   return '<div class="suite-summary">' +
     '<div class="suite-summary-gauge">' + gauge + "</div>" +
     '<div class="suite-summary-body">' +
@@ -3607,13 +3873,15 @@ function renderRelayGate() {
     "<p>To grade them it would proxy the request through public services, which " +
     "discloses what you are testing to operators outside your engagement " +
     "(<code>" + RELAY_HOSTS.join("</code>, <code>") + "</code>). They would see the " +
-    "target and your IP address, and many assessment NDAs prohibit that. For a " +
-    "fully private scan, stop and run <code>python3 server.py</code> locally instead.</p>" +
+    "target and your IP address, and many assessment NDAs prohibit that. CyberBuddy " +
+    "also asks Google Public DNS for A/AAAA records so it can identify nonexistent " +
+    "domains instead of reporting a misleading scan. For a fully private scan, stop " +
+    "and run <code>python3 server.py</code> locally instead.</p>" +
     "</div>" +
     '<div class="relay-consent-actions" role="group" aria-label="Relay options">' +
     option("host", "Allow \u2014 hostname only", true,
       "Proxies <em>only</em> the hostname. Best balance of evidence and privacy, and enough for almost every header check \u2014 CSP, HSTS, X-Frame-Options and the cookie/isolation family are all set per origin.",
-      "<code>example.com</code>", "A full A\u2013F header grade, flagged <em>unverified</em>") +
+      "<code>example.com</code> to relays and public DNS", "A reachability check and full A\u2013F header grade, flagged <em>unverified</em>") +
     option("full", "Allow \u2014 full URL", false,
       "Also proxies the path and query string. Only needed when headers differ per path (a login route, a tenant-specific page). This is the option most likely to leak a token or customer ID from a URL.",
       "<code>example.com/admin?token=\u2026</code>", "Same grade, scoped to that exact URL") +
