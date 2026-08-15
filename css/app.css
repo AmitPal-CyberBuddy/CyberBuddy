@@ -2479,3 +2479,190 @@ html.js .reveal.in,
   .jwt-claims { grid-template-columns: 1fr; }
   .jwt-key-tabs { flex-wrap: nowrap; overflow-x: auto; }
 }
+
+/* ==========================================================================
+   JWT Security Workbench — JWT-02 functional Edit & Generate UI
+   ========================================================================== */
+.jwt-phase-live { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
+
+.jwt-edit-note {
+  border: 1px solid var(--med-line);
+  background: var(--med-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin: 6px 0 16px;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.jwt-edit-note strong { color: var(--ink); }
+
+.jwt-edit-col { min-width: 0; }
+.jwt-edit-col .jwt-field textarea { min-height: 170px; }
+
+.jwt-btn-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+
+.jwt-help-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 14px;
+  margin: 12px 0;
+}
+.jwt-help-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  min-width: 0;
+}
+.jwt-help-row input[type="checkbox"] { accent-color: var(--brand); width: auto; min-height: 0; }
+.jwt-help-row input[type="text"],
+.jwt-help-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px dashed var(--line-strong);
+  border-radius: 0;
+  color: var(--ink);
+  padding: 4px 2px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+.jwt-help-k {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 26px;
+}
+
+/* Semantic diff list. */
+.jwt-diff-list { margin-top: 10px; }
+.jwt-diff-head {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 12px 0 4px;
+}
+.jwt-diff-empty { color: var(--faint); font-size: 0.82rem; margin: 0 0 8px; }
+.jwt-diff-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.jwt-diff-row:last-of-type { border-bottom: 0; }
+.jwt-diff-kind {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  min-width: 52px;
+}
+.jwt-diff-claim { min-width: 0; }
+.jwt-diff-claim code { font-family: var(--font-mono); font-size: 0.8rem; }
+.jwt-diff-vals { color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.jwt-diff-vals em { color: var(--muted); font-style: normal; font-size: 0.72rem; }
+.jwt-diff-added .jwt-diff-kind { color: var(--low); }
+.jwt-diff-removed .jwt-diff-kind { color: var(--high); }
+.jwt-diff-changed .jwt-diff-kind { color: var(--med); }
+.jwt-diff-unchanged .jwt-diff-kind { color: var(--faint); }
+
+/* Signing key sub-tabs share .jwt-key-tab/.jwt-key-panel styles. */
+.jwt-field select.jwt-select {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  min-height: 44px;
+}
+.jwt-gen-status { font-size: 0.85rem; color: var(--ink-2); margin: 8px 0 0; min-height: 1.2em; }
+.jwt-gen-pub { min-height: 130px; font-family: var(--font-mono); font-size: 0.78rem; }
+
+/* Generated token output + TEST TOKEN banner. */
+.jwt-edit-result { margin: 16px 0; }
+.jwt-test-banner {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  border: 1px solid var(--med-line);
+  background: var(--med-bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: var(--ink-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+.jwt-test-banner strong {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--med);
+  white-space: nowrap;
+}
+.jwt-edit-output {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.jwt-copy-status { font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted); }
+.jwt-edit-lines { margin: 10px 0 0; padding-left: 18px; }
+.jwt-edit-lines li { font-size: 0.88rem; margin: 3px 0; }
+.jwt-edit-lines.ok li { color: var(--low); }
+.jwt-edit-lines.bad li { color: var(--high); }
+
+@media (max-width: 600px) {
+  .jwt-help-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   JWT Security Workbench — JWT-03 functional Test Variants & Secret Test UI
+   ========================================================================== */
+.jwt-var-base { margin: 6px 0 14px; color: var(--ink-2); }
+
+.jwt-variant { display: flex; flex-direction: column; gap: 6px; }
+.jwt-variant input[type="text"],
+.jwt-variant select,
+.jwt-variant textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.jwt-variant textarea { min-height: 92px; font-family: var(--font-mono); resize: vertical; }
+.jwt-variant .btn { margin-top: 2px; }
+
+.jwt-var-note { color: var(--ink-2); font-size: 0.88rem; line-height: 1.6; margin: 0 0 10px; }
+
+.jwt-progress-wrap { margin: 14px 0; }
+.jwt-progress { width: 100%; height: 12px; accent-color: var(--brand); }
+.jwt-progress-wrap .jwt-field-note { margin: 6px 0 0; }

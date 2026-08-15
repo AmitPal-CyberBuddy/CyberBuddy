@@ -628,11 +628,135 @@ keep the decode/verify implementation honest:
 - **Test tokens are built inside Node with `crypto.createHmac`/`crypto.subtle`**
   — never hand-rolled base64. The HMAC helper must use **base64url** (not
   standard base64) for all three parts, or signatures silently won't verify.
-- **Preview panels stay disabled.** Edit & Generate (JWT-02), Test Variants and
-  Secret Test (JWT-03) still ship disabled controls; the test
-  `test_edit_generate_variants_secret_tabs_remain_preview` pins that. When
-  JWT-02/03 land, those controls become functional and the test changes then
-  (not before).
-- **PWA shortcut still omitted deliberately** (`test_no_pwa_shortcut_for_future_phases`)
-  until the full workbench ships — JWT-01 decode/verify alone doesn't justify
-  a home-screen shortcut.
+- **No preview panels remain.** JWT-03 completed the set — all four panels
+  ship functional, enabled controls; the `..._remain_preview` tests were
+  replaced by `test_variants_panel_is_functional` and
+  `test_secret_panel_is_functional_and_bounded`.
+- **PWA shortcut shipped with JWT-03.** The shortcut was deferred through
+  JWT-01/02; once the full workbench was live, `manifest.webmanifest` gained
+  the JWT entry and `test_pwa_shortcut_added_now_the_workbench_is_complete`
+  pins its presence.
+
+---
+
+## JWT-02 traps (edit & generate)
+
+The Edit & Generate panel is now functional. These traps keep signing honest and
+key material from leaking by accident:
+
+- **All crypto stays in the engine.** `signToken`, `generateRsaTestPair`,
+  `exportPrivateJwk`/`exportPublicJwk`, `diffClaims` and `randomJti` live in
+  `js/jwt.engine.js` next to the verify path; PEM private-key parsing is in
+  the engine, never the controller. The controller only binds DOM. The same
+  Node tests in `JwtWorkbenchTests` exercise sign→verify round-trips for
+  HS256/384/512, RS/PS (generated pair) and ES256 (private JWK).
+- **Signing mirrors the verify-side algorithm-confusion guard.** HS* signing
+  takes a string secret only and rejects PEM/JWK objects; RS/PS/ES signing
+  rejects public keys (JWK without `d`, SPKI PEM, JWKS) and PKCS#1/SEC1 PEM
+  (Web Crypto only imports PKCS#8). `header.alg` must agree with `opts.alg`
+  and `alg:none` is rejected — the engine neither signs nor produces it.
+- **The select and the header editor stay in sync, but the guard stays.**
+  Changing the signing algorithm rewrites `alg` in the header editor (when it
+  parses); editing the header syncs the select. If the header declares an alg
+  the select cannot offer (e.g. ES512), sign fails with a specific mismatch
+  error instead of silently signing with the wrong algorithm.
+- **A generated RSA pair is bound to one signature family.** Web Crypto
+  `generateKey` is per family, so a pair generated for RS256 cannot sign
+  PS256. `readEditKey` reports exactly that when the analyst switches the
+  algorithm, instead of a confusing import error.
+- **No accidental key export.** "Copy token" / "Download token" read only the
+  output textarea — `test_copy_download_never_touch_key_material` pins that
+  the token handlers never reference key material. Private JWK export is a
+  separate, confirmed (`confirm()`) action, and the generated key's public
+  JWK is the only key shown by default. Never put the private JWK into the
+  result textarea or the clipboard feedback path.
+- **TEST TOKEN is a label, not a mitigation.** Every signed output carries
+  the TEST TOKEN banner and the honesty line ("not proof of acceptance").
+  Keep it visible on success only — an error result must not show the banner
+  or a stale token.
+- **Diff before sign, always against the analyzed token.** The diff base is
+  `lastParsed` (live), so re-analyzing a different token re-bases the diff
+  automatically. A blank original (no token pasted) diffs against empty
+  objects and says so in the heading.
+- **Key sub-tabs are per-tablist.** There are two `.jwt-key-tabs` groups
+  (verify + edit) with the same `data-keytype` values; `initKeyTabs` scopes
+  panels by `aria-controls` per tablist. Don't select tabs globally — and
+  don't match panels by substring (`"jwk"` is a prefix of `"jwks"`), that
+  wired the JWK tab to the JWKS panel once.
+- **`role="tab"` count is pinned at 4+4+4+3.** Four panel tabs, four verify
+  key tabs, four edit key tabs, three variant signing-key tabs. Adding a key
+  type means updating `test_accessible_tabs_and_key_subtabs`.
+- **The guide is one edit from the 1200-word ceiling.** The visible-word
+  count (tags stripped, JSON-LD included) sits at ~1195; every sentence added
+  to `guides/jwt/` must trim an equal amount elsewhere.
+- **Keep JWT-03 panels disabled.** `test_variants_and_secret_tabs_remain_preview`
+  pins that every control in the Test Variants and Secret Test panels ships
+  `disabled`; the PWA shortcut stays omitted until the full workbench ships.
+
+---
+
+## JWT-03 traps (test variants & bounded secret testing)
+
+The workbench is now feature-complete. These traps keep the variant builder
+and the secret-test worker honest:
+
+- **Variants are templates, never findings.** `buildVariant` in the engine
+  is the single entry point (`alg-none`, `tamper`, `claim-resign`,
+  `alg-confusion`, `embedded-jwk`, `jku`/`x5u`, `kid`); every result is
+  labelled TEST TEMPLATE and carries a per-type note. The UI and the tests
+  both pin "not a finding" — do not phrase a variant result as a verdict.
+- **`alg:none` exists ONLY as a labelled template.** `parseToken` and
+  `signToken` still reject it; `unsignedToken`/`buildVariant("alg-none")`
+  is the only producer, and
+  `test_variant_alg_none_template_and_guard_intact` pins that the template
+  builds while parse keeps rejecting it. Never relax the guards to make
+  variants easier.
+- **The confusion template deliberately does what the guard blocks.** It
+  HMAC-signs with the analyst-pasted public key text via `crypto.subtle`
+  directly (not through `signToken`, which must keep rejecting PEM
+  secrets). The Node test verifies the signature against an independent
+  HMAC computation AND that `verifyToken` still refuses the PEM secret.
+- **Re-signed variants go through `signToken`**, so the alg pin, the
+  public-key-can't-sign rule and the family checks all apply. The
+  controller passes the base token's alg; the generated pair is bound to
+  one Web Crypto family, so an RS256 pair can never sign a PS256 variant —
+  `readVariantSigningKey` says so instead of failing at import.
+- **Embedded JWK needs the public key.** With the generated pair it is
+  `pair.publicJwk`; with a pasted private JWK, `publicJwkFromPrivate`
+  derives the public subset (RSA n/e, EC x/y). A pasted PEM private key
+  cannot provide it — say so, don't guess.
+- **Secret testing is HS256/384/512 only, in a worker.** The worker
+  (`js/jwt.worker.js`) loads the engine via `importScripts("jwt.engine.js")`
+  (same directory, works on Pages), reads the uploaded wordlist with
+  `FileReaderSync` inside the worker, and runs `searchHmacSecret` with
+  progress every 250 candidates. Bounds are explicit: candidates capped at
+  100,000, time at 120 s, both checked between candidates, plus Cancel
+  (`{type:"cancel"}` → `shouldContinue` false). No RSA/EC work, no network,
+  no storage — `test_worker_references_engine_and_has_no_network_or_storage`
+  pins the local-only contract.
+- **The worker URL inherits the cache-buster.** `workerUrl()` derives it
+  from the engine `<script src>` so the deploy-time `?v=` stamp applies to
+  the worker too. Don't hardcode a version string in JS.
+- **The built-in list stays small.** `BUILTIN_SECRET_CANDIDATES` is 32
+  starter keys; `test_builtin_secret_list_is_small` fails if it grows into
+  a bundled wordlist. Real lists are uploaded by the analyst and capped in
+  the worker.
+- **A secret match is a discovered secret, not a verdict.** The UI states
+  the match is for authorized testing and that HS256 is not automatically
+  weak. Never present a match as "the target is vulnerable".
+- **The worker is tested under Node with a shim.** `_run_worker` defines
+  `self`/`postMessage`/`importScripts`/`FileReaderSync` BEFORE evaluating
+  the worker source (its top-level `importScripts` call needs the shim
+  already in place), then drives `onmessage` and asserts the posted
+  messages — found/secret, progress, cancel (tested < total) and deadline.
+  The cancel test needs a large enough candidate list (5000) so the run
+  cannot finish before the cancel message lands.
+- **Engine regex escaping in test harnesses.** Node harness strings write
+  base64url helpers as `replace(/\\\\+/g, ...)` in Python source (which
+  produces `/\\+/g` in the JS file). Doubling the backslashes produces
+  `/\\\\//g`, which Node parses as regex-then-division and throws
+  `ReferenceError: g` at runtime — a trap that cost a test round here.
+- **All four panels are functional** — nothing on the page ships
+  `disabled` anymore, and `test_secret_panel_is_functional_and_bounded`
+  asserts the Secret panel has no disabled controls. The PWA shortcut
+  shipped with JWT-03 (`test_pwa_shortcut_added_now_the_workbench_is_complete`).

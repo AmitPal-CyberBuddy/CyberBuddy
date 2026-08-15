@@ -18,10 +18,10 @@ handoff” for the state at the end of that session.
 
 | Item | Value |
 | --- | --- |
-| Latest merged feature/PR | **GUIDES-01/02/03 + DOCS-01** (PR #23, merge commit `611df2b`) — five tool guides and the `/documentation/` page. Verified present in `origin/main` before this session; not re-applied. |
-| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (JWT-01: decode/inspect/verify)** |
+| Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |
+| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (feature-complete: decode/inspect/verify + edit/generate/sign + test variants + bounded secret testing)** |
 | Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 6) · Documentation (`/documentation/`) |
-| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests) |
+| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02; **274** after JWT-03 (16 variant/secret/worker tests) |
 | JavaScript file total | **20** (13 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
 | Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
@@ -355,7 +355,7 @@ PR.
   choose the verifier (the algorithm-confusion trap).
 
 ### JWT-02 — Edit and generate
-- **Status:** `NEXT`
+- **Status:** `IN REVIEW`
 - **Goal:** Modify header/payload claims and re-sign locally to build
   authorized test tokens.
 - **Scope:** Header/payload editors; standard-claim helpers (`iss`, `sub`,
@@ -371,10 +371,11 @@ PR.
   labelled a test token.
 - **Required tests:** pure signer under Node; copy/download and labelling
   tests; real-browser round-trip.
-- **PR/commit:** —
+- **PR/commit:** PR #25 · branch `arena/01a004aa-cyberbuddy` · commit
+  `27650ff` (open — not merged; do not mark DONE).
 
 ### JWT-03 — Test variants and bounded secret testing
-- **Status:** `TODO`
+- **Status:** `IN REVIEW`
 - **Goal:** Build authorized-test variants (`alg:none`, claim manipulation,
   algorithm confusion with an analyst-supplied public key, embedded JWK,
   JKU/X5U and `kid` mutation templates) and bounded HMAC secret testing for
@@ -392,7 +393,9 @@ PR.
   transmitted.
 - **Required tests:** variant builder under Node; Worker bounds/cancel;
   real-browser variant + secret-test flow.
-- **PR/commit:** —
+- **PR/commit:** PR #25 · branch `arena/01a004aa-cyberbuddy` (folded into
+  the JWT-02 PR at the maintainer's request to merge once — see REVIEW
+  §28). Not merged; do not mark DONE.
 
 ### FUTURE-01 — External payload-corpus integration
 - **Status:** `DEFERRED`
@@ -409,61 +412,63 @@ PR.
 
 ## 5. Current handoff
 
-> Replace this whole section at the end of every session.
-
-- **Last verified `origin/main`:** `611df2b` (GUIDES-01/02/03 + DOCS-01, PR #23).
-- **Work in review:** **JWT-00 preview + JWT-01 decode/inspect/verify** —
-  branch `arena/01a00446-cyberbuddy`, **PR #24**. Both shipped in the same
-  PR per the maintainer's request to merge this session.
-- **Delivered:**
-  - **JWT-00 (preview, now shipped):** `tools/jwt/index.html`,
-    `js/tool.jwt.js`, `guides/jwt/`, registry integration, routes, sitemap
-    (guide only at JWT-00) and the full test/guard/doc set.
-  - **JWT-01 (functional):** a pure DOM-free engine `js/jwt.engine.js`
-    (compact JWS parse, observations, claims validation, signature
-    verification) and a rewritten Analyze & Verify panel. Decodes
-    header/payload/signature, renders a claim timeline + observations, and
-    verifies HS256/384/512, RS256/384/512, PS256/384/512, ES256/384 via
-    `crypto.subtle` with HMAC secret / PEM SPKI / JWK / JWKS (matched by
-    `kid`) key inputs. Expected `iss`/`aud`/`sub` and clock skew are
-    validated. Edit & Generate (JWT-02), Test Variants and Secret Test
-    (JWT-03) remain non-interactive previews on the same page.
-  - The page dropped `noindex`, gained a canonical URL and a
-    `sitemap.xml` entry (JWT-01 is functional); the registry entry is now
-    `status: "live"` (still `category: "local"`, still out of the Run suite).
-- **Last completed checks:** **245/245** stdlib tests OK
-  (`python3 -m unittest test_engines.py`; 26 JWT-00 preview tests were
-  replaced by ~20 `JwtWorkbenchTests` covering the Node-driven engine — HMAC
-  good/bad, algorithm-confusion guard, alg pin, RSA/PS/ECDSA verification,
-  JWKS-by-kid, claims/skew, malformed/JWE/alg:none, plus UI wiring and the
-  remaining preview panels) · `node --check` clean on all 20 JS files ·
-  `py_compile` clean · JSON/XML valid · local Pages-assembly dry run green
-  (all assets resolve, no internal files leaked, JWT tool in sitemap and
-  indexed) · live `server.py` crawl of the JWT routes all 200/301.
-- **Accuracy rules (enforced by the engine):** never trust the token's
-  `alg` to choose the verifier; HMAC algs reject PEM/JWK public keys
-  (algorithm-confusion guard); a JWKS key's family must match the expected
-  alg; decoding is reported separately from signature/claims verification;
-  observations are contextual (no numeric score); the hosted tool never
-  sends a JWT to a target, JWKS URL or third party and never persists a
-  token, wordlist or secret.
-- **Maintainer follow-up:** if the push of `.github/workflows/pages.yml`
-  was rejected (missing `workflows` permission), `docs/pages-workflow-patch.md`
-  carries the line that adds `tools/jwt` to the explicit `cp -a tools/…`
-  copy. `guides/` is copied whole-tree so `guides/jwt/` needs no line.
-- **Real-browser suites:** `/tools/jwt/` and `/guides/jwt/` are in the
-  `layout`/`dropdown`/`responsive` PAGES arrays (appended at the end in
-  `responsive.js` so `TOOLS = PAGES.slice(1, 5)` stays the four scan
-  tools; dropdown project-mount link count is 7). Suites were **not
-  executed** (no Chromium in the sandbox); run by hand before merge.
-- **Next approved roadmap ID:** **`JWT-02`** (edit & generate). ABOUT-01
-  stays `TODO`.
-- **Files/traps the next session must read:** `REVIEW.md` §25/§26 ·
-  `docs/DEV-NOTES.md` ("JWT-00 traps" + "JWT-01 traps") ·
-  `docs/ROADMAP.md` (JWT-02 scope) · `js/jwt.engine.js` + `js/tool.jwt.js`
-  (the engine contract the new tests pin) · `docs/pages-workflow-patch.md`.
-- **Known blockers:** none in code. Possible external dependency: the
-  workflow line may need a maintainer if the push was rejected.
+- **Last verified `origin/main`:** `e2a9a86` — PR #24 (JWT-00 preview +
+  JWT-01 decode/inspect/verify) merged as `b8a9fdc` (verified 2026-08-15).
+  This session started from `origin/main` with a clean tree.
+- **Work in review:** **JWT-02 (edit & generate) + JWT-03 (test variants
+  and bounded secret testing)** — branch `arena/01a004aa-cyberbuddy`,
+  **PR #25** (open, not merged). JWT-03 was folded into the JWT-02 PR at
+  the maintainer's request to merge once.
+- **Delivered (JWT-02, REVIEW §27):** functional Edit & Generate —
+  header/payload editors, standard-claim helpers, semantic diff,
+  HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
+  labels, token-only copy/download with confirmed private-key export.
+- **Delivered (JWT-03, REVIEW §28):**
+  - **Test Variants (functional):** `buildVariant` in the engine —
+    `alg:none`, claim tamper (original signature kept) and claim re-sign,
+    algorithm confusion (HS256 with the pasted public key as the HMAC
+    secret), embedded JWK, `jku`/`x5u`, path/SQL-style `kid` templates.
+    Every output is labelled **TEST TEMPLATE**, never a finding; re-signed
+    variants go through `signToken` so all JWT-02 guards apply; `alg:none`
+    stays rejected by parse/sign and exists only as a template.
+  - **Secret Test (functional):** `js/jwt.worker.js` runs the bounded
+    HS256/384/512 search off the main thread — `searchHmacSecret` in the
+    engine, progress every 250 candidates, cancel, explicit caps
+    (100,000 candidates, 120 s) checked between candidates, the uploaded
+    wordlist read inside the worker with `FileReaderSync`, a 32-key
+    built-in starter list. A match is a discovered secret for authorized
+    testing, never a verdict.
+  - **PWA shortcut added** (`manifest.webmanifest`) now that the workbench
+    is complete (deferred through JWT-01/02); manifest description and
+    README/`llms.txt`/guide updated (guide at 1185 of 1200 visible words).
+- **Last completed checks:** **274/274** stdlib tests OK
+  (`python3 -m unittest test_engines.py`) — 16 new/repurposed
+  `JwtWorkbenchTests` covering the Node-driven variant builder (including
+  the confusion signature verified against an independent HMAC while the
+  verify guard holds), `searchHmacSecret` (found/not-found/progress/stop),
+  and the worker message contract under a Node Worker-shim (found +
+  cancel with tested < total) · `node --check` clean on all 21 JS files
+  (incl. `js/jwt.worker.js`) · `py_compile` clean · JSON (manifest) + XML
+  valid · local Pages-assembly dry run green · live `server.py` JWT route
+  crawl (covered by the stdlib route tests) · Node DOM-shim smoke tests of
+  the full controller (JWT-01/02/03 flows, including the real worker file
+  driven through a fake `Worker`, the cache-bustered worker URL, the
+  cancel path and the HS-only guard on an RS256 base).
+- **Real-browser suites:** not executed (no Chromium in the sandbox). The
+  `/tools/jwt/` page now has all four panels functional; run
+  `layout`/`dropdown`/`responsive` by hand before merge.
+- **Next approved roadmap ID:** none set — the JWT series is complete.
+  ABOUT-01 and DX-01 remain `TODO` for the maintainer to approve; the §6
+  protocol's "exactly one NEXT" is intentionally not applied until then.
+  FUTURE-01 stays `DEFERRED`.
+- **Files/traps the next session must read:** `REVIEW.md` §27/§28 ·
+  `docs/DEV-NOTES.md` ("JWT-02 traps" + "JWT-03 traps") · `js/jwt.engine.js`
+  + `js/tool.jwt.js` + `js/jwt.worker.js` (the engine contract the new
+  tests pin) · `docs/pages-workflow-patch.md` (no new entries needed —
+  `tools/jwt` is already on the workflow copy line and `js/*.js` is
+  copied whole, so the worker needs no line).
+- **Known blockers:** none in code. No workflow edit was needed this
+  session.
 
 ## 6. Future-session protocol
 

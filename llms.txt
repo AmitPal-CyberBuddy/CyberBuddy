@@ -20,7 +20,7 @@
 - CORS Validator (`/tools/cors/`) — ACAO reflection vs allowlist, credentials, Vary: Origin. OWASP WSTG-CLNT-07, CWE-942.
 - CSP Policy Auditor (`/tools/csp/`) — enforced vs Report-Only CSP, effective script/style sources, navigation controls, mixed content, syntax, Trusted Types, and reporting. OWASP WSTG-CONF-12, CWE-79, CWE-693.
 - CSRF PoC Generator (`/tools/csrf/`) — paste a raw Burp request, get a standalone HTML proof-of-concept (forms and fetch variants, READY/LIMITED/NOT DIRECTLY REPRESENTABLE). Fully local: nothing sent, stored, or relayed. OWASP WSTG-SESS-05, CWE-352.
-- JWT Security Workbench (`/tools/jwt/`) — decode, inspect and verify compact JWS tokens locally: strict parsing, claim timeline and observations, plus HMAC/RSA-PKCS#1/RSA-PSS/ECDSA signature verification with a PEM/JWK/JWKS key you supply. The token's `alg` is never trusted to choose the verifier (algorithm-confusion guard). Edit/generate and secret testing are in development. Fully local. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
+- JWT Security Workbench (`/tools/jwt/`) — decode, inspect, verify, edit and re-sign compact JWS tokens locally: strict parsing, claim timeline and observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign with a key you supply, a semantic original-vs-modified diff, local RSA test-key generation and explicit TEST TOKEN labels (copy/download never exports key material by accident). JWT-03 adds labelled test-variant templates (alg:none, claim tamper/re-sign, algorithm confusion with a pasted public key, embedded JWK, jku/x5u, kid) and bounded HS256/384/512 secret testing in a Web Worker with progress, cancel and explicit limits. The token's `alg` is never trusted to choose the verifier (algorithm-confusion guard). Fully local. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
 
 ## Guides
 
@@ -31,7 +31,7 @@ Short, tool-connected notes — one per tool. Each guide covers one weakness, ho
 - CORS (`/guides/cors/`) — reflected Origin plus credentials as a read of authenticated responses, allowlist mistakes (prefix/suffix/regex, `null`, wildcard with credentials), Vary: Origin, and how to confirm it with the CORS Validator. OWASP WSTG-CLNT-07, CWE-942.
 - CSP (`/guides/csp/`) — reading a policy for what it actually blocks: fallback chains, 'unsafe-inline' versus nonces, Report-Only versus enforced, directives a <meta> tag drops, and how the CSP Policy Auditor grades them. OWASP WSTG-CONF-12, CWE-79.
 - CSRF (`/guides/csrf/`) — the three conditions that make an action forgeable, why the PoC is the finding, what READY / LIMITED / NOT DIRECTLY REPRESENTABLE mean, and the fix. OWASP WSTG-SESS-05, CWE-352.
-- JWT (`/guides/jwt/`) — header/payload/signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, `alg:none`, algorithm confusion, `kid`/`jku`/`x5u`/embedded JWK, replay/lifetime, and how the Workbench verifies locally with the key you supply. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
+- JWT (`/guides/jwt/`) — header/payload/signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, `alg:none`, algorithm confusion, `kid`/`jku`/`x5u`/embedded JWK, replay/lifetime, and how the Workbench verifies, signs, templates and bounded-tests locally with the key you supply. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
 
 ## Documentation
 
