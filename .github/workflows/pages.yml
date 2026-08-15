@@ -49,9 +49,10 @@ jobs:
           cp css/*.css _site/css/
           cp js/*.js _site/js/
 
-          # Publish every live tool, including the CSP Policy Auditor and the
-          # CSRF PoC Generator, plus the tools catalog that indexes them all.
-          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf _site/tools/
+          # Publish every live tool, including the CSP Policy Auditor, the
+          # CSRF PoC Generator, and the JWT Security Workbench (decode/
+          # inspect/verify), plus the tools catalog that indexes them all.
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt _site/tools/
           cp tools/index.html _site/tools/            # ← EDIT 1: publish the catalog
 
           # Full methodology page (the hub links to the #methodology anchor,
