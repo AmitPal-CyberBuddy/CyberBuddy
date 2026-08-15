@@ -227,7 +227,10 @@ python3 csp_checker.py https://example.com --json</code></pre>
       <code>localStorage</code>, expire after 24 hours, and are never uploaded.
       Published reports are built in CI from a fixed demo list — nothing you
       type is ever written there. Third-party relays are opt-in, disclose only
-      the hostname, and anything they return is flagged unverified.
+      the hostname, and anything they return is flagged unverified. The hosted
+      fallback also sends that hostname to <code>dns.google</code> for A/AAAA
+      resolution after consent, so NXDOMAIN is reported as unreachable rather
+      than receiving a misleading security grade.
     </p>
     <p>
       For a scan where nothing leaves your machine at all, run

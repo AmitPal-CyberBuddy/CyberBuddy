@@ -77,6 +77,12 @@ python3 server.py --host 0.0.0.0 --allow-private
 That serves the hub, all tool pages, and the JSON APIs that make header scans
 possible (browsers can't read cross-origin response headers on their own).
 
+The hub suite can run all four URL assessments or any selected subset; the
+selection is preserved in share links with the target URL. On GitHub Pages,
+a consent-gated A/AAAA lookup through Google Public DNS distinguishes
+NXDOMAIN / domains with no web address from ordinary CORS or relay failures.
+The Python engine performs its own authoritative system-DNS check locally.
+
 URL fields accept bare public domains (`example.com` becomes
 `https://example.com`) and local host/port input (`localhost:8080` becomes
 `http://localhost:8080`). Public hostnames need a dot and plausible TLD; IP

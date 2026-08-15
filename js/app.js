@@ -309,10 +309,8 @@ const TOOLS_MENU = [
     std: ["OWASP WSTG-SESS-05", "CWE-352"]
   },
   {
-    // JWT-01: decode, inspect and verify is functional; edit/generate
-    // (JWT-02) and variants/secret-test (JWT-03) remain previews on the
-    // same page. category "local" — it never scans a target or joins the
-    // Run suite.
+    // JWT-03: all Workbench panels are functional. category "local" — it
+    // never scans a target or joins the URL assessment suite.
     href: "/tools/jwt/",
     label: "JWT Security Workbench",
     status: "live",
@@ -320,9 +318,9 @@ const TOOLS_MENU = [
     category: "local",
     input: "JWT / Bearer token",
     mode: "Local in your browser — no token leaves the page",
-    evidence: "Decoded header/payload, claim timeline, observations, and HMAC/RSA-PSS/ECDSA signature verification",
-    desc: "Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. Edit/generate and secret testing are coming soon.",
-    tags: ["JWT", "decode", "verify", "HMAC", "RSA", "ECDSA", "JWKS"],
+    evidence: "Decoded claims, signature verification, semantic diff, signed variants, and bounded secret-test results",
+    desc: "Decode, inspect, verify, edit, re-sign and test JWTs locally — HMAC, RSA, RSA-PSS and ECDSA via Web Crypto, with no token or key leaving your browser.",
+    tags: ["JWT", "decode", "verify", "sign", "variants", "secret test"],
     std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];
@@ -700,6 +698,9 @@ async function detectEngine() {
 }
 
 async function apiCall(path, url) {
+  // Once detection has proved this is static Pages, avoid a guaranteed HTML
+  // 404 for every selected tool. This saves requests and prevents noisy logs.
+  if (!API_BASE && window.__cbEngine && window.__cbEngine.mode === "live") return null;
   try {
     const res = await fetch(apiUrl(path) + "?" + new URLSearchParams({ url }), apiHeadersInit());
     const ctype = (res.headers.get("content-type") || "").toLowerCase();
@@ -756,6 +757,70 @@ function unreachableDetail(data) {
   return (err && err.detail) || (data && data.summary) || "No response received.";
 }
 
+/* On a static Pages deployment a failed fetch cannot distinguish NXDOMAIN
+   from CORS, a timeout, or a relay outage. Before falling back to browser
+   graders, query public DNS (only after the existing relay/privacy consent)
+   so a made-up domain gets an honest, terminal UNREACHABLE result. DNS is a
+   hint rather than a security boundary; the Python engine remains authoritative. */
+const dnsChecksInFlight = new Map();
+
+async function hostedDomainStatus(url) {
+  let host = "";
+  try { host = new URL(url).hostname.replace(/\.$/, ""); } catch (_) { return null; }
+  if (!host || host === "localhost" || host.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return null;
+  if (window.__cbEngine && window.__cbEngine.mode === "python") return null;
+  if (dnsChecksInFlight.has(host)) return dnsChecksInFlight.get(host);
+
+  const query = async (type) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    try {
+      const endpoint = "https://dns.google/resolve?" + new URLSearchParams({ name: host, type: type });
+      const res = await fetch(endpoint, { cache: "no-store", signal: ctrl.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return { status: Number(data.Status), answers: Array.isArray(data.Answer) ? data.Answer.length : 0 };
+    } catch (_) { return null; }
+    finally { clearTimeout(timer); }
+  };
+
+  const task = Promise.all([query("A"), query("AAAA")]).then((answers) => {
+    const known = answers.filter(Boolean);
+    if (!known.length) return null; // DNS provider unavailable: continue normally.
+    if (known.some((item) => item.answers > 0)) return { exists: true, host: host };
+    if (known.every((item) => item.status === 3)) {
+      return { exists: false, host: host, detail: "DNS reports NXDOMAIN — the domain does not exist." };
+    }
+    if (known.every((item) => item.status === 0 && item.answers === 0)) {
+      return { exists: false, host: host, detail: "DNS returned no IPv4 or IPv6 web address for this domain." };
+    }
+    return null;
+  }).finally(() => dnsChecksInFlight.delete(host));
+  dnsChecksInFlight.set(host, task);
+  return task;
+}
+
+function unreachableScanResult(kind, url, detail) {
+  const item = { name: "Target reachability", status: "error", detail: detail, evidence: "DNS" };
+  const common = {
+    url: url, final_url: url, status_code: null, risk: "unknown",
+    summary: "Target not reachable. " + detail, headers: {}, _source: "browser", _unreachable: true
+  };
+  if (kind === "scan") common.findings = [item];
+  else common.checks = [item];
+  if (kind === "headers") Object.assign(common, { score: 0, grade: "F" });
+  if (kind === "csp") Object.assign(common, {
+    policy: "", report_only_policy: "", directives: {}, suggested_policy: CSP_SUGGESTED_POLICY
+  });
+  if (kind === "cors") common.origins_tested = [];
+  return common;
+}
+
+async function hostedUnreachable(kind, url) {
+  const dns = await hostedDomainStatus(url);
+  return dns && dns.exists === false ? unreachableScanResult(kind, url, dns.detail) : null;
+}
+
 async function apiScan(url) {
   const local = await apiCall("/api/scan", url);
   if (isUsableScan(local, "scan")) {
@@ -770,6 +835,8 @@ async function apiScan(url) {
     cached.clickjacking._cached_at = cached.generated_at || "";
     return cached.clickjacking;
   }
+  const unreachable = await hostedUnreachable("scan", url);
+  if (unreachable) return unreachable;
   return gradeClickjackingLive(url);
 }
 
@@ -787,6 +854,8 @@ async function apiHeaders(url) {
     cached.headers._cached_at = cached.generated_at || "";
     return cached.headers;
   }
+  const unreachable = await hostedUnreachable("headers", url);
+  if (unreachable) return unreachable;
   return gradeHeadersLive(url);
 }
 
@@ -804,6 +873,8 @@ async function apiCors(url) {
     cached.cors._cached_at = cached.generated_at || "";
     return cached.cors;
   }
+  const unreachable = await hostedUnreachable("cors", url);
+  if (unreachable) return unreachable;
   return probeCorsLive(url);
 }
 
@@ -834,6 +905,8 @@ async function apiCsp(url) {
     derived._cached_at = cached.generated_at || "";
     return derived;
   }
+  const unreachable = await hostedUnreachable("csp", url);
+  if (unreachable) return unreachable;
   return gradeCspLive(url);
 }
 
@@ -3236,8 +3309,32 @@ function initSuite() {
   const toolbar = document.getElementById("suiteToolbar");
   const shareBtn = document.getElementById("suiteShare");
   const copyBtn = document.getElementById("suiteCopy");
+  const toolInputs = Array.from(document.querySelectorAll('input[name="suiteTool"]'));
+  const pickerError = document.getElementById("suitePickerError");
+  const selectAll = document.getElementById("suiteSelectAll");
+  const selectedTools = () => toolInputs.filter((el) => el.checked).map((el) => el.value);
+  const updatePicker = () => {
+    const count = selectedTools().length;
+    go.textContent = count ? "Run " + count + (count === 1 ? " tool" : " tools") : "Choose tools";
+    go.disabled = count === 0;
+    if (pickerError) pickerError.classList.toggle("hidden", count !== 0);
+    if (pickerError) pickerError.textContent = count ? "" : "Select at least one assessment tool.";
+    toolInputs.forEach((el) => {
+      const label = el.closest("label");
+      if (label) label.classList.toggle("is-selected", el.checked);
+    });
+    if (selectAll) selectAll.textContent = count === toolInputs.length ? "Clear all" : "Select all";
+  };
+  toolInputs.forEach((el) => el.addEventListener("change", updatePicker));
+  if (selectAll) selectAll.addEventListener("click", () => {
+    const check = selectedTools().length !== toolInputs.length;
+    toolInputs.forEach((el) => { el.checked = check; });
+    updatePicker();
+  });
 
   async function run() {
+    const active = selectedTools();
+    if (!active.length) { updatePicker(); return; }
     const url = validateUrlField(input);
     if (!url) return;
     pushUrlParam(url);
@@ -3278,11 +3375,14 @@ function initSuite() {
     setStage("consent", consent === "skip" ? "skipped" : "done",
       consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
 
-    setStage("collect", "active", "headers · CSP · CORS · framing — read-only GETs");
-    // CSP needs the same response fields as Security Headers. Reuse that
-    // result in the suite instead of sending a duplicate GET to the target.
-    const headersTask = apiHeaders(url).catch(() => null);
-    const cspTask = headersTask.then((headersResult) => {
+    const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP" };
+    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — read-only GETs");
+    const wants = (key) => active.includes(key);
+    // CSP and Security Headers consume the same response fields. When both
+    // are selected, reuse one header read rather than contacting the target twice.
+    const headersTask = wants("headers") || wants("csp")
+      ? apiHeaders(url).catch(() => null) : Promise.resolve(null);
+    const cspTask = wants("csp") ? headersTask.then((headersResult) => {
       if (headersResult && headersResult.status_code != null && headersResult.headers) {
         const cspResult = gradeCspFromMap(
           url,
@@ -3295,40 +3395,33 @@ function initSuite() {
         return cspResult;
       }
       if (headersResult && headersResult._unreachable) {
-        return markUnreachable({
-          url: headersResult.url,
-          final_url: headersResult.final_url,
-          status_code: null,
-          checks: headersResult.checks || [],
-          risk: "unknown",
-          summary: headersResult.summary || "Target not reachable.",
-          policy: "",
-          report_only_policy: "",
-          directives: {},
-          suggested_policy: CSP_SUGGESTED_POLICY,
-          headers: {}
-        }, headersResult._source);
+        return unreachableScanResult("csp", url, unreachableDetail(headersResult));
       }
       return apiCsp(url).catch(() => null);
-    });
-    const [cj, hd, cr, cp] = await Promise.all([
-      apiScan(url).catch(() => null),
+    }) : Promise.resolve(null);
+    const [cj, headerRead, cr, cp] = await Promise.all([
+      wants("clickjacking") ? apiScan(url).catch(() => null) : null,
       headersTask,
-      apiCors(url).catch(() => null),
+      wants("cors") ? apiCors(url).catch(() => null) : null,
       cspTask
     ]);
+    const hd = wants("headers") ? headerRead : null;
     setStage("collect", "done");
     setStage("evaluate", "done", "OWASP-aligned checks applied");
 
-    lastSuite = { url: url, clickjacking: cj, headers: hd, cors: cr, csp: cp };
+    lastSuite = { url: url, active: active, clickjacking: cj, headers: hd, cors: cr, csp: cp };
+    const params = new URLSearchParams(window.location.search);
+    params.set("url", url);
+    params.set("tools", active.join(","));
+    history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
     const base = appBase();
-    out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) +
-      '<div class="suite-grid">' +
-      suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) +
-      suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) +
-      suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) +
-      suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) +
-      "</div>";
+    const cards = [
+      wants("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
+      wants("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
+      wants("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
+      wants("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : ""
+    ].join("");
+    out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) + '<div class="suite-grid">' + cards + "</div>";
     addRecentScan(url, recentScanSummary(lastSuite));
     renderRecentScans();
     if (toolbar) toolbar.classList.remove("hidden");
@@ -3346,21 +3439,19 @@ function initSuite() {
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
       if (!lastSuite) return;
-      const parts = [
-        toMarkdown(lastSuite.clickjacking),
-        "",
-        toMarkdown(lastSuite.headers),
-        "",
-        toMarkdown(lastSuite.cors),
-        "",
-        toMarkdown(lastSuite.csp)
-      ];
-      const ok = await copyText(parts.join("\n"));
+      const parts = (lastSuite.active || []).map((key) => toMarkdown(lastSuite[key]));
+      const ok = await copyText(parts.join("\n\n"));
       flashBtn(copyBtn, ok, "Suite copied ✓");
     });
   }
   initSuggestedTargets();
-  const initial = new URLSearchParams(location.search).get("url");
+  const initialParams = new URLSearchParams(location.search);
+  const requestedTools = (initialParams.get("tools") || "").split(",").filter(Boolean);
+  if (requestedTools.length) {
+    toolInputs.forEach((el) => { el.checked = requestedTools.includes(el.value); });
+  }
+  updatePicker();
+  const initial = initialParams.get("url");
   if (initial) {
     input.value = initial;
     if (validateUrlField(input, false)) run();
@@ -3472,25 +3563,28 @@ function suiteToolChip(label, data, withScore) {
 function suiteSummaryHtml(s, engineNote) {
   const hd = s.headers;
   const worst = worstSuiteTool(s);
+  const headersSelected = !s.active || s.active.includes("headers");
   const gauge = hd && hd.score != null
     ? gaugeHtml(hd.score, hd.grade, true)
     : '<div class="score-gauge gauge-f"><svg viewBox="0 0 120 120" aria-hidden="true">' +
       '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
-      '<text class="gauge-num" x="60" y="58" style="font-size:15px">no</text>' +
-      '<text class="gauge-num" x="60" y="76" style="font-size:15px">data</text>' +
-      '</svg><span class="gauge-band">headers unavailable</span></div>';
+      '<text class="gauge-num" x="60" y="58" style="font-size:15px">' + (headersSelected ? "no" : "not") + '</text>' +
+      '<text class="gauge-num" x="60" y="76" style="font-size:15px">' + (headersSelected ? "data" : "run") + '</text>' +
+      '</svg><span class="gauge-band">headers ' + (headersSelected ? "unavailable" : "not selected") + '</span></div>';
+  const selectedCount = (s.active || []).length || [s.clickjacking, s.headers, s.cors, s.csp].filter(Boolean).length;
   const verdict = worst
     ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
       esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
-      '<span class="suite-summary-worst">worst-case risk across the four scan tools — ' +
-      esc(worst[0]) + "</span>"
+      '<span class="suite-summary-worst">worst-case risk across ' + selectedCount +
+      (selectedCount === 1 ? " selected tool — " : " selected tools — ") + esc(worst[0]) + "</span>"
     : '<span class="risk unknown">UNKNOWN</span>' +
-      '<span class="suite-summary-worst">no tool returned a result</span>';
+      '<span class="suite-summary-worst">no selected tool returned a result</span>';
+  const active = s.active || ["clickjacking", "headers", "cors", "csp"];
   const chips =
-    suiteToolChip("Clickjacking", s.clickjacking, false) +
-    suiteToolChip("Headers", s.headers, true) +
-    suiteToolChip("CORS", s.cors, false) +
-    suiteToolChip("CSP", s.csp, false);
+    (active.includes("clickjacking") ? suiteToolChip("Clickjacking", s.clickjacking, false) : "") +
+    (active.includes("headers") ? suiteToolChip("Headers", s.headers, true) : "") +
+    (active.includes("cors") ? suiteToolChip("CORS", s.cors, false) : "") +
+    (active.includes("csp") ? suiteToolChip("CSP", s.csp, false) : "");
   return '<div class="suite-summary">' +
     '<div class="suite-summary-gauge">' + gauge + "</div>" +
     '<div class="suite-summary-body">' +
@@ -3607,13 +3701,15 @@ function renderRelayGate() {
     "<p>To grade them it would proxy the request through public services, which " +
     "discloses what you are testing to operators outside your engagement " +
     "(<code>" + RELAY_HOSTS.join("</code>, <code>") + "</code>). They would see the " +
-    "target and your IP address, and many assessment NDAs prohibit that. For a " +
-    "fully private scan, stop and run <code>python3 server.py</code> locally instead.</p>" +
+    "target and your IP address, and many assessment NDAs prohibit that. CyberBuddy " +
+    "also asks Google Public DNS for A/AAAA records so it can identify nonexistent " +
+    "domains instead of reporting a misleading scan. For a fully private scan, stop " +
+    "and run <code>python3 server.py</code> locally instead.</p>" +
     "</div>" +
     '<div class="relay-consent-actions" role="group" aria-label="Relay options">' +
     option("host", "Allow \u2014 hostname only", true,
       "Proxies <em>only</em> the hostname. Best balance of evidence and privacy, and enough for almost every header check \u2014 CSP, HSTS, X-Frame-Options and the cookie/isolation family are all set per origin.",
-      "<code>example.com</code>", "A full A\u2013F header grade, flagged <em>unverified</em>") +
+      "<code>example.com</code> to relays and public DNS", "A reachability check and full A\u2013F header grade, flagged <em>unverified</em>") +
     option("full", "Allow \u2014 full URL", false,
       "Also proxies the path and query string. Only needed when headers differ per path (a login route, a tenant-specific page). This is the option most likely to leak a token or customer ID from a URL.",
       "<code>example.com/admin?token=\u2026</code>", "Same grade, scoped to that exact URL") +
