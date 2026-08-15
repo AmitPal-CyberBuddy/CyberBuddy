@@ -1553,3 +1553,307 @@ by the guard above.
   had no Chromium binary and the browser CDN was unreachable. They must be run
   by hand (`CB_CHROME=… node tests/browser/*.js`) before IA-01 merges; the
   expected counts are the §21 baseline plus the new catalog/grouping checks.
+
+---
+
+## 23. GUIDES-01/02/03 — Guides foundation + a guide for every tool (2026-08-15)
+
+Work began from `origin/main` at `17e66e2` on the Arena-assigned branch
+`arena/01a003bd-cyberbuddy`. `docs/ROADMAP.md`, `docs/DEV-NOTES.md` and
+REVIEW §22 were read first. IA-01 was confirmed merged (PR #22, merge commit
+`2956801`) and its roadmap status moved `IN REVIEW` → `DONE`; none of its work
+was re-applied. Only the item marked `NEXT` — GUIDES-01 — was implemented.
+
+### Baseline (and the failure that was already there)
+
+`python3 -m unittest test_engines.py` at the branch point ran **177 tests with
+1 failure**. `PagesExclusionTests.test_workflow_never_copies_internal_paths`
+token-scanned the *entire* `pages.yml` for `docs/ROADMAP.md` — and the
+maintainer, when applying the IA-01 patch, added a *leak-guard* step that
+legitimately names that path in order to assert it is absent from `_site/`.
+The test was flagging its own safety net.
+
+It was narrowed rather than weakened. A `_assemble_step_body()` helper slices
+the YAML from `- name: Assemble static site` to the next line indented at or
+below that step's indent, and the copy scan runs over that slice only. A
+second new test, `test_workflow_guard_step_names_the_internal_files`, asserts
+the guard step still names `docs/`, `tests/` and `REVIEW.md` — so deleting the
+guard to make the first test pass now fails the second. Baseline green again.
+
+### Why this round
+
+The roadmap's framing is that CyberBuddy is a *testing* suite, not a blog: the
+maintainer's long-form writing already lives on Medium. What was missing was
+the short connective layer — the page you read to understand what the scanner
+just told you. GUIDES-01 builds that layer and proves the shape with exactly
+one guide.
+
+### What shipped
+
+- **`guides/index.html`** — the section hub. One live guide card
+  (Clickjacking: read time, paired tool, OWASP/CWE mapping), one honest
+  “more coming” card that points at the tools catalog in the meantime, and a short
+  *How these guides work* panel stating the contract: a guide states the
+  weakness, the evidence that settles it and the fix, then hands off.
+- **`guides/clickjacking/index.html`** — the pilot, ~4 minutes: the attack in
+  one paragraph (why it survives CSRF tokens and SameSite), a two-row table
+  contrasting `X-Frame-Options` with CSP `frame-ancestors` including the
+  override trap and the report-only trap, a five-step *confirm it with the
+  validator* walkthrough ending at the exportable report card, the fix as a
+  copyable two-header block, and a *go deeper* list of primary references.
+- **Navigation** — `js/app.js` gained a single **Guides** entry in the header
+  nav and one in the footer's *Learn* column. The footer stays category-based:
+  a section link, never one link per guide.
+- **Connections both ways** — the guide links to `../../tools/clickjacking/`
+  and to `../../methodology/`; the Clickjacking Validator now links back to the
+  guide. The hub's blog section head links to `guides/`, and `404.html` +
+  `js/404.js` offer a base-aware Guides card.
+- **Plumbing** — `server.py` gained the `guides/` static prefix, the
+  `/guides` → `/guides/` redirect and the `/CyberBuddy/guides/…` mount;
+  `sitemap.xml` (+2 URLs), `llms.txt` (a `## Guides` section) and `README.md`
+  (section, layout tree, Pages notes) were updated. `css/app.css` gained
+  `.prose` list/`<pre><code>` rules and a `.guide-link` style — no existing
+  rule was modified.
+
+### Honest scope notes
+
+- **“Go deeper” cites primary sources, not the blog.** An earlier draft of
+  this section pointed every guide at the Medium profile root as its
+  deep-dive. That was wrong: only two posts exist (HTTP request smuggling vs
+  pipelining; breaking client-side encryption) and neither is about
+  clickjacking, so the link promised a write-up that was not there —
+  fabricating a topic slug would have been worse still. The pilot now closes
+  with OWASP WSTG-CLNT-09, CWE-1021, the OWASP Clickjacking Defense Cheat
+  Sheet, MDN (`frame-ancestors`, `X-Frame-Options`), CSP Level 3 and the
+  PortSwigger labs. Every URL was fetched and confirmed to resolve before
+  commit, and `test_pilot_goes_deeper_via_real_primary_references` pins them
+  (plus `target="_blank" rel="noopener noreferrer"` on each). A blog link
+  returns only when a matching post exists — the in-progress CORS article is
+  the first candidate, for the eventual CORS guide.
+- **The prose is first person.** Guide copy reads as Amit writing, not as a
+  narrator describing “the maintainer's blog” to a visitor — the register the
+  hub's `BLOG_POSTS` excerpts already set.
+  `test_guides_are_written_in_first_person_not_as_a_narrator` keeps it that
+  way.
+- **Exactly one guide ships.** `test_scope_is_one_pilot_guide` asserts the
+  `guides/` directory contains exactly one guide directory, so the non-goal
+  (“no full Guides library”) is enforced, not just promised.
+- **Concision is tested.** `test_pilot_stays_short` caps the pilot's visible
+  word count — the other non-goal (“no long-form articles”) is a regression
+  test, not a style preference.
+
+### Tests and verification
+
+- **Stdlib:** `python3 -m unittest test_engines.py` — **203/203 OK** (+26).
+  New `GuidesTests` (23) covers the required *navigation + content presence*
+  criteria in both directions: header/footer/hub/404 links in, the tool
+  backlink, the tool and methodology links out, both framing controls and the
+  standards line present in the pilot, the authorization boundary on both
+  pages, canonical/OG/Twitter metadata, the shared shell and `frame-src 'none'`,
+  sitemap/`llms.txt`/README/`server.py` registration, the “Go deeper”
+  reference URLs and link hygiene, the first-person voice guard, plus the two
+  scope guards above. Each new guard was mutation-checked (reinstating a
+  `medium.com` link, reintroducing “the maintainer”, and dropping a `rel` on an
+  external link each fail the suite). Plus `ServerRouteTests.test_guides_pages` (six route
+  assertions) and the two `PagesExclusionTests` described earlier.
+- **Live server crawl:** with `server.py` running, `/guides` and
+  `/guides/clickjacking` 301 to their slash forms, `/guides/`,
+  `/guides/clickjacking/`, `/CyberBuddy/guides/` and
+  `/CyberBuddy/guides/clickjacking/` all return 200, and every local
+  `href`/`src` on the two guides pages, the Clickjacking tool page and the hub
+  resolves 200 — no broken relative depth.
+- **Static:** `node --check` clean on all 18 JavaScript files; `sitemap.xml`
+  re-parsed as XML.
+- **Real-browser suites:** `/guides/` and `/guides/clickjacking/` were added to
+  the `layout`, `dropdown` and `responsive` PAGES arrays (in `responsive.js`
+  they are appended *after* index 4 on purpose — `TOOLS` is `PAGES.slice(1, 5)`).
+  The suites were **not executed**: this sandbox has no Chromium binary,
+  `puppeteer-core` is absent, and `@puppeteer/browsers`, the Debian mirrors and
+  the Chrome-for-Testing endpoints are all unreachable (HTTP 000). They must be
+  run by hand before merging.
+
+### Maintainer follow-up — required for the section to exist in production
+
+The Pages workflow copies named directories, so `guides/` is currently invisible
+to the deployed site. `docs/pages-workflow-patch.md` has been rewritten to ask
+for one line after the methodology copy in *Assemble static site*:
+
+```
+test -d guides && cp -a guides _site/ || true
+```
+
+Without it the header and footer Guides links, the 404 card, the tool backlink
+and two `sitemap.xml` URLs all 404 on `amitpal-cyberbuddy.github.io`. The arena
+push token still lacks the `workflows` permission, so this cannot be committed
+here — the same constraint PR #20 and PR #22 hit.
+
+### Extension — the remaining four guides (GUIDES-02 + GUIDES-03)
+
+After reviewing the pilot the maintainer lifted GUIDES-01's "exactly one pilot
+guide" non-goal: shipping a Guides section where four of five tools have no
+guide is worse than shipping none. GUIDES-02 (Headers, CSP) and GUIDES-03
+(CORS, CSRF) were therefore pulled into this PR, all four built on the pilot's
+template — attack in one paragraph → a `method-table` of the ways it goes
+wrong → a numbered *confirm it with the tool* walkthrough ending at the
+exportable report card → the fix as a copyable block → *go deeper*.
+
+- **`guides/headers/`** (~5 min) — which headers earn their place and which
+  are cargo cult. `X-XSS-Protection` belongs at `0` because the legacy auditor
+  could itself introduce XSS; `no-cache` does not prevent caching, `no-store`
+  does; HSTS is ignored entirely when served over plain HTTP, so the header on
+  the redirect response is wasted; `Referrer-Policy`'s default *and* its
+  invalid-value fallback are both `strict-origin-when-cross-origin`. The grade
+  is framed as a reading aid, not a number to farm — CWE-693 is cited as
+  thematic context only, since it is a Pillar whose mapping is DISCOURAGED
+  upstream.
+- **`guides/csp/`** (~5 min) — reading a policy for what it *actually* blocks:
+  the `script-src` → `script-src-elem`/`-attr` and `default-src` fallback
+  chains, why an allowlist with a JSONP-capable CDN is not a policy, why
+  `'unsafe-inline'` is ignored when a nonce is present, Report-Only versus
+  enforced, and the directives a `<meta>` tag silently drops
+  (`frame-ancestors`, `sandbox`, reporting).
+- **`guides/cors/`** (~5 min) — CORS governs *reading*, and is not a CSRF
+  defence. Reflected `Origin` plus `Access-Control-Allow-Credentials: true` is
+  a full read of authenticated responses; the allowlist failure modes
+  (prefix/suffix/regex matching, an allowlisted `null` reachable from a
+  sandboxed iframe, wildcard with credentials) each get a row, and the missing
+  `Vary: Origin` cache-poisoning case is called out as a separate finding that
+  never sets headline risk — matching the engine.
+- **`guides/csrf/`** (~5 min) — the three conditions that must all hold, why
+  the PoC file *is* the finding, and exactly what READY / LIMITED / NOT
+  DIRECTLY REPRESENTABLE mean (JSON bodies force a preflight; multipart with a
+  file field needs the victim to choose a file). Ends on the point that
+  outranks every mitigation: an XSS anywhere in the origin defeats all of them.
+
+Every tool page now carries a `p.guide-link` backlink beneath its standards
+line, so the guide/tool link is bidirectional for all five. The guides index
+lost its ghost card, gained four real cards and now reads `05 live`; its
+`std-line` no longer claims deep dives "live on Medium", which was the same
+overclaim the pilot's *go deeper* block was corrected for.
+
+`GuidesTests` was generalised rather than duplicated. A `GUIDES` table maps
+each slug to its tool slug, the standards its page must cite and the exact
+reference URLs it must link; every test loops over that table. Two consequences
+worth keeping: `test_scope_is_one_guide_per_tool` now asserts the set of
+`guides/*` directories equals the set of `tools/*` directories — adding a tool
+without a guide fails the suite — and the external-link check still requires
+every `<a href="http…">` in every guide to carry exactly
+`target="_blank" rel="noopener noreferrer"`. All 22 reference URLs were fetched
+and verified before being pinned. Still 23 tests, now covering five pages;
+the whole suite is **203/203 OK**.
+
+The four new guide URLs were added to the `layout`, `dropdown` and
+`responsive` PAGES arrays (again appended at the end in `responsive.js`, where
+`TOOLS = PAGES.slice(1, 5)`), and `sitemap.xml`, `llms.txt` and `README.md`
+now list all five guides. The maintainer follow-up above is unchanged and
+still required: without `cp -a guides _site/` the whole section, now six pages
+instead of two, 404s in production.
+
+---
+
+## 24. DOCS-01 — In-site documentation page (2026-08-15)
+
+### Why this was worth doing
+
+The footer's Project column had four entries. Three stayed on the site;
+"Documentation" pointed at `https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme`
+— the only link in the entire footer that ejected a visitor off-site, and it
+landed them in a 390-line, 19-section README that is roughly two-thirds
+contributor material: the file tree, engine internals, the Pages workflow, how
+to deploy the optional `api/`. Someone who clicks "Documentation" on a security
+tool wants to know how to run it, not where `js/tool.cors.js` lives.
+
+The second problem was duplication in the other direction. The README and
+`methodology/index.html` already carry near-verbatim copies of the privacy
+notes and the hosted-scan limits. Adding a third home for that prose would have
+made a scoring change a four-file edit. So the page links to
+`../methodology/#hosted-scans` and `../methodology/#privacy` rather than
+restating them, and a test
+(`test_defers_scoring_to_the_methodology_page`) fails if the letter bands or
+numeric weights are ever typed into it.
+
+### What shipped
+
+`documentation/index.html` — a prose page in the standard shell
+(`<body data-page="/documentation/">`, `main.container.page-hero.prose`), six
+sections:
+
+1. **Quick start** — `python3 server.py`, the loopback-by-default bind, the
+   `--host 0.0.0.0` / `--allow-private` pair, and the fact that metadata and
+   link-local targets are refused on every bind with no override.
+2. **Which engine answers** — the three layers as `.roadmap-item` cards
+   (Python engine → published report → in-browser graders), then a link out to
+   the methodology page for the grading rules themselves.
+3. **Command line** — the four CLI entry points, `--public-only`, the exit-code
+   contract (`1` = high risk, usable as a CI gate; `2` = usage error), and the
+   dual-implementation parity story.
+4. **Evidence and export** — the report card and provenance strip, Evidence
+   mode, the four export formats as a `method-table`, and the honest note that
+   a cross-origin iframe cannot be rasterised so no screen-capture permission
+   is ever requested.
+5. **Limits of the hosted build** — why Pages cannot deliver
+   `frame-ancestors`, `X-Frame-Options` or HSTS, and therefore why the hosted
+   site does not score itself an A while `server.py` scores 95.
+6. **What leaves your browser** + a hand-off to GitHub for the contributor
+   material this page deliberately does not carry.
+
+Footer: `js/app.js` now emits `base + '/documentation/'`. "GitHub" stays as-is,
+so the repo is still one click away — it is just no longer disguised as
+documentation.
+
+### The directory is `documentation/`, not `docs/`
+
+This was the one real constraint. `.github/workflows/pages.yml` has a guard
+step that fails the build when `_site/docs` exists, because `docs/` is where
+`ROADMAP.md` and `DEV-NOTES.md` live, and
+`PagesExclusionTests.test_workflow_never_copies_internal_paths` pins that rule
+from the test suite. A page at `docs/index.html` would either break the deploy
+or leak the internal planning tree. `documentation/` sidesteps both, and the
+reasoning is now recorded in `docs/DEV-NOTES.md` so nobody "tidies" it later.
+
+### Wiring
+
+`server.py` needed two edits, not one: the `STATIC_PREFIXES` tuple *and* the
+redirect/static branch around line 365. Miss the second and `/documentation/`
+serves while `/documentation` 404s. The `/CyberBuddy/…` mount comes free via
+`strip_mount`. Verified live: `301 / 200 / 200` for `/documentation`,
+`/documentation/`, `/CyberBuddy/documentation/`, and every local `href`/`src`
+inside the page resolves 200. `sitemap.xml`, `llms.txt` and `README.md` all
+list the page; the README's Documentation-page section now states explicitly
+that the README is the *contributor* reference, which is the division of labour
+this change creates.
+
+### No header nav entry
+
+IA-01 settled the header on four items and that budget still holds. Operator
+docs are a reference you go looking for, not a destination you navigate to
+mid-scan, so this is footer-only —
+`test_does_not_duplicate_the_header_nav` fails if `/documentation/` ever
+appears inside `renderHeader()`.
+
+### Tests
+
+`DocumentationPageTests`, 18 tests, mirroring the `GuidesTests` structure:
+page shell and `frame-src 'none'`, canonical/OG/Twitter, `../` asset paths (no
+absolute paths that would break the project-pages mount), external links
+carrying exactly `target="_blank" rel="noopener noreferrer"`, the footer link
+being internal *and* the README hop being gone, operator-content presence
+(server flags, all four CLI names, export formats, provenance), first person,
+methodology deferral, the hosted-limit honesty, header nav unchanged,
+sitemap/`llms.txt`/`README.md`/`server.py` wiring, `docs/index.html` absent,
+and the carried workflow line. Suite total **221/221 OK** (203 before). The
+three browser PAGES arrays gained `/documentation/`, appended at the end in
+`responsive.js` where `TOOLS = PAGES.slice(1, 5)`; `node --check` clean.
+
+### Maintainer follow-up
+
+`docs/pages-workflow-patch.md` now asks for **two** lines instead of one:
+
+```yaml
+test -d guides && cp -a guides _site/ || true
+test -d documentation && cp -a documentation _site/ || true
+```
+
+Without the second, every page on the hosted site carries a footer link to a
+404, and the sitemap advertises a dead URL. The arena push token still lacks
+the `workflows` permission, so this cannot be committed here.

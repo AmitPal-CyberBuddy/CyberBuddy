@@ -400,3 +400,130 @@ should remain shared.
   `TOOLS_MENU`. This is the same intentional duplication the hub already has;
   the JS registry is still the single JS source. Keep the fallback and the
   registry in sync when tool metadata changes.
+
+## GUIDES traps — the Guides section
+
+- **A guide is only useful if it is connected.** The contract for every guide
+  is three links: *up* to `/guides/`, *across* to the tool that confirms the
+  finding (`../../tools/<slug>/`), and *out* to the primary references for
+  depth. The tool page links back (`../../guides/<slug>/`). Break one of those
+  and the guide becomes an orphaned article — which is exactly what the roadmap
+  says Guides must not be. `GuidesTests` pins all four directions.
+- **“Go deeper” means real references, never the Medium profile root.**
+  Superseded rule (do not reinstate): guides used to link
+  `https://amitpxl.medium.com/` as the deep-dive for every topic. There are
+  only two posts (request smuggling vs pipelining; client-side encryption) and
+  neither is about clickjacking, so that link promised a write-up that does not
+  exist. Every guide now closes with primary sources — OWASP WSTG, CWE, the
+  OWASP cheat sheet, MDN, the W3C spec, PortSwigger. A blog link may appear in
+  a guide **only** when a post on that exact topic is published; the CORS
+  article (“Understanding CORS — from browser security to real world impact”)
+  is in progress, so the CORS guide may add one once it ships, as its own
+  subsection separate from the references. `test_guides_never_sell_the_blog_as_
+  a_per_tool_deep_dive` asserts no `medium.com` in `guides/`. Never invent a
+  topic slug — a dead “read more” is worse than no link. Verify every external
+  URL resolves before committing (note MDN moved HTTP headers under
+  `/Web/HTTP/Reference/Headers/…`; the pre-`/Reference/` paths only redirect).
+- **Write as the author, in first person.** These are Amit's notes, not an
+  assistant's description of someone else's site. No “the maintainer's blog”,
+  no narrator voice addressing a visitor — the hub's `BLOG_POSTS` excerpts set
+  the register (“I walk through how I separate…”).
+  `test_guides_are_written_in_first_person_not_as_a_narrator` bans
+  “maintainer”/“the author's” in guide prose and requires a first-person “I”.
+- **Concise is a tested property, not a wish.** `test_guides_stay_short` caps
+  every guide's visible word count at 1200 words. All five copy the pilot's
+  shape (attack in one paragraph → the controls / the ways it goes wrong →
+  confirm with the tool → the fix → go deeper). Do not let one grow into an
+  article.
+- **Guide facts must track the engine.** The pilot's risk sentence mirrors
+  `clickjacking_validator.py`'s `score()` ladder (permissive/absent
+  `frame-ancestors` = High, X-Frame-Options only = Medium, restrictive
+  `frame-ancestors` = Low) and the methodology page. If the ladder changes,
+  the guide is a third place to update — grep `frame-ancestors` before editing
+  the scorer.
+- **New top-level section = the same four-part checklist.** `/guides/` needed
+  (1) a `STATIC_PREFIXES` entry plus `/guides` → `/guides/` redirect and the
+  `/CyberBuddy/guides/…` mount in `server.py`, (2) `sitemap.xml` + `llms.txt` +
+  README entries, (3) the CSP meta copied verbatim from `server.py`, and (4) a
+  Pages copy line. The workflow copies named directories only, so a new
+  directory is invisible on Pages until `cp -a guides _site/` is added —
+  carried in `docs/pages-workflow-patch.md` because the arena token cannot
+  push `.github/workflows/**`.
+- **Guides pages are one and two levels deep.** `guides/index.html` uses
+  `../css`, `../js`; `guides/clickjacking/index.html` uses `../../`. Same trap
+  as the catalog vs tool pages.
+- **`PagesExclusionTests` scans the assemble step only.** The workflow's leak
+  *guard* step legitimately names `docs/ROADMAP.md`, `docs/DEV-NOTES.md` and
+  `REVIEW.md`, so a whole-file token scan reports a false positive (it did, at
+  branch point `17e66e2`). `_assemble_step_body()` slices the YAML from
+  `- name: Assemble static site` to the next line indented at or below that
+  step's indent; keep new copy lines inside that step or the guard stops
+  seeing them.
+- **Footer stays category-based.** *Guides* is one entry in the Learn column —
+  never one entry per guide. `test_footer_learn_column_links_to_guides`
+  asserts the column contains `/guides/` and no `/guides/<slug>/`.
+- **`GuidesTests` is table-driven — extend the table, not the tests.** The
+  class holds a `GUIDES` dict mapping each slug to `(tool slug, standards,
+  reference URLs)`, and every test loops over it. Adding a guide means one new
+  entry; adding a *tool* means one new entry too, because
+  `test_scope_is_one_guide_per_tool` asserts `sorted(guides/*) ==
+  sorted(tools/*)`. That is deliberate: a tool without a guide should fail the
+  suite rather than ship silently.
+- **Every guide needs the `p.guide-link` backlink on its tool page.** It goes
+  immediately after the tool's `p.std-line` (around line 55) as
+  `<p class="guide-link reveal" style="--d: .12s;">New to this check? Read the
+  <a href="../../guides/<slug>/">N-minute … guide</a> first.</p>`. The
+  `.guide-link` rule lives at `css/app.css:1695`; the subsequent `--d` delays
+  on that page were left alone on purpose — the stagger is decorative, not
+  sequential.
+- **CWE-693 is a Pillar and its mapping is DISCOURAGED upstream.** The headers
+  and CSP tools already carry it in their standards line for continuity, but a
+  guide must present it as thematic context and cite the concrete ID (CWE-79
+  for CSP, CWE-1021 for clickjacking, CWE-942 for CORS, CWE-352 for CSRF) as
+  the one to put in a report.
+- **Guide risk language must mirror the engine, for all five.** CORS:
+  reflected `Origin` + credentials = High, reflection alone or wildcard +
+  credentials = Medium, everything else Low, and missing `Vary: Origin` is a
+  separate finding that never sets headline risk. CSRF: READY / LIMITED / NOT
+  DIRECTLY REPRESENTABLE, where `application/json` and multipart-with-file are
+  what produce LIMITED. Headers: A≥90 B≥75 C≥60 D≥45 else F, A/B low, C/D
+  medium, F high. Change a scorer and the matching guide is a third place to
+  update, after the tool page and the methodology page.
+
+---
+
+## DOCS traps — the `/documentation/` page
+
+- **The directory is `documentation/`, never `docs/`.** `docs/` is the
+  repo-internal planning tree, and `.github/workflows/pages.yml` has a guard
+  step that *fails the build* if `_site/docs` exists
+  (`PagesExclusionTests.test_workflow_never_copies_internal_paths` pins the
+  same rule). Renaming the published docs page to the obvious `docs/` would
+  either break the deploy or silently ship the roadmap. If a future session
+  wants a nicer URL, change the redirect, not the directory.
+- **It is footer-only, on purpose.** IA-01 settled the header on four items —
+  Hub / Guides / Method / Tools — and `renderHeader()` is pinned against
+  gaining a `/documentation/` entry by
+  `DocumentationPageTests.test_does_not_duplicate_the_header_nav`. Operator
+  docs are a reference you go looking for, not a primary destination.
+- **Do not restate the scoring rules there.** The score bands and weights
+  already exist twice (README + `methodology/`). The page links to
+  `../methodology/#hosted-scans` and `../methodology/#privacy` instead, and a
+  test asserts that neither the letter bands nor the numeric weights are
+  re-typed into it. Three copies of a scoring table is three places to forget.
+- **A new top-level section needs four wirings, not one.** `server.py` takes
+  *two* edits — the `STATIC_PREFIXES` tuple **and** the redirect/static branch
+  (~line 365) — or `/documentation` 404s while `/documentation/` works. Then
+  `sitemap.xml`, `llms.txt` and `README.md`. Then the unpushable workflow copy
+  line in `docs/pages-workflow-patch.md`. The `/CyberBuddy/…` mount comes free
+  via `strip_mount` once the branch clause is right.
+- **The page shell is copied from `guides/index.html`, one level deep.** `../`
+  asset paths, `theme-boot.js` in the head *without* `defer`, the CSP meta
+  verbatim including `frame-src 'none'`, and the `?v=` cache-buster on
+  `css/app.css` / `js/app.js` / `js/boot.js`. A prose page frames nothing —
+  only the Clickjacking Validator relaxes `frame-src`.
+- **The hosted-limits section must stay honest.** It states that the hosted
+  build cannot score itself an A because Pages cannot send headers
+  (`frame-ancestors` and `X-Frame-Options` are undeliverable via `<meta>`).
+  If the site ever moves behind a header-capable host, that section and the
+  matching README section both need correcting.

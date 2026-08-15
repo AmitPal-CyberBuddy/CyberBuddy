@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>Clickjacking guide — CyberBuddy</title>
+  <meta name="description" content="A short clickjacking guide: what UI redressing is, why X-Frame-Options alone is not enough, how CSP frame-ancestors decides framing, and how to confirm it with the CyberBuddy Clickjacking Validator." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/clickjacking/" />
+  <meta property="og:title" content="Clickjacking guide — CyberBuddy" />
+  <meta property="og:description" content="What UI redressing is, why X-Frame-Options alone is not enough, and how to prove a page is framable in one scan." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/clickjacking/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Clickjacking guide — CyberBuddy" />
+  <meta name="twitter:description" content="What UI redressing is, why X-Frame-Options alone is not enough, and how to prove a page is framable in one scan." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Clickjacking: prove it in one scan",
+      "description": "What UI redressing is, why X-Frame-Options alone is not enough, how CSP frame-ancestors decides framing, and how to confirm it with the CyberBuddy Clickjacking Validator.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/clickjacking/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/clickjacking/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 4 min read</p>
+  <h1 class="reveal">Clickjacking: prove it in one scan</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Clickjacking (UI redressing) loads a real page inside an attacker's frame
+    and tricks a victim into clicking it. Two response headers decide whether
+    that is possible — and only one of them still matters most.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-CLNT-09</strong> &middot; <strong>CWE-1021</strong> &mdash; UI redressing</p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/clickjacking/">Open the Clickjacking Validator</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>The attack in one paragraph</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      An attacker embeds your page in an <code>&lt;iframe&gt;</code> on a page
+      they control, makes the frame transparent or covers it with their own
+      decoy UI, and positions a bait button exactly over one of your real
+      controls. The victim thinks they clicked “Play”; the browser delivers a
+      genuine, authenticated click to “Transfer funds” or “Grant access” on
+      your origin. Nothing is injected and no token is stolen — the victim's
+      own session does the work, which is why clickjacking survives CSRF
+      tokens and SameSite cookies.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The two controls</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="Framing controls">
+      <thead>
+        <tr><th scope="col">Header</th><th scope="col">What it does</th><th scope="col">Verdict</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">X-Frame-Options</td>
+          <td><code>DENY</code> or <code>SAMEORIGIN</code> blocks framing in current browsers. <code>ALLOW-FROM</code> is obsolete and ignored.</td>
+          <td>Legacy. Keep it, but do not rely on it alone.</td>
+        </tr>
+        <tr>
+          <td class="k">CSP frame-ancestors</td>
+          <td>Names exactly which origins may frame the page: <code>'none'</code>, <code>'self'</code>, an allowlist, or the wide-open <code>*</code>.</td>
+          <td>The modern control. Browsers honour it <em>over</em> X-Frame-Options.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      That override is the trap people miss: a page can send
+      <code>X-Frame-Options: DENY</code> and still be framable if its CSP says
+      <code>frame-ancestors *</code>. A CSP that exists but omits
+      <code>frame-ancestors</code> does nothing for framing — no other
+      directive substitutes for it — and a <code>frame-ancestors</code> that
+      only appears on <code>Content-Security-Policy-Report-Only</code> is
+      telemetry, not enforcement.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Confirm it with the validator</h2>
+  </div>
+  <article class="card reveal">
+    <ol>
+      <li>Open the <a href="../../tools/clickjacking/">Clickjacking Validator</a> and paste a URL you are authorized to test.</li>
+      <li>Press <strong>Validate</strong>. The scan is a read-only <code>GET</code>; it reads the response headers and tries to frame the page.</li>
+      <li>If the real site renders inside the frame, it is framable — that render <em>is</em> the evidence.</li>
+      <li>Press <strong>Show PoC overlay</strong> to composite a decoy attacker page over the live target, which is the screenshot a triager wants to see.</li>
+      <li>Screenshot or export the report card. It carries the target, final URL, HTTP status, timestamp, and which engine produced the result.</li>
+    </ol>
+    <p>
+      The risk it prints follows the published rules: permissive
+      <code>frame-ancestors</code> or no effective control is <strong>High</strong>,
+      X-Frame-Options alone is <strong>Medium</strong>, a restrictive
+      <code>frame-ancestors</code> is <strong>Low</strong>. The full table is on
+      the <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The fix</h2>
+  </div>
+  <article class="card reveal">
+    <p>Send both headers on every HTML response, not just the login page:</p>
+    <pre><code>Content-Security-Policy: frame-ancestors 'none'
+X-Frame-Options: DENY</code></pre>
+    <p>
+      Use <code>frame-ancestors 'self'</code> if your own pages frame each
+      other, or an explicit origin list if a partner must embed you — never
+      <code>*</code>, and never a bare scheme. Frame-busting JavaScript is not
+      a fix; sandboxed frames neutralise it. Then re-run the validator: a
+      protected page refuses to render and the report card flips to Low.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      I stop here because this is everything needed to confirm the finding and
+      write it up. If you want the underlying references — the ones I check
+      when a client disputes the severity — start with these:
+    </p>
+    <ul>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/09-Testing_for_Clickjacking" target="_blank" rel="noopener noreferrer">OWASP WSTG-CLNT-09 — Testing for Clickjacking</a>
+        — the test procedure this guide follows.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/1021.html" target="_blank" rel="noopener noreferrer">CWE-1021 — Improper Restriction of Rendered UI Layers or Frames</a>
+        — the identifier to cite in the report.
+      </li>
+      <li>
+        <a href="https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP Clickjacking Defense Cheat Sheet</a>
+        — remediation detail, including why a <code>&lt;meta&gt;</code> tag
+        cannot deliver either header.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors" target="_blank" rel="noopener noreferrer">MDN — CSP <code>frame-ancestors</code></a>
+        and
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options" target="_blank" rel="noopener noreferrer">MDN — <code>X-Frame-Options</code></a>
+        — exact syntax and browser support.
+      </li>
+      <li>
+        <a href="https://w3c.github.io/webappsec-csp/#frame-ancestors-and-frame-options" target="_blank" rel="noopener noreferrer">CSP Level 3 — <code>frame-ancestors</code> and <code>X-Frame-Options</code></a>
+        — the normative rule that <code>frame-ancestors</code> wins when both
+        are present.
+      </li>
+      <li>
+        <a href="https://portswigger.net/web-security/clickjacking" target="_blank" rel="noopener noreferrer">PortSwigger Web Security Academy — Clickjacking</a>
+        — labs to practise the attack against a target you are allowed to break.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Frame and scan systems you own
+      or have written permission to assess. The validator sends read-only
+      requests, but permission is still yours to obtain.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

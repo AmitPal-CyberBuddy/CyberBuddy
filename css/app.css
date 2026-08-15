@@ -1690,6 +1690,10 @@ html[data-theme="light"] .stat:hover .stat-num {
 }
 .std-line strong { color: var(--brand); }
 
+/* Tool → guide backlink, sitting under the standards line. Kept quiet so it
+   never competes with the scan bar, which is what the page is for. */
+.guide-link { font-size: 0.82rem; color: var(--muted); margin: 10px 0 0 2px; }
+
 /* Tool-card icon stroke draw-in on reveal */
 html.js .tool-card-icon svg { overflow: visible; }
 html.js .tool-card-icon svg * { stroke-dasharray: 220; stroke-dashoffset: 220; }
@@ -1930,6 +1934,19 @@ kbd {
 .method-table td.k { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-2); }
 .prose p { color: var(--muted); max-width: 72ch; }
 .prose h2 { margin-top: 8px; }
+/* Guides reuse .prose. Two small resets so prose bodies read like an article:
+   ordered steps need the list styling the tool pages never needed, and a
+   <code> inside a <pre> must not stack its chip border on the terminal
+   block — the inline chip is only for code spans inside a sentence. */
+.prose ol, .prose ul { color: var(--muted); max-width: 72ch; margin: 0 0 1em; padding-left: 22px; }
+.prose li { margin-bottom: 7px; }
+.prose li strong { color: var(--ink-2); }
+.prose pre code {
+  background: none; border: 0; border-radius: 0; padding: 0;
+  color: inherit; font-size: 1em;
+}
+.prose .kicker a { color: inherit; }
+.prose .kicker a:hover { color: var(--brand); }
 
 .blog-more {
   margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 9px;

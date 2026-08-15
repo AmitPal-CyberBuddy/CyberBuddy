@@ -166,6 +166,7 @@ function renderHeader(current) {
     '<span class="brand-mark">' + ICONS.logo + "</span><span>CyberBuddy</span></a>" +
     '<nav class="main-nav" aria-label="Tools">' +
     navLink(base, "/", "Hub", current) +
+    navLink(base, "/guides/", "Guides", current) +
     navLink(base, "/#methodology", "Method", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
@@ -373,8 +374,11 @@ function renderFooter() {
     '<a href="' + base + '/tools/#assess-targets">Target assessments</a>' +
     '<a href="' + base + '/tools/#local-utilities">Local utilities</a>' +
     "</nav>" +
+    // Guides are a section link, not one entry per guide — the same
+    // scalability rule the Tools column follows.
     '<nav class="footer-col" aria-label="Learn">' +
     "<strong>Learn</strong>" +
+    '<a href="' + base + '/guides/">Guides</a>' +
     '<a href="' + base + '/methodology/">Methodology</a>' +
     '<a href="' + base + '/#methodology">Scoring methodology</a>' +
     '<a href="' + base + '/methodology/#privacy">Privacy</a>' +
@@ -383,7 +387,9 @@ function renderFooter() {
     "<strong>Project</strong>" +
     '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy" target="_blank" rel="noopener noreferrer">GitHub</a>' +
     '<a href="' + base + '/.well-known/security.txt">Security policy</a>' +
-    '<a href="https://github.com/AmitPal-CyberBuddy/CyberBuddy#readme" target="_blank" rel="noopener noreferrer">Documentation</a>' +
+    // Documentation is a first-class page, not a hop to the repo README: the
+    // README is mostly contributor material (file tree, engine internals).
+    '<a href="' + base + '/documentation/">Documentation</a>' +
     "</nav>" +
     '<p class="footer-legal">' +
     "Authorized testing only. CyberBuddy performs read-only checks against URLs you provide; " +

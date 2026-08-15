@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>CSRF guide — CyberBuddy</title>
+  <meta name="description" content="A short CSRF guide: the three conditions an action must meet to be forgeable, why a PoC is the evidence, what READY and LIMITED mean, and how to build one locally with the CyberBuddy CSRF PoC Generator." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csrf/" />
+  <meta property="og:title" content="CSRF guide — CyberBuddy" />
+  <meta property="og:description" content="The three conditions that make an action forgeable, and how to turn a raw request into a proof-of-concept." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csrf/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CSRF guide — CyberBuddy" />
+  <meta name="twitter:description" content="The three conditions that make an action forgeable, and how to turn a raw request into a proof-of-concept." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "CSRF: proving an action can be forged",
+      "description": "The three conditions an action must meet to be forgeable, why a PoC is the evidence, what READY and LIMITED mean, and how to build one locally with the CyberBuddy CSRF PoC Generator.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/csrf/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/csrf/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">CSRF: proving an action can be forged</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Cross-site request forgery is not about stealing a session. It is about
+    borrowing one. The browser attaches the victim's cookies to a request the
+    victim never intended to make — and if nothing unpredictable is required,
+    the action goes through.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-SESS-05</strong> &middot; <strong>CWE-352</strong> &mdash; cross-site request forgery</p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/csrf/">Open the CSRF PoC Generator</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>Three conditions, all required</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="CSRF preconditions">
+      <thead>
+        <tr><th scope="col">Condition</th><th scope="col">What to check</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">An action worth forging</td>
+          <td>It changes state or privilege: change email, add a payment method, promote a user, delete an object.</td>
+        </tr>
+        <tr>
+          <td class="k">Session handled by the browser alone</td>
+          <td>Cookies or HTTP Basic auth attached automatically. A bearer token that JavaScript must add is not automatically sent, so it breaks the attack.</td>
+        </tr>
+        <tr>
+          <td class="k">No unpredictable parameter</td>
+          <td>Every field in the request can be guessed by the attacker. One unguessable, validated anti-CSRF token kills it.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      All three must hold. That is why the interesting part of a CSRF test is
+      not finding a state-changing endpoint — it is proving that nothing in
+      the request was unpredictable. And it is why re-testing after a fix is
+      cheap: remove any one condition and the finding is closed.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Why the PoC is the finding</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      A triager can dismiss “this endpoint has no CSRF token” as theoretical.
+      They cannot dismiss an HTML file that, opened in a logged-in browser,
+      changes the account. For a <code>GET</code> action the whole exploit is a
+      zero-size <code>&lt;img src&gt;</code>; for a form-encoded
+      <code>POST</code> it is a hidden auto-submitting form. That file is the
+      artifact I attach to the report, and it is the thing the developer runs
+      to confirm the fix.
+    </p>
+    <p>
+      A subtlety worth stating in the write-up: form-based login does not make
+      an application safe. Once a session cookie exists, the browser sends it
+      with the forged request exactly as it would with a real one.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Build it with the generator</h2>
+  </div>
+  <article class="card reveal">
+    <ol>
+      <li>Open the <a href="../../tools/csrf/">CSRF PoC Generator</a> and paste the raw HTTP request, straight from Burp.</li>
+      <li>Press <strong>Generate PoC</strong>. Everything runs in your browser — the tool never sends, executes, relays or stores the request.</li>
+      <li>Read the status line before the HTML. It tells you whether a browser can actually reproduce the request.</li>
+      <li>Download the PoC, open it in a session you are authorized to use, and confirm the action happens.</li>
+      <li>Copy the Markdown assessment for the report; it pairs with the HTML file as the evidence.</li>
+    </ol>
+    <p>The three statuses mean specific things:</p>
+    <ul>
+      <li>
+        <strong>READY</strong> — reproducible as a simple browser request with
+        no preflight. This is a clean, self-contained proof.
+      </li>
+      <li>
+        <strong>LIMITED</strong> — reproducible, but with a caveat. An
+        <code>application/json</code> body forces a CORS preflight from
+        <code>fetch()</code>, so it only lands if the server also accepts
+        <code>text/plain</code>; a multipart body with a file field needs the
+        victim to pick a file. Say so in the report rather than overclaiming.
+      </li>
+      <li>
+        <strong>NOT DIRECTLY REPRESENTABLE</strong> — no browser mechanism
+        reproduces this request, usually because of a custom header. That is
+        itself a defence, and worth recording as one.
+      </li>
+    </ul>
+    <p>
+      The risk the report card prints follows the status: READY is low
+      friction and therefore the strongest claim; the mapping is on the
+      <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The fix</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Use the framework's built-in protection before writing your own. Where
+      you must choose: a stateful app uses a synchronizer token bound to the
+      session; a stateless one uses a double-submit cookie. Then add the cheap
+      layers:
+    </p>
+    <pre><code>Set-Cookie: session=...; Secure; HttpOnly; SameSite=Lax</code></pre>
+    <p>
+      Never perform state changes on <code>GET</code>. Treat
+      <code>SameSite</code> as defence in depth, not the control — and
+      remember that a cookie scoped to a parent domain is shared with every
+      subdomain, so one weak subdomain undoes it. If the target is
+      modern-browser only, <code>Sec-Fetch-Site</code> checking is a strong
+      addition. One caveat that outranks all of the above: an XSS anywhere in
+      the origin defeats every CSRF mitigation, because the attacker's script
+      can simply read the token.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      That is enough to generate the proof and write the finding. For defence
+      design and exploitation depth, these are the references I rely on:
+    </p>
+    <ul>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_Cross_Site_Request_Forgery" target="_blank" rel="noopener noreferrer">OWASP WSTG-SESS-05 — Testing for Cross Site Request Forgery</a>
+        — the test procedure and the prerequisite conditions.
+      </li>
+      <li>
+        <a href="https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP CSRF Prevention Cheat Sheet</a>
+        — synchronizer tokens, double-submit cookies, Fetch Metadata, and why
+        XSS trumps all of them.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/352.html" target="_blank" rel="noopener noreferrer">CWE-352 — Cross-Site Request Forgery</a>
+        — the identifier to cite; also known as session riding.
+      </li>
+      <li>
+        <a href="https://portswigger.net/web-security/csrf" target="_blank" rel="noopener noreferrer">PortSwigger Web Security Academy — CSRF</a>
+        — labs covering token validation flaws, method bypasses and
+        <code>SameSite</code> edge cases.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie" target="_blank" rel="noopener noreferrer">MDN — <code>Set-Cookie</code></a>
+        — exact <code>SameSite</code>, <code>Secure</code> and
+        <code>Domain</code> semantics.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Generate and fire a PoC only
+      against systems you own or have written permission to assess. The
+      generator itself sends nothing — every request it describes is one you
+      choose to make.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

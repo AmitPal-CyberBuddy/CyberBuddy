@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>CORS guide — CyberBuddy</title>
+  <meta name="description" content="A short CORS guide: why reflecting the Origin header is the bug, what credentials turn a misconfiguration into data theft, why Vary: Origin matters, and how to confirm the posture with the CyberBuddy CORS Validator." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/cors/" />
+  <meta property="og:title" content="CORS guide — CyberBuddy" />
+  <meta property="og:description" content="Why reflecting Origin is the bug, what credentials turn it into, and how to prove a permissive CORS policy in one probe." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/cors/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CORS guide — CyberBuddy" />
+  <meta name="twitter:description" content="Why reflecting Origin is the bug, what credentials turn it into, and how to prove a permissive CORS policy in one probe." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "CORS: when sharing becomes reading",
+      "description": "Why reflecting the Origin header is the bug, what credentials turn a misconfiguration into data theft, why Vary: Origin matters, and how to confirm the posture with the CyberBuddy CORS Validator.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/cors/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260814h" defer></script>
+  <script src="../../js/boot.js?v=20260814h" defer></script>
+</head>
+<body data-page="/guides/cors/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">CORS: when sharing becomes reading</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    CORS exists to relax the same-origin policy on purpose. The bug is almost
+    never the relaxation itself — it is who gets included in it, and whether
+    the response carries a session.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>OWASP WSTG-CLNT-07</strong> &middot; <strong>CWE-942</strong> &mdash; permissive cross-domain policy</p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/cors/">Open the CORS Validator</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>The attack in one paragraph</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      A victim who is logged into your API visits a page the attacker controls.
+      That page issues a cross-origin <code>fetch()</code> to your endpoint
+      with credentials. The browser sends the victim's cookies and then checks
+      the response: if <code>Access-Control-Allow-Origin</code> names the
+      attacker's origin and
+      <code>Access-Control-Allow-Credentials: true</code> is present, the
+      attacker's JavaScript is allowed to <em>read</em> the authenticated
+      response body. No injection, no stolen token — the browser hands the data
+      over because the server said it was fine. Note the direction: CORS
+      governs reading responses, so a permissive policy is a disclosure bug,
+      and it is not a CSRF defence either way.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>How servers get it wrong</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="CORS misconfiguration patterns">
+      <thead>
+        <tr><th scope="col">Pattern</th><th scope="col">Why it happens</th><th scope="col">Impact</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">Reflected Origin</td>
+          <td>The server echoes whatever <code>Origin</code> arrived, because an allowlist was “too much work”.</td>
+          <td>With credentials, full read of authenticated responses. Without, still an unintended trust boundary.</td>
+        </tr>
+        <tr>
+          <td class="k">Sloppy allowlist match</td>
+          <td>A prefix or suffix check instead of an exact comparison, or a regex where the dot was never escaped.</td>
+          <td><code>evil-normal-website.com</code> or <code>normal-website.com.attacker.net</code> passes the check.</td>
+        </tr>
+        <tr>
+          <td class="k">Allowlisted <code>null</code></td>
+          <td>Someone added it to make local files or redirects work.</td>
+          <td>Any attacker can produce a <code>null</code> origin from a sandboxed iframe or a <code>data:</code> URL.</td>
+        </tr>
+        <tr>
+          <td class="k">Wildcard with credentials</td>
+          <td>Copied from a tutorial.</td>
+          <td>Invalid — browsers reject the combination — but it signals the policy was never designed.</td>
+        </tr>
+        <tr>
+          <td class="k">Missing <code>Vary: Origin</code></td>
+          <td>Per-origin headers behind a shared cache.</td>
+          <td>A CDN can serve one caller's <code>Access-Control-Allow-Origin</code> to another.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      One more thing worth knowing before you argue with a developer:
+      <code>Origin</code> is a forbidden header name, so page JavaScript cannot
+      forge it — but curl, Burp and any non-browser client set it to whatever
+      they like. It is a browser-enforced hint, never an authentication
+      signal.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Confirm it with the validator</h2>
+  </div>
+  <article class="card reveal">
+    <ol>
+      <li>Open the <a href="../../tools/cors/">CORS Validator</a> and paste an endpoint you are authorized to test — an API path, not the marketing homepage.</li>
+      <li>Press <strong>Probe</strong>. It sends two read-only <code>GET</code>s with two <em>different</em> attacker origins.</li>
+      <li>Compare the two <code>Access-Control-Allow-Origin</code> values. Both echoed back means arbitrary reflection, and two distinct probes rule out a coincidental allowlist hit.</li>
+      <li>Check <code>Access-Control-Allow-Credentials</code>. That flag is what turns a permissive policy into readable authenticated data.</li>
+      <li>Export the report card — it carries both probe origins, the raw headers, the final URL, the status and the timestamp.</li>
+    </ol>
+    <p>
+      The risk it prints follows the observed outcome: reflection
+      <em>with</em> credentials is <strong>High</strong>; reflection alone, or
+      a wildcard alongside credentials, is <strong>Medium</strong>; a wildcard
+      without credentials or a fixed <code>Access-Control-Allow-Origin</code>
+      is <strong>Low</strong>. <code>Vary: Origin</code> is reported as its own
+      finding and never sets the headline risk — it is a cache-hardening issue,
+      not an access one. The full table is on the
+      <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The fix</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Keep a server-side allowlist, compare the <code>Origin</code> value for
+      exact equality, and only then echo it back:
+    </p>
+    <pre><code>Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Credentials: true
+Vary: Origin</code></pre>
+    <p>
+      No wildcards, no <code>null</code>, no substring or regex matching, and
+      no credentials on an endpoint that does not need them. If the data is
+      genuinely public, drop credentials entirely and
+      <code>Access-Control-Allow-Origin: *</code> is fine. Then re-probe: a
+      correctly configured endpoint returns your allowlisted origin regardless
+      of what the two probes claimed to be.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      I stop at what settles the finding. For the mechanics, the exploitation
+      detail and the exact spec wording, these are the sources I use:
+    </p>
+    <ul>
+      <li>
+        <a href="https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/07-Testing_Cross_Origin_Resource_Sharing" target="_blank" rel="noopener noreferrer">OWASP WSTG-CLNT-07 — Testing Cross Origin Resource Sharing</a>
+        — the test procedure this guide follows.
+      </li>
+      <li>
+        <a href="https://cwe.mitre.org/data/definitions/942.html" target="_blank" rel="noopener noreferrer">CWE-942 — Permissive Cross-domain Policy with Untrusted Domains</a>
+        — the identifier to cite, and why a wildcard match creates two-way
+        trust.
+      </li>
+      <li>
+        <a href="https://portswigger.net/web-security/cors" target="_blank" rel="noopener noreferrer">PortSwigger Web Security Academy — CORS</a>
+        — labs for reflected origins, broken allowlist parsing and the
+        <code>null</code> origin trick.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS" target="_blank" rel="noopener noreferrer">MDN — Cross-Origin Resource Sharing</a>
+        — simple versus preflighted requests, and which headers appear where.
+      </li>
+      <li>
+        <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin" target="_blank" rel="noopener noreferrer">MDN — <code>Access-Control-Allow-Origin</code></a>
+        — the wildcard-with-credentials rule and why <code>null</code> should
+        never be sent.
+      </li>
+    </ul>
+  </article>
+
+  <div class="disclaimer reveal" style="--d: .1s;">
+    <span class="disclaimer-mark">! !</span>
+    <span>
+      <strong>Authorized testing only.</strong> Probe systems you own or have
+      written permission to assess. The validator sends read-only requests, but
+      permission is still yours to obtain.
+    </span>
+  </div>
+
+</main>
+</body>
+</html>

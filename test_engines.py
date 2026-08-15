@@ -828,6 +828,32 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"How it scores", body)
 
+    def test_guides_pages(self):
+        """A new published top-level section needs all three route forms:
+        /guides/, the no-slash redirect, and the GitHub project-path mount."""
+        status, headers, _ = self._req("/guides")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/guides/")
+        status, headers, body = self._req("/guides/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"Guides", body)
+
+        status, headers, _ = self._req("/guides/clickjacking")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers.get("location"), "/guides/clickjacking/")
+        status, headers, body = self._req("/guides/clickjacking/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("content-type", ""))
+        self.assertIn(b"Clickjacking", body)
+
+        status, _, body = self._req("/CyberBuddy/guides/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Guides", body)
+        status, _, body = self._req("/CyberBuddy/guides/clickjacking/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"frame-ancestors", body)
+
     def test_health_and_api_validation(self):
         status, headers, body = self._req("/api/health")
         self.assertEqual(status, 200)
@@ -876,6 +902,8 @@ class HostedSiteTests(unittest.TestCase):
         pages = [
             ROOT / "index.html",
             ROOT / "methodology" / "index.html",
+            ROOT / "guides" / "index.html",
+            ROOT / "guides" / "clickjacking" / "index.html",
             ROOT / "tools" / "index.html",
             ROOT / "tools" / "clickjacking" / "index.html",
             ROOT / "tools" / "headers" / "index.html",
@@ -1249,6 +1277,8 @@ class HostedCspTests(unittest.TestCase):
         "index.html",
         "404.html",
         "methodology/index.html",
+        "guides/index.html",
+        "guides/clickjacking/index.html",
         "tools/index.html",
         "tools/clickjacking/index.html",
         "tools/headers/index.html",
@@ -2048,6 +2078,470 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("boot.js", page)
 
 
+class GuidesTests(unittest.TestCase):
+    """The public Guides section: one guide per tool.
+
+    The point of a guide is that it is *connected*: reachable from the global
+    nav, paired with the tool that confirms the finding, and honest about
+    where the depth comes from (primary references, not a blog that has no
+    post on the topic). Guides stay deliberately concise — five short notes,
+    not an article library.
+    """
+
+    INDEX = ROOT / "guides" / "index.html"
+
+    #: slug -> (tool slug, standards that must appear, primary references)
+    GUIDES = {
+        "clickjacking": (
+            "clickjacking",
+            ("WSTG-CLNT-09", "CWE-1021"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/11-Client-side_Testing"
+                "/09-Testing_for_Clickjacking",
+                "https://cwe.mitre.org/data/definitions/1021.html",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Clickjacking_Defense_Cheat_Sheet.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Content-Security-Policy/frame-ancestors",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/X-Frame-Options",
+                "https://w3c.github.io/webappsec-csp/",
+                "https://portswigger.net/web-security/clickjacking",
+            ),
+        ),
+        "headers": (
+            "headers",
+            ("WSTG-CONF-07", "CWE-693"),
+            (
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "HTTP_Headers_Cheat_Sheet.html",
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing"
+                "/02-Configuration_and_Deployment_Management_Testing"
+                "/07-Test_HTTP_Strict_Transport_Security",
+                "https://cwe.mitre.org/data/definitions/693.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Strict-Transport-Security",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Referrer-Policy",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Set-Cookie",
+            ),
+        ),
+        "cors": (
+            "cors",
+            ("WSTG-CLNT-07", "CWE-942"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/11-Client-side_Testing"
+                "/07-Testing_Cross_Origin_Resource_Sharing",
+                "https://cwe.mitre.org/data/definitions/942.html",
+                "https://portswigger.net/web-security/cors",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Access-Control-Allow-Origin",
+            ),
+        ),
+        "csp": (
+            "csp",
+            ("WSTG-CONF-12", "CWE-79"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing"
+                "/02-Configuration_and_Deployment_Management_Testing"
+                "/12-Test_for_Content_Security_Policy",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Content_Security_Policy_Cheat_Sheet.html",
+                "https://cwe.mitre.org/data/definitions/79.html",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Content-Security-Policy",
+                "https://w3c.github.io/webappsec-csp/",
+            ),
+        ),
+        "csrf": (
+            "csrf",
+            ("WSTG-SESS-05", "CWE-352"),
+            (
+                "https://owasp.org/www-project-web-security-testing-guide/latest"
+                "/4-Web_Application_Security_Testing/06-Session_Management_Testing"
+                "/05-Testing_for_Cross_Site_Request_Forgery",
+                "https://cheatsheetseries.owasp.org/cheatsheets/"
+                "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+                "https://cwe.mitre.org/data/definitions/352.html",
+                "https://portswigger.net/web-security/csrf",
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference"
+                "/Headers/Set-Cookie",
+            ),
+        ),
+    }
+
+    def _index(self) -> str:
+        return self.INDEX.read_text(encoding="utf-8")
+
+    def _guide(self, slug: str) -> str:
+        return (ROOT / "guides" / slug / "index.html").read_text(encoding="utf-8")
+
+    def _pages(self):
+        """(name, html) for the index and every guide."""
+        yield "index", self._index()
+        for slug in sorted(self.GUIDES):
+            yield slug, self._guide(slug)
+
+    def _app(self) -> str:
+        return (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    # --- navigation -----------------------------------------------------
+
+    def test_header_nav_links_to_guides(self):
+        app = self._app()
+        start = app.index("function renderHeader(")
+        body = app[start:app.index("\nfunction renderFooter(", start)]
+        self.assertIn('"/guides/"', body)
+        self.assertIn('"Guides"', body)
+
+    def test_footer_learn_column_links_to_guides(self):
+        """Guides is a section link in the Learn column — one entry, not one
+        per guide, so adding guides never needs a footer edit."""
+        app = self._app()
+        start = app.index("function renderFooter()")
+        body = app[start:app.index("\n/* ---------- Blog", start)]
+        learn = body[body.index('aria-label="Learn"'):]
+        self.assertIn("/guides/", learn)
+        # Still a section link only: no per-guide entries.
+        for slug in self.GUIDES:
+            self.assertNotIn("/guides/%s/" % slug, learn)
+
+    def test_hub_links_to_guides(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="guides/"', hub)
+
+    def test_404_offers_a_guides_card(self):
+        page = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn('id="guidesLink"', page)
+        js = (ROOT / "js" / "404.js").read_text(encoding="utf-8")
+        # Base-aware rewrite, so /CyberBuddy/ hosting resolves correctly.
+        self.assertIn('base + "/guides/"', js)
+
+    # --- pages exist and use the shared shell ---------------------------
+
+    def test_every_page_exists(self):
+        self.assertTrue(self.INDEX.is_file(), self.INDEX)
+        for slug in self.GUIDES:
+            path = ROOT / "guides" / slug / "index.html"
+            with self.subTest(guide=slug):
+                self.assertTrue(path.is_file(), path)
+
+    def test_pages_use_the_established_shell(self):
+        for name, page in self._pages():
+            data_page = "/guides/" if name == "index" else "/guides/%s/" % name
+            with self.subTest(page=data_page):
+                self.assertIn('data-page="%s"' % data_page, page)
+                self.assertIn("theme-boot.js", page)
+                self.assertIn("boot.js", page)
+                self.assertIn('id="main"', page)
+                # Guides never frame anything — least privilege stays.
+                self.assertIn("frame-src 'none'", page)
+
+    def test_pages_have_canonical_and_social_metadata(self):
+        for name, page in self._pages():
+            url = "/CyberBuddy/guides/" if name == "index" \
+                else "/CyberBuddy/guides/%s/" % name
+            with self.subTest(url=url):
+                self.assertIn('rel="canonical" href="https://amitpal-cyberbuddy.github.io'
+                              + url + '"', page)
+                self.assertIn('property="og:title"', page)
+                self.assertIn('name="twitter:card"', page)
+
+    # --- content presence ------------------------------------------------
+
+    def test_index_lists_every_guide(self):
+        index = self._index()
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn('href="%s/"' % slug, index)
+
+    def test_scope_is_one_guide_per_tool(self):
+        """Every tool has a guide, and no guide exists without a tool."""
+        dirs = sorted(p.name for p in (ROOT / "guides").iterdir() if p.is_dir())
+        self.assertEqual(dirs, sorted(self.GUIDES))
+        tools = sorted(p.name for p in (ROOT / "tools").iterdir() if p.is_dir())
+        self.assertEqual(dirs, tools)
+
+    def test_clickjacking_guide_covers_both_framing_controls(self):
+        page = self._guide("clickjacking")
+        for needle in (
+            "X-Frame-Options",
+            "frame-ancestors",
+            "'none'",
+            "SAMEORIGIN",
+            "DENY",
+        ):
+            self.assertIn(needle, page, needle)
+
+    def test_every_guide_carries_its_standards_line(self):
+        """Same standards identity the tool uses, so the guide and the report
+        cite one thing."""
+        for slug, (_tool, standards, _refs) in self.GUIDES.items():
+            page = self._guide(slug)
+            for std in standards:
+                with self.subTest(guide=slug, standard=std):
+                    self.assertIn(std, page)
+
+    def test_pages_state_the_authorization_boundary(self):
+        for name, page in self._pages():
+            with self.subTest(page=name):
+                self.assertIn("Authorized testing only", page)
+
+    def test_guides_stay_short(self):
+        """Concise by design: a guide is a few minutes of reading, not a
+        long-form article."""
+        for slug in self.GUIDES:
+            text = re.sub(r"<[^>]+>", " ", self._guide(slug))
+            words = len(text.split())
+            with self.subTest(guide=slug, words=words):
+                self.assertLess(words, 1200, words)
+
+    # --- the connections that make a guide useful ------------------------
+
+    def test_guide_links_to_the_matching_tool(self):
+        for slug, (tool, _standards, _refs) in self.GUIDES.items():
+            with self.subTest(guide=slug):
+                self.assertIn('href="../../tools/%s/"' % tool, self._guide(slug))
+
+    def test_tool_links_back_to_the_guide(self):
+        for slug, (tool, _standards, _refs) in self.GUIDES.items():
+            page = (ROOT / "tools" / tool / "index.html").read_text(encoding="utf-8")
+            with self.subTest(tool=tool):
+                self.assertIn('href="../../guides/%s/"' % slug, page)
+
+    def test_guides_never_sell_the_blog_as_a_per_tool_deep_dive(self):
+        """Only two Medium posts exist (request smuggling vs pipelining, and
+        client-side encryption). Neither matches a guide topic, so pointing a
+        guide's "Go deeper" at the profile root promises a write-up that is
+        not there. A blog link belongs in a guide only when a post on that
+        exact topic exists."""
+        for name, page in self._pages():
+            with self.subTest(page=name):
+                self.assertNotIn("medium.com", page)
+
+    def test_guides_go_deeper_via_real_primary_references(self):
+        """The "Go deeper" block must cite sources that actually document the
+        weakness, each opened safely in a new tab."""
+        for slug, (_tool, _standards, refs) in self.GUIDES.items():
+            page = self._guide(slug)
+            for url in refs:
+                with self.subTest(guide=slug, url=url):
+                    self.assertIn(url, page)
+            for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', page):
+                with self.subTest(guide=slug, link=external):
+                    self.assertIn('href="' + external + '" target="_blank" '
+                                  'rel="noopener noreferrer"', page)
+
+    def test_guides_are_written_in_first_person_not_as_a_narrator(self):
+        """These are my own notes. Copy that refers to "the maintainer" reads
+        like an assistant describing someone else's site."""
+        for name, page in self._pages():
+            prose = re.sub(r"<[^>]+>", " ", page)
+            with self.subTest(page=name):
+                for tell in ("maintainer", "the author's", "this website's owner"):
+                    self.assertNotIn(tell, prose.lower(), tell)
+                self.assertRegex(prose, r"\bI\b")
+
+    def test_guides_point_at_the_scoring_methodology(self):
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn('href="../../methodology/"', self._guide(slug))
+
+    # --- discoverability --------------------------------------------------
+
+    def test_sitemap_lists_every_guide_url(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/guides/</loc>", sitemap)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("/CyberBuddy/guides/%s/</loc>" % slug, sitemap)
+
+    def test_llms_txt_describes_the_guides_section(self):
+        text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        self.assertIn("/guides/", text)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("/guides/%s/" % slug, text)
+
+    def test_readme_documents_the_section(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("guides/", text)
+        for slug in self.GUIDES:
+            with self.subTest(guide=slug):
+                self.assertIn("guides/%s/" % slug, text)
+
+    def test_server_serves_the_section(self):
+        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"guides/"', text)          # STATIC_PREFIXES
+        self.assertIn('path == "/guides"', text)  # no-slash redirect
+        self.assertIn('path.startswith("/guides/")', text)
+
+
+class DocumentationPageTests(unittest.TestCase):
+    """The in-site documentation page.
+
+    The footer's "Documentation" link used to eject the visitor to the GitHub
+    README — the only off-site link in that column, landing them in 390 lines
+    that are two-thirds contributor material (file tree, engine internals,
+    deployment). `/documentation/` is the operator-facing half of that: how to
+    run the suite, which engine answers, the CLI, export, and the honest limits
+    of the static build.
+
+    Deliberately *not* a docs/ directory: the Pages workflow refuses to publish
+    docs/ (see PagesExclusionTests), so a page named that way would 404 hosted.
+    """
+
+    PAGE = ROOT / "documentation" / "index.html"
+
+    def _page(self) -> str:
+        return self.PAGE.read_text(encoding="utf-8")
+
+    # --- exists and uses the shared shell --------------------------------
+
+    def test_page_exists(self):
+        self.assertTrue(self.PAGE.is_file(), self.PAGE)
+
+    def test_page_uses_the_established_shell(self):
+        page = self._page()
+        self.assertIn('data-page="/documentation/"', page)
+        self.assertIn("theme-boot.js", page)
+        self.assertIn("boot.js", page)
+        self.assertIn('id="main"', page)
+        # A prose page frames nothing — least privilege stays.
+        self.assertIn("frame-src 'none'", page)
+
+    def test_page_has_canonical_and_social_metadata(self):
+        page = self._page()
+        self.assertIn(
+            'rel="canonical" href="https://amitpal-cyberbuddy.github.io'
+            '/CyberBuddy/documentation/"',
+            page,
+        )
+        self.assertIn('property="og:title"', page)
+        self.assertIn('name="twitter:card"', page)
+
+    def test_assets_resolve_one_level_up(self):
+        """Top-level section page: assets are ../, never absolute paths that
+        would break under the /CyberBuddy/ project-pages mount."""
+        page = self._page()
+        self.assertIn('href="../css/app.css', page)
+        self.assertIn('src="../js/app.js', page)
+        self.assertNotIn('href="/css/', page)
+        self.assertNotIn('src="/js/', page)
+
+    def test_external_links_open_safely(self):
+        page = self._page()
+        for external in re.findall(r'<a href="(https?://[^"]+)"[^>]*>', page):
+            with self.subTest(link=external):
+                self.assertIn(
+                    'href="' + external + '" target="_blank" '
+                    'rel="noopener noreferrer"',
+                    page,
+                )
+
+    # --- the footer link now stays on the site ---------------------------
+
+    def test_footer_documentation_link_is_internal(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function renderFooter()")
+        body = app[start:app.index("\n/* ---------- Blog", start)]
+        self.assertIn("""base + '/documentation/">Documentation</a>'""", body)
+        # The README hop is what this replaced.
+        self.assertNotIn("CyberBuddy#readme", body)
+        # GitHub itself is still linked — only the docs entry changed.
+        self.assertIn("github.com/AmitPal-CyberBuddy/CyberBuddy", body)
+
+    # --- content: operator scope, not a third copy of the scoring rules ---
+
+    def test_covers_the_operator_essentials(self):
+        page = self._page()
+        for needle in (
+            "python3 server.py",       # quick start
+            "--allow-private",         # private-target opt-in
+            "127.0.0.1",               # default bind
+            "clickjacking_validator.py",
+            "security_headers.py",
+            "cors_validator.py",
+            "csp_checker.py",
+            "--public-only",
+            "Markdown",                # export formats
+            "provenance",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, page)
+
+    def test_states_the_authorization_boundary(self):
+        self.assertIn("Authorized testing only", self._page())
+
+    def test_is_written_in_first_person(self):
+        prose = re.sub(r"<[^>]+>", " ", self._page())
+        for tell in ("maintainer", "the author's", "this website's owner"):
+            self.assertNotIn(tell, prose.lower(), tell)
+        self.assertRegex(prose, r"\bI\b")
+
+    def test_defers_scoring_to_the_methodology_page(self):
+        """Scoring rules already exist twice (README + methodology). This page
+        links to methodology instead of becoming a third copy."""
+        page = self._page()
+        self.assertIn('href="../methodology/"', page)
+        self.assertIn('href="../methodology/#hosted-scans"', page)
+        self.assertIn('href="../methodology/#privacy"', page)
+        # No re-statement of the letter bands or the numeric weights.
+        for band in ("A ≥ 90", "A>=90", "score of 25", "25 points"):
+            with self.subTest(band=band):
+                self.assertNotIn(band, page)
+
+    def test_explains_why_the_hosted_build_cannot_score_itself_an_a(self):
+        page = self._page()
+        for needle in ("frame-ancestors", "X-Frame-Options", "GitHub Pages"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, page)
+
+    def test_does_not_duplicate_the_header_nav(self):
+        """Footer-only by design: the header stays Hub / Guides / Method /
+        Tools, which is the four-item budget the IA work settled on."""
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function renderHeader(")
+        body = app[start:app.index("\nfunction renderFooter(", start)]
+        self.assertNotIn("/documentation/", body)
+
+    # --- discoverability --------------------------------------------------
+
+    def test_sitemap_lists_the_page(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/documentation/</loc>", sitemap)
+
+    def test_llms_txt_describes_the_page(self):
+        self.assertIn("/documentation/", (ROOT / "llms.txt").read_text(encoding="utf-8"))
+
+    def test_readme_points_at_the_page(self):
+        self.assertIn("documentation/", (ROOT / "README.md").read_text(encoding="utf-8"))
+
+    def test_server_serves_the_page(self):
+        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"documentation/"', text)          # STATIC_PREFIXES
+        self.assertIn('path == "/documentation"', text)  # no-slash redirect
+        self.assertIn('path.startswith("/documentation/")', text)
+
+    def test_page_is_not_under_the_unpublishable_docs_dir(self):
+        """docs/ is blocked by the Pages leak guard; a docs page living there
+        would silently 404 on the hosted site."""
+        self.assertFalse((ROOT / "docs" / "index.html").exists())
+
+    def test_workflow_patch_carries_the_copy_line(self):
+        """The arena token cannot push .github/workflows/**, so the one-line
+        workflow edit is carried for the maintainer. Without it the directory
+        is never copied into _site/ and the page 404s when hosted."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("cp -a documentation _site/", patch)
+
+
 class PagesExclusionTests(unittest.TestCase):
     """The published site must never carry repo-internal planning docs.
 
@@ -2066,12 +2560,38 @@ class PagesExclusionTests(unittest.TestCase):
     def test_roadmap_doc_exists(self):
         self.assertTrue((ROOT / "docs" / "ROADMAP.md").is_file())
 
+    @staticmethod
+    def _assemble_step_body() -> str:
+        """Return just the `run:` body of the *Assemble static site* step.
+
+        Scanning the whole workflow for internal-path tokens is wrong: the
+        leak-guard step legitimately *names* docs/ROADMAP.md, docs/DEV-NOTES.md
+        and REVIEW.md in order to reject them. Only the assemble step decides
+        what gets copied, so only the assemble step is scanned here.
+        """
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        lines = text.splitlines()
+        start = next(
+            (i for i, ln in enumerate(lines) if ln.strip().startswith("- name: Assemble static site")),
+            None,
+        )
+        assert start is not None, "Assemble static site step not found in pages.yml"
+        indent = len(lines[start]) - len(lines[start].lstrip())
+        body = []
+        for ln in lines[start + 1:]:
+            # Anything back at the step's own indentation (the next `- name:`
+            # entry, or a comment introducing it) ends this step's body.
+            if ln.strip() and (len(ln) - len(ln.lstrip())) <= indent:
+                break
+            body.append(ln)
+        return "\n".join(body)
+
     def test_workflow_never_copies_internal_paths(self):
         """The assemble step must not reference docs/, tests/ or REVIEW.md
         as copy sources. This is the regression guard: CI runs it on every
         push, so a future commit that starts copying internal files into
         _site/ fails here."""
-        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        text = self._assemble_step_body()
         for token in (
             "cp -a docs", "cp docs", "cp -r docs",
             "cp -a tests", "cp tests", "cp -r tests",
@@ -2079,6 +2599,15 @@ class PagesExclusionTests(unittest.TestCase):
             "docs/ROADMAP.md", "docs/DEV-NOTES.md",
         ):
             self.assertNotIn(token, text, token)
+
+    def test_workflow_guard_step_names_the_internal_files(self):
+        """The leak guard itself must keep naming the internal files, which is
+        exactly why the scan above is scoped to the assemble step."""
+        text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("Guard internal files stay out of the published site", text)
+        guard = text.split("Guard internal files stay out of the published site", 1)[1]
+        for name in ("docs/ROADMAP.md", "docs/DEV-NOTES.md", "REVIEW.md"):
+            self.assertIn(name, guard, name)
 
     def test_patch_doc_documents_the_catalog_and_guard(self):
         """The workflow edit that cannot be pushed (catalog copy + internal
@@ -2088,6 +2617,13 @@ class PagesExclusionTests(unittest.TestCase):
         self.assertIn("docs/ROADMAP.md", patch)
         self.assertIn("docs/DEV-NOTES.md", patch)
         self.assertIn("REVIEW.md", patch)
+
+    def test_patch_doc_documents_the_guides_copy(self):
+        """A new published top-level section must have its Pages fate decided
+        in the same commit. guides/ cannot be added to pages.yml from here, so
+        the copy line lives in the patch doc for the maintainer."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("cp -a guides _site/", patch)
 
 
 if __name__ == "__main__":
