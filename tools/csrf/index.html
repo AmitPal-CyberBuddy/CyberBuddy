@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CSRF PoC Generator — CyberBuddy</title>
-  <meta name="description" content="Paste a raw Burp HTTP request and CyberBuddy builds a standalone HTML proof-of-concept for authorized CSRF testing — fully local, nothing sent." />
+  <meta name="description" content="Paste a raw HTTP request and get a standalone HTML proof-of-concept for authorized CSRF testing. Runs entirely in your browser — the request is never sent." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/" />
   <meta property="og:title" content="CSRF PoC Generator — CyberBuddy" />
-  <meta property="og:description" content="Turn a pasted Burp request into a standalone HTML CSRF proof-of-concept, fully local." />
+  <meta property="og:description" content="Paste a raw HTTP request and get a standalone HTML proof-of-concept for authorized CSRF testing. Runs entirely in your browser — the request is never sent." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CSRF PoC Generator — CyberBuddy" />
-  <meta name="twitter:description" content="Paste a Burp request, download a standalone HTML CSRF proof-of-concept." />
+  <meta name="twitter:description" content="Paste a raw HTTP request and get a standalone HTML proof-of-concept for authorized CSRF testing. Runs entirely in your browser — the request is never sent." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../../icon-192.png" />
@@ -34,6 +34,33 @@
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3C/svg%3E" />
   <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "CSRF PoC Generator — CyberBuddy",
+      "description": "Paste a raw HTTP request and get a standalone HTML proof-of-concept for authorized CSRF testing. Runs entirely in your browser — the request is never sent.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Any (runs in a modern web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Amit Pal"
+      },
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "CyberBuddy",
+        "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/"
+      }
+    }
+  </script>
   <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -109,7 +136,7 @@
       <div class="report-head">
         <div><h2>PoC readiness<span id="reportTitleFlag"></span></h2></div>
         <div class="report-actions">
-          <span id="verdict" role="status" class="risk unknown">—</span>
+          <span id="verdict" class="risk unknown">—</span>
         </div>
       </div>
 
@@ -122,7 +149,7 @@
         <div class="meta-item"><span class="meta-label" title="Likely CSRF-token fields detected — include or exclude them below">Likely tokens</span><span id="mTokens" class="meta-value mono">—</span></div>
       </div>
 
-      <div id="verdictBanner" class="verdict-banner unknown">
+      <div id="verdictBanner" role="status" aria-live="polite" class="verdict-banner unknown">
         <div class="verdict-main">
           <p id="protection" class="protection-line unknown">Generate a PoC to assess how it can be reproduced.</p>
           <p id="summary" class="verdict-text">Generate a PoC to see which browser mechanisms can carry this request.</p>

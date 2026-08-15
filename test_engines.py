@@ -2137,6 +2137,81 @@ console.log(JSON.stringify({
         self.assertEqual(out["b"], "csrf-get-a-b-c.com.html")
 
 
+class VerdictContractTests(unittest.TestCase):
+    """B3: every result-producing tool shares one verdict DOM contract.
+
+    The five tools that emit a verdict had drifted into two incompatible
+    shapes. `#verdict` meant the *banner* on headers/clickjacking but the
+    *risk chip* on csp/cors/csrf, so the same id selected different kinds of
+    element depending on the page. Headers additionally nested its chip
+    inside the banner instead of the report actions.
+
+    The agreed contract, asserted here so it cannot silently drift again:
+      * `#verdict`       -- the terse risk chip, in `.report-actions`
+      * `#verdictBanner` -- the full verdict block, the single live region
+    """
+
+    TOOLS = ("headers", "clickjacking", "csp", "cors", "csrf")
+
+    def _page(self, tool: str) -> str:
+        return (ROOT / "tools" / tool / "index.html").read_text(encoding="utf-8")
+
+    def test_every_tool_defines_both_ids_exactly_once(self):
+        for tool in self.TOOLS:
+            with self.subTest(tool=tool):
+                page = self._page(tool)
+                self.assertEqual(page.count('id="verdict"'), 1)
+                self.assertEqual(page.count('id="verdictBanner"'), 1)
+
+    def test_risk_chip_lives_in_report_actions(self):
+        for tool in self.TOOLS:
+            with self.subTest(tool=tool):
+                page = self._page(tool)
+                actions = page[page.index('class="report-actions"'):]
+                actions = actions[:actions.index("</div>")]
+                self.assertIn('id="verdict"', actions)
+                self.assertIn('class="risk unknown"', actions)
+
+    def test_banner_is_the_only_live_region(self):
+        # Two nested live regions made screen readers announce the verdict
+        # twice on headers/clickjacking; announcing only the chip on the
+        # others dropped the summary prose entirely.
+        for tool in self.TOOLS:
+            with self.subTest(tool=tool):
+                page = self._page(tool)
+                banner = page[page.index('id="verdictBanner"'):]
+                banner = banner[:banner.index(">")]
+                self.assertIn('role="status"', banner)
+                self.assertIn('aria-live="polite"', banner)
+
+                chip = page[page.index('id="verdict"'):]
+                chip = chip[:chip.index(">")]
+                self.assertNotIn("aria-live", chip)
+                self.assertNotIn('role="status"', chip)
+
+    def test_controllers_target_the_contract_ids(self):
+        # The chip carries `.risk`, the banner carries `.verdict-banner`.
+        # Swapping them would silently strip one of the two of its styling.
+        for tool in self.TOOLS:
+            with self.subTest(tool=tool):
+                js = (ROOT / "js" / f"tool.{tool}.js").read_text(encoding="utf-8")
+                # The pre-convergence chip id must be gone everywhere.
+                self.assertNotIn('$("risk")', js)
+                # The banner must be reached by its contract id and be given
+                # the banner class. Controllers may assign directly or via a
+                # guarded local, so assert both facts rather than one spelling.
+                self.assertIn('$("verdictBanner")', js)
+                self.assertIn('"verdict-banner "', js)
+
+    def test_every_id_a_controller_touches_exists_on_its_page(self):
+        for tool in self.TOOLS:
+            with self.subTest(tool=tool):
+                js = (ROOT / "js" / f"tool.{tool}.js").read_text(encoding="utf-8")
+                page = self._page(tool)
+                for ident in sorted(set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)', js))):
+                    self.assertIn(f'id="{ident}"', page, f"{tool}: no #{ident} on page")
+
+
 class ToolCatalogTests(unittest.TestCase):
     """IA-01: scalable tool information architecture.
 
@@ -2450,10 +2525,24 @@ class GuidesTests(unittest.TestCase):
 
     def test_scope_is_one_guide_per_tool(self):
         """Every tool has a guide, and no guide exists without a tool."""
-        dirs = sorted(p.name for p in (ROOT / "guides").iterdir() if p.is_dir())
+
+        def page_dirs(parent):
+            """Directories that are actual pages.
+
+            `tools/` also holds Python helpers (audit_site.py, build_cache.py),
+            so running them leaves a `__pycache__` directory behind. Ignore
+            build artifacts and anything without an index.html so a developer
+            who ran the helpers before the suite does not see a false failure.
+            """
+            return sorted(
+                p.name for p in (ROOT / parent).iterdir()
+                if p.is_dir() and not p.name.startswith((".", "__"))
+                and (p / "index.html").is_file()
+            )
+
+        dirs = page_dirs("guides")
         self.assertEqual(dirs, sorted(self.GUIDES))
-        tools = sorted(p.name for p in (ROOT / "tools").iterdir() if p.is_dir())
-        self.assertEqual(dirs, tools)
+        self.assertEqual(dirs, page_dirs("tools"))
 
     def test_clickjacking_guide_covers_both_framing_controls(self):
         page = self._guide("clickjacking")
@@ -2888,6 +2977,83 @@ console.log(JSON.stringify({ ok: r.ok, err: r.error }));
 """)
         self.assertFalse(out["ok"])
         self.assertIn("none", out["err"].lower())
+
+    # --- Markdown analysis export --------------------------------------
+
+    def _markdown(self, header: dict, payload: dict, verification=None) -> str:
+        """Render the Markdown analysis for a token inside Node."""
+        token = self._jwt(header, payload, "secret")
+        out = self._run_engine(
+            "const p = CyberBuddyJwt.parseToken(%s);\n"
+            "const md = CyberBuddyJwt.buildMarkdown(p, %s);\n"
+            "console.log(JSON.stringify({ md: md }));"
+            % (json.dumps(token), json.dumps({"verification": verification} if verification else None))
+        )
+        return out["md"]
+
+    def test_markdown_export_never_leaks_credentials(self):
+        """The Workbench handles live credentials, so the export must carry
+        the token's shape and never material that could authenticate: no raw
+        token, no signature, and no values for identifying claims."""
+        md = self._markdown(
+            {"alg": "HS256", "typ": "JWT", "kid": "key-7"},
+            {
+                "iss": "https://issuer.example",
+                "sub": "user-4711-SECRET",
+                "jti": "UNIQUE-ID-SECRET",
+                "email": "victim@example.com",
+                "role": "admin",
+                "exp": 4102444800,
+            },
+        )
+        for secret in ("user-4711-SECRET", "UNIQUE-ID-SECRET", "victim@example.com"):
+            self.assertNotIn(secret, md, "leaked claim value: " + secret)
+        # Sensitive claims are still reported by name, so the reader knows
+        # they exist without the report carrying the value.
+        for name in ("`sub`", "`jti`", "`email`"):
+            self.assertIn(name, md)
+        self.assertIn("(present, value withheld)", md)
+        # Non-identifying claims stay readable — that is the useful content.
+        self.assertIn("admin", md)
+        self.assertIn("https://issuer.example", md)
+
+    def test_markdown_export_states_verification_status(self):
+        """Decoding is not verification. With no verify run the report must
+        say so rather than letting silence imply the token checked out."""
+        claims = {"iss": "https://issuer.example", "exp": 4102444800}
+        md = self._markdown({"alg": "HS256", "typ": "JWT"}, claims)
+        self.assertIn("## Verification", md)
+        self.assertIn("Not run.", md)
+        self.assertIn("Decoding is not verification", md)
+
+        signed = self._markdown(
+            {"alg": "HS256", "typ": "JWT"}, claims,
+            verification={"valid": False, "lines": ["Signature does not match"]},
+        )
+        self.assertIn("not verified", signed)
+        self.assertIn("Signature does not match", signed)
+        self.assertNotIn("Not run.", signed)
+
+    def test_markdown_export_has_no_score_or_verdict(self):
+        """Parity with the page itself: observations are contextual, so the
+        export must not invent a grade the tool does not produce."""
+        md = self._markdown(
+            {"alg": "HS256", "typ": "JWT"},
+            {"iss": "https://issuer.example", "exp": 4102444800},
+        )
+        self.assertIn("## Observations", md)
+        self.assertIn("not a score or a verdict", md)
+        for banned in ("/ 100", "Grade:", "Score:"):
+            self.assertNotIn(banned, md)
+
+    def test_page_offers_markdown_export(self):
+        """Report parity: every other tool leaves with a shareable artifact."""
+        page = self._page()
+        self.assertIn('id="jwtCopyMd"', page)
+        self.assertIn('id="jwtDownloadMd"', page)
+        controller = self._controller()
+        self.assertIn("buildMarkdown", controller)
+        self.assertIn("cyberbuddy-jwt-analysis.md", controller)
 
     # --- verification: HMAC -------------------------------------------
 
@@ -3592,10 +3758,14 @@ global.FileReaderSync = class { readAsText() { return ''; } };
             self.assertNotIn(needle, page)
 
     def test_guide_tracks_the_live_workbench(self):
-        """The guide reflects the current phase: after JWT-03 every panel is
-        functional, so it must not describe any phase as a future preview."""
+        """The guide reflects the shipped tool: every panel is functional, so
+        it must not describe any capability as a future preview.
+
+        The guide describes capabilities in the reader's terms; internal phase
+        numbering is a repo concern and deliberately stays out of the copy.
+        """
         guide = self.GUIDE.read_text(encoding="utf-8")
-        self.assertIn("All three phases are live", guide)
+        self.assertIn("Every panel is fully functional", guide)
         self.assertIn("decode", guide.lower())
         self.assertIn("verif", guide.lower())
         self.assertIn("secret testing", guide.lower())

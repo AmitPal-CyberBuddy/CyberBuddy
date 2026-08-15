@@ -586,7 +586,10 @@ function renderToolCatalog() {
     if (!tools.length) return "";
     const cat = TOOL_CATEGORIES[category];
     return '<section class="catalog-group" id="' + (category === "assess" ? "assess-targets" : "local-utilities") + '" aria-labelledby="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' +
-      '<div class="category-head">' +
+      // The heading reveals just ahead of its cards (which start at --d:
+      // .05s), so each group reads as one movement instead of a static
+      // heading over cards that fade in beneath it.
+      '<div class="category-head reveal">' +
       '<h2 id="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' + esc(cat.hubLabel) + "</h2>" +
       (cat.suite ? '<span class="cat-badge cat-suite">part of Run suite</span>' : '<span class="cat-badge cat-local">not in Run suite</span>') +
       '<p>' + esc(cat.blurb) + "</p>" +

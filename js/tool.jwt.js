@@ -168,6 +168,8 @@
       $("jwtDecodeEmpty").classList.remove("hidden");
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
+      lastVerification = null;
+      setExportEnabled(false);
       refreshEditDiff();
       updateSecretBase();
       updateVariantBase();
@@ -179,6 +181,8 @@
       $("jwtDecodeEmpty").classList.remove("hidden");
       $("jwtDecoded").classList.add("hidden");
       lastParsed = null;
+      lastVerification = null;
+      setExportEnabled(false);
       refreshEditDiff();
       updateSecretBase();
       updateVariantBase();
@@ -188,6 +192,9 @@
     showDecoded();
     var parsed = res.token;
     lastParsed = parsed;
+    // A different token means the previous verify() no longer describes it.
+    lastVerification = null;
+    setExportEnabled(true);
     $("jwtHeader").textContent = prettyJson(parsed.header);
     $("jwtPayload").textContent = prettyJson(parsed.payload);
     renderClaims(parsed.payload, parsed);
@@ -292,7 +299,52 @@
     if (ok) setDecodedState("Verified", "jwt-state-ok");
     else setDecodedState("Decoded · verification issues", "jwt-state-warn");
     setVerifyResult(ok, lines);
+    lastVerification = { valid: ok, lines: lines };
     if (btn) { btn.disabled = false; btn.textContent = "Verify signature & claims"; }
+  }
+
+  // --- Markdown analysis export ---------------------------------------
+  /* Parity with the scanners and the CSRF generator, which all leave with a
+     shareable artifact. The document is assembled by the engine
+     (J.buildMarkdown) so the redaction rules are covered by the Node-side
+     tests rather than only existing in DOM code. */
+
+  var lastVerification = null;
+
+  function setExportEnabled(on) {
+    ["jwtCopyMd", "jwtDownloadMd"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !on;
+    });
+    if (!on) {
+      var st = $("jwtExportStatus");
+      if (st) st.textContent = "";
+    }
+  }
+
+  function currentMarkdown() {
+    return J.buildMarkdown(lastParsed, { verification: lastVerification });
+  }
+
+  function initExportPanel() {
+    var copyBtn = $("jwtCopyMd");
+    var dlBtn = $("jwtDownloadMd");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        if (!lastParsed) return;
+        setClipboardIn("jwtExportStatus", currentMarkdown(),
+          "Markdown analysis copied to clipboard.",
+          "Copy failed — download the file instead.");
+      });
+    }
+    if (dlBtn) {
+      dlBtn.addEventListener("click", function () {
+        if (!lastParsed) return;
+        downloadText("cyberbuddy-jwt-analysis.md", currentMarkdown() + "\n", "text/markdown");
+        var st = $("jwtExportStatus");
+        if (st) st.textContent = "Markdown analysis downloaded.";
+      });
+    }
   }
 
   // --- Roving-tabindex tab navigation (panels) ------------------------
@@ -665,16 +717,27 @@
 
   // --- Safe copy / download (token only — never key material) ---------
 
-  function setClipboard(text, okMsg, failMsg) {
-    var status = $("jwtCopyStatus");
+  /* One clipboard path for the whole workbench. Delegates to the shared
+     copyText() in js/app.js, which already handles the insecure-context
+     fallback (execCommand) that a bare navigator.clipboard check misses —
+     the panels used to carry three near-identical copies of this logic and
+     only differed in which status element they wrote to. */
+  function setClipboardIn(statusId, text, okMsg, failMsg) {
+    var status = $(statusId);
+    var done = function (ok) {
+      if (status) status.textContent = ok ? okMsg : failMsg;
+      return ok;
+    };
+    if (typeof root.copyText === "function") return root.copyText(text).then(done, function () { return done(false); });
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).then(function () {
-        if (status) status.textContent = okMsg;
-      }, function () {
-        if (status) status.textContent = failMsg;
-      });
+      return navigator.clipboard.writeText(text).then(function () { return done(true); },
+        function () { return done(false); });
     }
-    if (status) status.textContent = failMsg;
+    return Promise.resolve(done(false));
+  }
+
+  function setClipboard(text, okMsg, failMsg) {
+    return setClipboardIn("jwtCopyStatus", text, okMsg, failMsg);
   }
 
   function downloadText(name, text, type) {
@@ -904,15 +967,7 @@
   }
 
   function setVariantClipboard(text, okMsg, failMsg) {
-    var status = $("jwtVarCopyStatus");
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).then(function () {
-        if (status) status.textContent = okMsg;
-      }, function () {
-        if (status) status.textContent = failMsg;
-      });
-    }
-    if (status) status.textContent = failMsg;
+    return setClipboardIn("jwtVarCopyStatus", text, okMsg, failMsg);
   }
 
   function downloadVariantToken() {
@@ -1082,16 +1137,9 @@
   function copySecret() {
     var input = $("jwtSecretFound");
     if (!input || !input.value) return;
-    var status = $("jwtSecretCopyStatus");
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(input.value).then(function () {
-        if (status) status.textContent = "Secret copied to clipboard.";
-      }, function () {
-        if (status) status.textContent = "Copy failed — select the secret text manually.";
-      });
-    } else if (status) {
-      status.textContent = "Copy failed — select the secret text manually.";
-    }
+    setClipboardIn("jwtSecretCopyStatus", input.value,
+      "Secret copied to clipboard.",
+      "Copy failed — select the secret text manually.");
   }
 
   function initSecretPanel() {
@@ -1190,6 +1238,7 @@
     initEditPanel();
     initVariantPanel();
     initSecretPanel();
+    initExportPanel();
   }
 
   root.initJwt = initJwt;

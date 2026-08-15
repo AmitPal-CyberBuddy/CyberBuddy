@@ -668,6 +668,17 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .risk.unknown, .risk.info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
 .risk.unreachable { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .risk.bump { animation: riskPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Reproducibility (CSRF PoC Generator only).
+   The generator reports whether browser mechanics can carry a request — it is
+   explicitly NOT a vulnerability verdict, so it must not borrow the risk
+   palette. Green/red there would read backwards: a working PoC (READY) is the
+   strongest claim against the target, while NOT REPRESENTABLE is the mildest.
+   This is a deliberately neutral ramp: informational blue for a clean
+   reproduction, amber for a conditional one, muted grey for none. */
+.risk.repro-ready { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
+.risk.repro-limited { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+.risk.repro-none { color: var(--faint); background: var(--chip-bg); border-color: var(--line-strong); }
 @keyframes riskPop { 0% { transform: scale(0.7); opacity: 0.4; } 100% { transform: scale(1); opacity: 1; } }
 
 .grade {
@@ -771,6 +782,9 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .verdict-banner.low { border-left-color: var(--low); background: var(--low-bg); }
 .verdict-banner.info, .verdict-banner.unknown { border-left-color: var(--info); background: var(--info-bg); }
 .verdict-banner.unreachable { border-left-color: var(--med); background: var(--med-bg); }
+.verdict-banner.repro-ready { border-left-color: var(--info); background: var(--info-bg); }
+.verdict-banner.repro-limited { border-left-color: var(--med); background: var(--med-bg); }
+.verdict-banner.repro-none { border-left-color: var(--faint); background: var(--chip-bg); }
 .verdict-main { flex: 1 1 240px; min-width: 0; }
 .verdict-text { color: var(--ink-2); font-size: 0.9rem; margin: 8px 0 0; }
 .protection-line {
@@ -781,6 +795,9 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .protection-line.medium { color: var(--med); }
 .protection-line.high { color: var(--high); }
 .protection-line.unknown { color: var(--info); }
+.protection-line.repro-ready { color: var(--info); }
+.protection-line.repro-limited { color: var(--med); }
+.protection-line.repro-none { color: var(--faint); }
 .verdict-grade { display: flex; align-items: center; gap: 14px; flex: none; }
 @media (max-width: 560px) {
   .verdict-grade { width: 100%; justify-content: center; }
@@ -2504,6 +2521,7 @@ html.js .reveal.in,
 .jwt-key-panel textarea { min-height: 120px; font-family: var(--font-mono); font-size: 0.8rem; }
 
 .jwt-verify-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 14px 0; }
+.jwt-export-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .jwt-pin-alg { font-size: 0.82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
 .jwt-verify-result {
   margin-top: 8px; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid;

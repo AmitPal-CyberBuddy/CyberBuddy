@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CSP Policy Auditor — CyberBuddy</title>
-  <meta name="description" content="Audit a site's enforced Content-Security-Policy for dangerous sources, missing directives, and deployment gaps." />
+  <meta name="description" content="Audit an enforced Content-Security-Policy for unsafe sources, missing directives and bypassable fallbacks, with a per-directive breakdown of what each allows." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/" />
   <meta property="og:title" content="CSP Policy Auditor — CyberBuddy" />
-  <meta property="og:description" content="Audit an enforced CSP for dangerous sources and missing directives, with raw policy evidence." />
+  <meta property="og:description" content="Audit an enforced Content-Security-Policy for unsafe sources, missing directives and bypassable fallbacks, with a per-directive breakdown of what each allows." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CSP Policy Auditor — CyberBuddy" />
-  <meta name="twitter:description" content="Audit an enforced CSP for dangerous sources and missing directives." />
+  <meta name="twitter:description" content="Audit an enforced Content-Security-Policy for unsafe sources, missing directives and bypassable fallbacks, with a per-directive breakdown of what each allows." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../../icon-192.png" />
@@ -34,6 +34,33 @@
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M9 9h14v14H9zM12 13h8M12 17h5' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3C/svg%3E" />
   <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "CSP Policy Auditor — CyberBuddy",
+      "description": "Audit an enforced Content-Security-Policy for unsafe sources, missing directives and bypassable fallbacks, with a per-directive breakdown of what each allows.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Any (runs in a modern web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Amit Pal"
+      },
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "CyberBuddy",
+        "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/"
+      }
+    }
+  </script>
   <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -97,7 +124,7 @@
         <div><h2>CSP posture<span id="reportTitleFlag"></span></h2></div>
         <div class="report-actions">
           <span id="sourceChip" class="source-chip hidden"></span>
-          <span id="verdict" role="status" class="risk unknown">—</span>
+          <span id="verdict" class="risk unknown">—</span>
         </div>
       </div>
 
@@ -112,7 +139,7 @@
         <div class="meta-item"><span class="meta-label">Duration</span><span id="mDuration" class="meta-value mono">—</span></div>
       </div>
 
-      <div id="verdictBanner" class="verdict-banner unknown">
+      <div id="verdictBanner" role="status" aria-live="polite" class="verdict-banner unknown">
         <div class="verdict-main">
           <p id="protection" class="protection-line unknown">Run an audit to assess CSP posture.</p>
           <p id="summary" class="verdict-text">Run an audit to generate the report.</p>
