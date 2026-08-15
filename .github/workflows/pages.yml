@@ -58,6 +58,10 @@ jobs:
           # but the standalone page has its own canonical URL).
           test -d methodology && cp -a methodology _site/ || true
 
+          # Guides section: /guides/ index plus one guide directory per topic.
+          # Copy the whole tree so future guides need no workflow change.
+          test -d guides && cp -a guides _site/ || true
+
           # Cached reports for configured targets (skipped if the build step
           # found no targets / network failed).
           test -d cache && cp -a cache _site/ || true
