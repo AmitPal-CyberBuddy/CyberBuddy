@@ -1942,6 +1942,100 @@ class ResponsiveLayoutTests(unittest.TestCase):
                 self.assertEqual(bare, 0)
 
 
+class ThemeContrastTests(unittest.TestCase):
+    """WCAG AA (4.5:1) for every text/background token pairing in BOTH
+    themes, computed from the real css/app.css variables with translucent
+    surfaces composited over the page gradient. The pre-launch audit found
+    light-theme --faint (3.0), --brand (3.7) and --accent-2 (4.3) failing AA;
+    this test keeps every pairing above the floor forever."""
+
+    @staticmethod
+    def _parse_color(value):
+        value = value.strip()
+        if value.startswith("#"):
+            h = value[1:]
+            if len(h) == 3:
+                h = "".join(x * 2 for x in h)
+            return ((int(h[0:2], 16) / 255, int(h[2:4], 16) / 255,
+                     int(h[4:6], 16) / 255), 1.0)
+        match = re.match(r"rgba?\(([^)]+)\)", value)
+        parts = [x for x in re.split(r"[,\s/]+", match.group(1).strip())
+                 if x and x != "/"]
+        rgb = tuple(float(x) / 255 for x in parts[:3])
+        return rgb, (float(parts[3]) if len(parts) == 4 else 1.0)
+
+    @staticmethod
+    def _composite(color, alpha, backdrop):
+        return tuple(c * alpha + b * (1 - alpha) for c, b in zip(color, backdrop))
+
+    @staticmethod
+    def _luminance(rgb):
+        def channel(x):
+            return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+        return (0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1])
+                + 0.0722 * channel(rgb[2]))
+
+    @classmethod
+    def _ratio(cls, fg, bg):
+        lf, lb = cls._luminance(fg), cls._luminance(bg)
+        return (max(lf, lb) + 0.05) / (min(lf, lb) + 0.05)
+
+    def _themes(self):
+        import re as _re
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+        def block(pattern):
+            match = _re.search(pattern + r"\s*\{(.*?)\n\}", css, _re.S)
+            self.assertIsNotNone(match, pattern)
+            vars_ = dict(_re.findall(r"(--[\w-]+)\s*:\s*([^;]+);", match.group(1)))
+            for key, value in list(vars_.items()):
+                ref = _re.match(r"var\((--[\w-]+)\)", value.strip())
+                if ref and ref.group(1) in vars_:
+                    vars_[key] = vars_[ref.group(1)]
+            return vars_
+
+        dark = block(r":root")
+        light = {**dark, **block(_re.escape('html[data-theme="light"]'))}
+        return {"dark": dark, "light": light}
+
+    def test_every_text_pairing_meets_aa_in_both_themes(self):
+        for name, theme in self._themes().items():
+            bg_top = self._parse_color(theme["--bg-top"])[0]
+            bg_bottom = self._parse_color(theme["--bg-bottom"])[0]
+            backdrop = tuple((a + b) / 2 for a, b in zip(bg_top, bg_bottom))
+            surface_fx, surface_a = self._parse_color(theme["--surface"])
+            surface = self._composite(surface_fx, surface_a, backdrop)
+            soft_fx, soft_a = self._parse_color(theme["--brand-soft"])
+            brand_soft = self._composite(soft_fx, soft_a, surface)
+            pairs = [
+                ("--ink", surface), ("--muted", surface), ("--faint", surface),
+                ("--brand", surface), ("--accent-2", surface),
+                ("--high", surface), ("--med", surface), ("--low", surface),
+                ("--brand", brand_soft), ("--ink", brand_soft),
+                ("--on-brand", self._parse_color(theme["--brand"])[0]),
+            ]
+            for fg, bgc in pairs:
+                with self.subTest(theme=name, foreground=fg):
+                    ratio = self._ratio(self._parse_color(theme[fg])[0], bgc)
+                    self.assertGreaterEqual(ratio, 4.5,
+                                            "%s %s contrast %.2f" % (name, fg, ratio))
+
+    def test_on_brand_token_drives_every_brand_background(self):
+        """Text painted on --brand backgrounds must track the --on-brand
+        token so theme swaps keep button/skip-link/icon text legible."""
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        brand_bg_rules = re.findall(r"[^{}]+\{[^}]*background: var\(--brand\)[^}]*\}", rules)
+        self.assertTrue(brand_bg_rules)
+        for rule in brand_bg_rules:
+            if "::" in rule.split("{")[0]:
+                continue  # ::after/::before paint dots and underlines, not text
+            color = re.search(r"(?<![-\w])color:\s*([^;]+);", rule)
+            with self.subTest(rule=rule[:60]):
+                self.assertIsNotNone(color)
+                self.assertEqual(color.group(1).strip(), "var(--on-brand)")
+
+
 class CsrfParserTests(unittest.TestCase):
     """CSRF PoC Generator: parser + generator + escaping (pure JS, no DOM).
 
