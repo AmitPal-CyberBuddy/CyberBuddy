@@ -16,6 +16,15 @@
 Recorded at the start of the JWT-00 session (2026-08-15). See §5 “Current
 handoff” for the state at the end of that session.
 
+> Post-snapshot update (2026-08-16, branch `arena/01a00910-cyberbuddy`,
+> not yet merged into `origin/main`): the JWT Security Workbench gained
+> prioritized **VAPT Testing Suggestions & Test Payloads** — severity-tagged
+> cards derived from the decoded token, one-click TEST PAYLOADs with
+> copy-as-Burp-Authorization-header and Burp verification steps, and tab
+> prefill hand-offs — plus anchor-precision (`scroll-padding-top`) and
+> scroll-to-results fixes across the hub suite and all four assess tools.
+> Python tests now **322** (`python3 -m unittest test_engines.py`).
+
 | Item | Value |
 | --- | --- |
 | Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |

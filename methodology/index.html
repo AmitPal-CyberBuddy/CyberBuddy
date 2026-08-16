@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
-  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification — engines, grades, and hosted-site limits." />
+  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification &amp; VAPT test payloads — engines, grades, and hosted-site limits." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
   <meta property="og:title" content="Methodology — CyberBuddy" />
-  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification." />
+  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads." />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Methodology — CyberBuddy" />
-  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification." />
+  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../icon-192.png" />
@@ -38,19 +38,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../css/app.css?v=20260816a" />
+  <link rel="stylesheet" href="../css/app.css?v=20260816f" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "CyberBuddy methodology",
-      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification.",
+      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../js/app.js?v=20260816a" defer></script>
-  <script src="../js/boot.js?v=20260816a" defer></script>
+  <script src="../js/app.js?v=20260816f" defer></script>
+  <script src="../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/methodology/">
 <main id="main" class="container page-hero prose">
@@ -122,7 +122,9 @@
         using Web Crypto API (HMAC, RSA-PKCS#1, RSA-PSS, ECDSA). Generates
         authorized-test variant templates (<code>alg:none</code>, RSA-to-HMAC
         key confusion, embedded JWK, header URL, <code>kid</code> traversal) and runs
-        offline HMAC dictionary tests in a dedicated Web Worker. Zero external network calls.
+        offline HMAC dictionary tests in a dedicated Web Worker. Decoding also
+        surfaces prioritized, severity-tagged VAPT testing suggestions with
+        one-click TEST PAYLOADs and Burp Suite verification steps. Zero external network calls.
       </p>
       <p class="std-line">OWASP WSTG-SESS-10 · RFC 7519 · CWE-347</p>
     </article>
@@ -209,11 +211,12 @@
         <tr><td class="k">Claim inspection</td><td>Structural decode &amp; timestamps</td><td>Validates <code>iat</code>, <code>nbf</code>, <code>exp</code> (with configurable clock skew), <code>iss</code>, <code>aud</code>, and <code>sub</code> without requiring a key.</td></tr>
         <tr><td class="k">Crypto verification</td><td>Web Crypto API</td><td>Validates HS256/384/512, RS256/384/512, PS256/384/512, and ES256/384/512 signatures with algorithm pinning against downgrade and substitution.</td></tr>
         <tr><td class="k">Test variants</td><td>Authorized template generation</td><td>Constructs <code>alg:none</code>, RSA-to-HMAC key confusion, embedded JWK, <code>jku</code>/<code>x5u</code> header injection, and <code>kid</code> path traversal test templates for authorized verification.</td></tr>
+        <tr><td class="k">VAPT recommendations</td><td>Context-aware rule engine</td><td>Derives prioritized, severity-tagged (CRITICAL / HIGH / INFO) test vectors from the decoded token's algorithm, headers and claims; each builds locally as a labelled TEST PAYLOAD with Burp Suite steps naming the risky (HTTP 200) versus expected (401/403) response. Suggestions are vectors, never findings.</td></tr>
         <tr><td class="k">Secret dictionary test</td><td>Isolated Web Worker</td><td>Offline candidate search against HMAC signatures without sending tokens or candidate passwords over the wire.</td></tr>
       </tbody>
     </table>
     <p style="margin: 16px 0 0;">
-      JWT evaluation produces no artificial score: tokens are either cryptographically valid or invalid for the provided key, claims either pass or fail, and variant templates are labelled as test artifacts.
+      JWT evaluation produces no artificial score: tokens are either cryptographically valid or invalid for the provided key, claims either pass or fail, and variant templates and VAPT payloads are labelled as test artifacts, never findings.
     </p>
   </article>
 

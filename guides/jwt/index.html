@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260816a" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260816f" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -49,8 +49,8 @@
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../../js/app.js?v=20260816a" defer></script>
-  <script src="../../js/boot.js?v=20260816a" defer></script>
+  <script src="../../js/app.js?v=20260816f" defer></script>
+  <script src="../../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/guides/jwt/">
 <main id="main" class="container page-hero prose">
@@ -145,12 +145,12 @@
   </div>
   <article class="card reveal">
     <p>
-      HMAC (<code>HS256/384/512</code>) uses a shared secret to sign and
-      verify. RSA and EC (<code>RS256</code>, <code>PS256</code>,
-      <code>ES256</code>) use a private key to sign and a public key to
-      verify. The Workbench verifies and signs through the native Web Crypto
-      API where supported — PEM, JWK or a pasted JWKS to verify, a secret or
-      private key to sign. No key leaves the browser.
+      HMAC (<code>HS256/384/512</code>) signs and verifies with a shared
+      secret. RSA and EC (<code>RS256</code>, <code>PS256</code>,
+      <code>ES256</code>) sign with a private key and verify with a public
+      key. The Workbench uses the native Web Crypto API — PEM, JWK or a
+      pasted JWKS to verify, a secret or private key to sign. No key leaves
+      the browser.
     </p>
   </article>
 
@@ -172,7 +172,7 @@
       <strong>Presence is not proof.</strong> A <code>kid</code>,
       <code>jku</code> or embedded JWK is an attack surface, not an exploited
       vulnerability; confusion stays potential until the server accepts it —
-      these are test templates, never findings.
+      test templates, never findings.
     </p>
     <p>
       <strong>HS256 is not automatically weak.</strong> A strong high-entropy
@@ -206,9 +206,13 @@
       lists contextual observations, verifies HMAC, RSA-PKCS#1, RSA-PSS and
       ECDSA signatures, re-signs edited claims with a key you supply or
       generate, builds labelled test-variant templates, and runs bounded
-      HS256/384/512 secret testing in a Web Worker — all via Web Crypto. It
-      never trusts the token's <code>alg</code> header to choose the
-      verifier, and HMAC rejects public keys.
+      HS256/384/512 secret testing in a Web Worker — all via Web Crypto.
+      Decoding yields prioritized <strong>VAPT suggestions</strong> with
+      one-click <strong>TEST PAYLOAD</strong>s (alg:none, RS→HS confusion,
+      embedded JWK, kid, jku/x5u, claim tampering) for manual proxy
+      verification. It never trusts the token's
+      <code>alg</code> header to choose the verifier, and HMAC rejects
+      public keys.
     </p>
     <p>
       Generating a modified token proves you can build the bytes, not that

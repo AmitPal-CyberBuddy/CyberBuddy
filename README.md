@@ -20,7 +20,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
-| **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally, build test-variant templates, and run bounded HS256/384/512 secret testing — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
+| **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally, get prioritized VAPT suggestions with one-click TEST PAYLOADs and Burp guidance, build test-variant templates, and run bounded HS256/384/512 secret testing — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
 
 More tools slot in later — add one entry to the `TOOLS_MENU` registry in
 `js/app.js` (with a `category` of `assess` for URL-based target checks or
@@ -60,7 +60,7 @@ python3 server.py
 # open http://127.0.0.1:8080/
 # catalog: /tools/
 # tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
-# JWT: /tools/jwt/  (decode, inspect, verify, edit & generate)
+# JWT: /tools/jwt/  (decode, inspect, verify, VAPT payloads, edit & generate)
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -119,7 +119,7 @@ js/tool.headers.js              # headers page controller
 js/tool.cors.js                 # CORS page controller
 js/tool.csp.js                  # CSP audit page controller
 js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
-js/tool.jwt.js                  # JWT Workbench controller (analyze/verify + edit/generate/sign)
+js/tool.jwt.js                  # JWT Workbench controller (analyze/verify + VAPT suggestions + edit/generate/sign)
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   index.html                    # tools catalog (every tool in one directory)
@@ -128,7 +128,7 @@ tools/
   cors/index.html               # CORS probe + roadmap
   csp/index.html                # CSP policy audit report
   csrf/index.html               # CSRF PoC generator (local-only)
-  jwt/index.html                # JWT Security Workbench (decode/inspect/verify + edit/generate)
+  jwt/index.html                # JWT Security Workbench (decode/inspect/verify + VAPT payloads + edit/generate)
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
@@ -311,6 +311,17 @@ locally in your browser:
   PKCS#8 / private JWK) via Web Crypto, local RSA test-key generation,
   explicit **TEST TOKEN** labels, and copy/download that never exports key
   material by accident.
+- **VAPT suggestions & payloads** — decoding a token renders prioritized,
+  severity-tagged (CRITICAL / HIGH / INFO) test vectors matched to the
+  token's algorithm, headers and claims: RS→HS algorithm confusion with a
+  pasted public-key PEM, `alg:none` stripping, embedded JWK injection,
+  `kid` traversal/SQLi probes that keep the original signature,
+  `jku`/`x5u` injection, an offline secret-testing handoff for HS tokens,
+  and privilege-claim tampering. Every card builds a one-click **TEST
+  PAYLOAD** with "Copy token" and "Copy as Burp Authorization header",
+  lists 2–3 Burp Suite steps naming the risky (HTTP 200) versus expected
+  (401/403) response, and jumps to the matching workbench tab prefilled.
+  Suggestions are test vectors, never findings.
 - **Test variants & secret testing (JWT-03, live)** — `alg:none`, claim
   manipulation (tamper and re-sign), algorithm confusion with a pasted
   public key, embedded JWK, JKU/X5U and `kid` mutation templates, every

