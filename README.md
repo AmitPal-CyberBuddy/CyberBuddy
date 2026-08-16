@@ -47,8 +47,8 @@ concise, not a full article library.
 
 ## Documentation page
 
-Operator-facing docs live on the site at
-[`/documentation/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/):
+Operator-facing docs live on the site at the
+[Documentation page](https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/):
 quick start, which engine answers a scan, the CLI, export formats, hosted-build
 limits, and what leaves the browser. This README stays the contributor
 reference — file layout, engine internals, deployment, and the workflow.
@@ -291,7 +291,7 @@ the four scanners:
 
 ## JWT Security Workbench
 
-The sixth tool, at [`/tools/jwt/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/),
+The sixth tool, at the [JWT Security Workbench](https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/),
 decodes, inspects, verifies, edits, re-signs and tests JSON Web Tokens
 locally in your browser:
 
@@ -396,9 +396,9 @@ Top-level navigation remains blocked.
 ## Notes
 
 - Keyboard: `/` focuses the URL field, `t` toggles theme, `?` opens shortcuts.
-  Scoring notes live on the hub under
-  [`#methodology`](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology),
-  with the full page at [`/methodology/`](https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/).
+  Scoring notes live on the hub under the
+  [How CyberBuddy scores](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology) section,
+  with the full page at the [methodology page](https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/).
 - **CyberBuddy scores A (95/100) against itself.** No page uses inline scripts —
   every controller is a file under `js/`, so `server.py` ships
   `script-src 'self'` with no `'unsafe-inline'`, plus `Permissions-Policy`,
