@@ -1,6 +1,6 @@
 # CyberBuddy
 
-> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, CORS posture checks, and a local-only CSRF PoC generator — with evidence-grade output.
+> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, CORS posture checks, a local-only CSRF PoC generator, and the local-only JWT Security Workbench (decode/verify, VAPT test payloads, edit & re-sign) — with evidence-grade output.
 
 - Hub: https://amitpal-cyberbuddy.github.io/CyberBuddy/
 - Tools catalog: https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/

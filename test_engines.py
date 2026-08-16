@@ -1903,6 +1903,44 @@ class ResponsiveLayoutTests(unittest.TestCase):
         """:has() is progressive enhancement only — never load-bearing."""
         self.assertNotIn(":has(", self.rules)
 
+    def test_pipeline_diagram_spans_the_container_in_columns(self):
+        """Pre-launch review: the 6-step pipeline was a min(560px) vertical
+        stack — 300px+ of dead gutter either side on a 1160px container.
+        It is a responsive flow grid now: 3 cols desktop, 2 tablet, 1 phone."""
+        body = self._rule(".pipeline-diagram {")
+        self.assertIn("display: grid", body)
+        self.assertIn("repeat(3, 1fr)", body)
+        self.assertNotIn("flex-direction: column", body)
+        node = self._rule(".pd-node {")
+        self.assertIn("width: 100%", node)
+        self.assertIn("@media (max-width: 1060px) { .pipeline-diagram { grid-template-columns: repeat(2, 1fr); } }",
+                      self.rules)
+        start = self.rules.index("@media (max-width: 760px)", self.rules.index(".pd-arrow"))
+        block = self.rules[start:self.rules.index("\n}", start)]
+        self.assertIn(".pipeline-diagram { grid-template-columns: 1fr; }", block)
+        # The numbered 01–06 steps carry the sequence in the grid; the ↓
+        # glyphs only make sense in the single-column phone stack.
+        self.assertIn(".pd-arrow { display: none; }", self.rules)
+        self.assertIn(".pd-arrow { display: block; text-align: center; }", block)
+
+    def test_arch_diagram_uses_full_container_width(self):
+        """The architecture rows shared the same 560px choke point."""
+        self.assertIn("width: 100%", self._rule(".arch-node {"))
+        self.assertIn("width: 100%", self._rule(".arch-split {"))
+        # No rule may reintroduce the narrow centered-column cap.
+        self.assertNotIn("min(560px", self.rules)
+
+    def test_pipeline_and_arch_arrows_are_decorative(self):
+        """The ↓ glyphs duplicate the numbered steps / row order, so they
+        must not be announced by screen readers."""
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        for cls in ("pd-arrow", "arch-down"):
+            glyphs = hub.count('<div class="%s" aria-hidden="true">↓' % cls)
+            bare = hub.count('<div class="%s">↓' % cls)
+            with self.subTest(cls=cls):
+                self.assertGreater(glyphs, 0)
+                self.assertEqual(bare, 0)
+
 
 class CsrfParserTests(unittest.TestCase):
     """CSRF PoC Generator: parser + generator + escaping (pure JS, no DOM).

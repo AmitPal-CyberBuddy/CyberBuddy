@@ -46,7 +46,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="css/app.css?v=20260816d" />
+  <link rel="stylesheet" href="css/app.css?v=20260816e" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -69,9 +69,9 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260816d" defer></script>
-  <script src="js/hub.js?v=20260816d" defer></script>
-  <script src="js/boot.js?v=20260816d" defer></script>
+  <script src="js/app.js?v=20260816e" defer></script>
+  <script src="js/hub.js?v=20260816e" defer></script>
+  <script src="js/boot.js?v=20260816e" defer></script>
 </head>
 <body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
 <main id="main" class="container">
@@ -296,12 +296,12 @@
       <span class="pd-step">01</span>
       <div><strong>Target</strong><p>Paste any <code>http(s)</code> URL you are authorized to test.</p></div>
     </div>
-    <div class="pd-arrow">↓</div>
+    <div class="pd-arrow" aria-hidden="true">↓</div>
     <div class="pd-node">
       <span class="pd-step">02</span>
       <div><strong>Normalize URL</strong><p>Scheme, host and path are resolved to a single fetchable target.</p></div>
     </div>
-    <div class="pd-arrow">↓</div>
+    <div class="pd-arrow" aria-hidden="true">↓</div>
     <div class="pd-node">
       <span class="pd-step">03</span>
       <div><strong>Collect evidence</strong>
@@ -309,17 +309,17 @@
         <span class="pd-tags"><span class="tool-tag">headers</span><span class="tool-tag">CORS</span><span class="tool-tag">framing</span><span class="tool-tag">CSP</span></span></p>
       </div>
     </div>
-    <div class="pd-arrow">↓</div>
+    <div class="pd-arrow" aria-hidden="true">↓</div>
     <div class="pd-node">
       <span class="pd-step">04</span>
       <div><strong>Evaluate</strong><p>OWASP-aligned checks grade each control against its evidence.</p></div>
     </div>
-    <div class="pd-arrow">↓</div>
+    <div class="pd-arrow" aria-hidden="true">↓</div>
     <div class="pd-node">
       <span class="pd-step">05</span>
       <div><strong>Score &amp; grade</strong><p>Headers land on a 0–100 scale with an A–F band; risk is labelled per tool.</p></div>
     </div>
-    <div class="pd-arrow">↓</div>
+    <div class="pd-arrow" aria-hidden="true">↓</div>
     <div class="pd-node">
       <span class="pd-step">06</span>
       <div><strong>Evidence report</strong><p>Every result is a self-contained card with raw values — screenshot, export or print it.</p></div>
@@ -453,16 +453,16 @@
   </div>
   <div class="arch reveal" style="--d: .06s;">
     <div class="arch-node arch-ui"><strong>Hub + tool pages</strong><span>this UI — no build step, no framework</span></div>
-    <div class="arch-down">↓</div>
+    <div class="arch-down" aria-hidden="true">↓</div>
     <div class="arch-split">
       <div class="arch-node arch-engine"><strong>Browser engine</strong><span>same graders run in your browser on GitHub Pages</span></div>
       <div class="arch-node arch-engine"><strong>Hosted API</strong><span>python server.py / api — same scoring, server-side</span></div>
     </div>
-    <div class="arch-down">↓</div>
+    <div class="arch-down" aria-hidden="true">↓</div>
     <div class="arch-node"><strong>Security engines</strong><span>clickjacking · security headers · CSP · CORS</span></div>
-    <div class="arch-down">↓</div>
+    <div class="arch-down" aria-hidden="true">↓</div>
     <div class="arch-node"><strong>Evidence engine</strong><span>the raw header value behind every finding</span></div>
-    <div class="arch-down">↓</div>
+    <div class="arch-down" aria-hidden="true">↓</div>
     <div class="arch-node arch-score"><strong>Score &amp; report</strong><span>grade A–F · severity · export · print</span></div>
   </div>
 

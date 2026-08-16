@@ -1500,10 +1500,16 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 }
 .pages-cmd::before { content: "$ "; color: #64748b; }
 
-/* ---------- Static pipeline diagram (hub "How an assessment runs") --- */
-.pipeline-diagram { margin-top: 16px; display: flex; flex-direction: column; align-items: center; }
+/* ---------- Static pipeline diagram (hub "How an assessment runs") ---
+   Full-container flow grid — 3 columns on desktop, 2 on laptop/tablet, a
+   single stack with arrows on phones. The numbered 01–06 steps carry the
+   sequence in the grid, so the ↓ glyphs only matter on phones. */
+.pipeline-diagram {
+  margin-top: 16px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+}
 .pd-node {
-  width: min(560px, 100%); display: flex; gap: 12px; align-items: flex-start;
+  width: 100%; height: 100%; display: flex; gap: 12px; align-items: flex-start;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow-sm);
 }
@@ -1518,17 +1524,21 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .pd-node p .pd-tags { display: inline-flex; gap: 5px; margin-left: 8px; vertical-align: middle; }
 .pd-node .pd-tags .tool-tag { font-size: 0.56rem; padding: 1px 6px; }
 .pd-arrow, .arch-down { font-family: var(--font-mono); color: var(--brand); padding: 1px 0; line-height: 1.3; font-size: 0.9rem; }
+.pd-arrow { display: none; }
+@media (max-width: 1060px) { .pipeline-diagram { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 760px) {
+  .pipeline-diagram { grid-template-columns: 1fr; }
+  .pd-arrow { display: block; text-align: center; }
   .pd-node { padding: 9px 12px; }
   .pd-node strong { font-size: 0.84rem; }
   .pd-node p { font-size: 0.73rem; }
-  .pipeline-diagram { align-items: stretch; }
 }
 
-/* ---------- Architecture diagram ------------------------------------- */
+/* ---------- Architecture diagram -------------------------------------
+   Node rows span the full container — no narrow centered column. */
 .arch { margin-top: 16px; display: flex; flex-direction: column; align-items: center; }
 .arch-node {
-  width: min(560px, 100%); padding: 10px 16px; text-align: center;
+  width: 100%; padding: 10px 16px; text-align: center;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 12px; box-shadow: var(--shadow-sm);
 }
@@ -1541,7 +1551,7 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
 .arch-node.arch-ui { border-color: var(--brand-ring); }
 .arch-node.arch-engine span { color: var(--accent-2); }
 .arch-node.arch-score { border-color: var(--info-line); }
-.arch-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: min(560px, 100%); }
+.arch-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
 @media (max-width: 560px) { .arch-split { grid-template-columns: 1fr; } }
 
 /* ---------- Recent-scan grade chips ---------------------------------- */
