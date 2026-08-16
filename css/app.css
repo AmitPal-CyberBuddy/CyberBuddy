@@ -1715,7 +1715,7 @@ html[data-theme="light"] .aurora i { opacity: 0.3; }
 }
 @keyframes heroShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 
-/* Checks ticker — the exact headers the suite grades, streaming by */
+/* Checks ticker — what every tool grades or builds, streaming by */
 .ticker {
   margin-top: 34px; border-block: 1px solid var(--line);
   background: var(--surface); overflow: hidden; position: relative;

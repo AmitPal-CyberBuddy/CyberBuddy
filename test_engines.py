@@ -850,6 +850,47 @@ console.log(JSON.stringify({ click, cors, csp, headers }));
         self.assertIn('style.setProperty("--attacker-opacity"', controller)
 
 
+class HubTickerTests(unittest.TestCase):
+    """The streaming checks ticker on the landing page must represent the
+    whole suite (headers, clickjacking, CORS, CSP *and* the local CSRF/JWT
+    utilities) and keep the exact 2x duplication its translateX(-50%) loop
+    relies on."""
+
+    def _track(self):
+        text = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertRegex(text, r'<div class="ticker[^"]*"[^>]*aria-hidden="true"',
+                         "decorative ticker must stay hidden from assistive tech")
+        block = re.search(r'<div class="ticker-track">(.*?)</div>', text, re.S)
+        self.assertIsNotNone(block)
+        return re.findall(r'<span title="([^"]*)">([^<]+)</span>', block.group(1))
+
+    def test_track_is_the_same_sequence_twice(self):
+        spans = self._track()
+        self.assertTrue(spans, "ticker must contain items")
+        self.assertEqual(len(spans) % 2, 0, "translateX(-50%) needs 2x duplication")
+        half = len(spans) // 2
+        self.assertEqual(spans[:half], spans[half:],
+                         "a mismatched second half makes the loop jump visible")
+
+    def test_every_item_explains_itself_on_hover(self):
+        for title, _label in self._track():
+            with self.subTest(title=title):
+                self.assertTrue(title.strip(), "ticker spans need a title tooltip")
+
+    def test_ticker_covers_all_six_tools(self):
+        half = len(self._track()) // 2
+        labels = " | ".join(label for _t, label in self._track()[:half])
+        for expected in (
+            "frame-ancestors",              # clickjacking + CSP
+            "Strict-Transport-Security",    # headers
+            "Access-Control-Allow-Origin",  # CORS
+            "CSRF PoC",                     # CSRF PoC Generator
+            "JWT",                          # JWT Security Workbench
+        ):
+            with self.subTest(coverage=expected):
+                self.assertIn(expected, labels)
+
+
 class ServerRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
