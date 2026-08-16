@@ -16,9 +16,7 @@ const ICONS = {
   cors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="12" r="2.5"/><path class="dashed" d="M8 12h3M13 12h3" stroke-dasharray="2 2"/></svg>',
   policy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
   csrf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1"/></svg>',
-  // JWT Security Workbench is a DEVELOPMENT PREVIEW (JWT-00). It is not
-  // operational: the page ships informational preview tabs only and must
-  // never be mistaken for a live tool. The icon (a key/token) is decorative.
+  // JWT Security Workbench icon (a shield/token). Decorative only.
   jwt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 2l-8 4v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z"/><path d="M7.5 12l2.5 2.5L16.5 8"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -171,7 +169,7 @@ function renderHeader(current) {
     '<nav class="main-nav" aria-label="Tools">' +
     navLink(base, "/", "Hub", current) +
     navLink(base, "/guides/", "Guides", current) +
-    navLink(base, "/#methodology", "Method", current) +
+    navLink(base, "/methodology/", "Methodology", current) +
     toolsMenu(base, "hdr") +
     "</nav>" +
     '<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch theme" title="Switch theme">' +
@@ -309,8 +307,8 @@ const TOOLS_MENU = [
     std: ["OWASP WSTG-SESS-05", "CWE-352"]
   },
   {
-    // JWT-03: all Workbench panels are functional. category "local" — it
-    // never scans a target or joins the URL assessment suite.
+    // All Workbench panels are functional. category "local" — it never
+    // scans a target or joins the URL assessment suite.
     href: "/tools/jwt/",
     label: "JWT Security Workbench",
     status: "live",
@@ -333,8 +331,9 @@ function toolsMenu(base, uid) {
 
   const item = (t) => {
     const active = (base + t.href) === path;
-    // "preview" reads as "preview" in the menu (not "live"); a non-live
-    // status is how JWT-00 is kept visually distinct from operational tools.
+    // "preview" reads as "preview" in the menu (not "live"), keeping any
+    // non-live tool visually distinct from operational ones. No tool is in
+    // preview today; the branch stays so the next one lands correctly.
     const label = t.status === "preview" ? "preview" : t.status;
     return '<a class="nav-menu-item' + (active ? " active" : "") + '" href="' + base + t.href + '">' +
       t.label + '<span class="nav-status ' + t.status + '">' + label + "</span></a>";
@@ -401,8 +400,11 @@ function renderFooter() {
     '<nav class="footer-col" aria-label="Learn">' +
     "<strong>Learn</strong>" +
     '<a href="' + base + '/guides/">Guides</a>' +
+    // One Methodology entry only. The hub's #methodology section is a summary
+    // of this page, so a second "Scoring methodology" link sent two footer
+    // rows to the same content under different names.
     '<a href="' + base + '/methodology/">Methodology</a>' +
-    '<a href="' + base + '/#methodology">Scoring methodology</a>' +
+    '<a href="' + base + '/methodology/#scoring">Scoring &amp; weights</a>' +
     '<a href="' + base + '/methodology/#privacy">Privacy</a>' +
     "</nav>" +
     '<nav class="footer-col" aria-label="Project">' +
@@ -494,8 +496,8 @@ function toolCardHtml(t, i, base, ghostAction) {
   const std = (t.std || []).map(stdBadgeHtml).join("");
   const led = t.status === "live" ? "status-led" : "status-led " + t.status;
   // A preview/non-live tool must not read as "Run check" (an action) or
-  // display the raw lowercase status. JWT-00 shows "Preview" and a
-  // "View preview" affordance.
+  // display the raw lowercase status; it shows "Preview" and a
+  // "View preview" affordance instead.
   const ledText = t.status === "preview" ? "Preview" : t.status;
   const action = ghostAction || (t.status === "preview" ? "View preview" : "Run check");
   return '<a class="tool-card card corner-card reveal" style="--d: ' + (0.05 + i * 0.07) + 's" href="' +
@@ -553,7 +555,7 @@ function renderToolCatalog() {
     const cat = TOOL_CATEGORIES[t.category] || { label: t.category };
     // A development-preview tool is labelled "Preview" (never "Launch") and
     // carries its category badge plus an explicit preview status badge so it
-    // is not mistaken for an operational tool. JWT-00 is the first such tool.
+    // is not mistaken for an operational tool.
     const isPreview = t.status === "preview";
     const statusBadge = isPreview
       ? ' <span class="cat-badge cat-preview" title="Development preview — not operational">Preview</span>'
@@ -584,7 +586,10 @@ function renderToolCatalog() {
     if (!tools.length) return "";
     const cat = TOOL_CATEGORIES[category];
     return '<section class="catalog-group" id="' + (category === "assess" ? "assess-targets" : "local-utilities") + '" aria-labelledby="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' +
-      '<div class="category-head">' +
+      // The heading reveals just ahead of its cards (which start at --d:
+      // .05s), so each group reads as one movement instead of a static
+      // heading over cards that fade in beneath it.
+      '<div class="category-head reveal">' +
       '<h2 id="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' + esc(cat.hubLabel) + "</h2>" +
       (cat.suite ? '<span class="cat-badge cat-suite">part of Run suite</span>' : '<span class="cat-badge cat-local">not in Run suite</span>') +
       '<p>' + esc(cat.blurb) + "</p>" +
@@ -1652,7 +1657,9 @@ function buildEvidenceCardSpec(data, toolName) {
     return {
       kind: kind,
       title: "CORS VALIDATOR",
-      hero: outcome + " · " + risk.toUpperCase(),
+      // Same PASS wording as the on-screen verdict and the exports, so a
+      // PNG evidence card cannot disagree with the Markdown beside it.
+      hero: outcome + " · " + (risk === "low" ? "PASS" : risk.toUpperCase()),
       risk: risk,
       meta: commonMeta.concat([
         ["Probe coverage", genuineProof
@@ -1972,6 +1979,18 @@ function markdownKind(data) {
   return "generic";
 }
 
+/* The CORS Validator's headline is a PASS/FAIL judgement, not a severity: a
+   target that returns no CORS headers is correctly configured, so the card
+   shows "PASS" rather than "LOW". Exports must not contradict the screenshot
+   they are attached to, so every human-readable export (Markdown, standalone
+   HTML, CSV) reads the label through here. The machine-readable JSON envelope
+   keeps the raw `risk` value untouched for automation. */
+function reportRiskLabel(data) {
+  const risk = (data && data.risk) || "unknown";
+  if (markdownKind(data) === "cors" && String(risk).toLowerCase() === "low") return "PASS";
+  return String(risk).toUpperCase();
+}
+
 function reportToolTitle(data) {
   const kind = markdownKind(data);
   return kind === "headers" ? "Security Headers"
@@ -2049,7 +2068,7 @@ function toMarkdown(data) {
   if (!data) return "No scan data.";
   const kind = markdownKind(data);
   const title = reportToolTitle(data);
-  const risk = (data.risk || "unknown").toUpperCase();
+  const risk = reportRiskLabel(data);
   const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
   const pasted = !!data._pasted;
   const lines = [
@@ -2100,7 +2119,7 @@ function toCsv(data) {
     tool: reportToolTitle(data), target: redactUrlCredentials(data.url),
     final_url: redactUrlCredentials(data.final_url || data.url),
     http_status: data.status_code != null ? data.status_code : "",
-    risk: data.risk || "unknown", grade: data.grade || "", score: data.score ?? "",
+    risk: reportRiskLabel(data), grade: data.grade || "", score: data.score ?? "",
     source: sourceLabel(data), generated: new Date().toISOString(), summary: data.summary || ""
   };
   Object.keys(meta).forEach((key) => rows.push(["metadata", key, "", "", meta[key], "", ""]));
@@ -2132,7 +2151,7 @@ function toStandaloneHtml(data) {
     "<dl><dt>Target</dt><dd>" + (data._pasted ? "pasted header (no target)" : safe(redactUrlCredentials(data.url))) + "</dd><dt>Final URL</dt><dd>" +
     (data._pasted ? "—" : safe(redactUrlCredentials(data.final_url || data.url))) + "</dd><dt>HTTP status</dt><dd>" +
     safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
-    safe(data.risk || "unknown") + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
+    safe(reportRiskLabel(data)) + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
     "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(new Date().toISOString()) +
     "</dd></dl><h2>Summary</h2><p>" + safe(data.summary || "No summary provided.") + "</p>" + policy +
     "<h2>Findings</h2><table><thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Assessment</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>" +

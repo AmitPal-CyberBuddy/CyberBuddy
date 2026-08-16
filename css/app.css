@@ -301,8 +301,8 @@ main.container { z-index: 2; }
 }
 .nav-status.live { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
 .nav-status.beta { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
-/* JWT-00 preview: amber/med, same as beta but labelled "preview" so the
-   tool is never mistaken for an operational/live entry. */
+/* Preview status: amber/med, same as beta but labelled "preview" so a tool
+   in development is never mistaken for an operational/live entry. */
 .nav-status.preview { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .nav-status.soon { color: var(--faint); background: var(--surface-2); border-color: var(--line); }
 .nav-menu-divider {
@@ -460,7 +460,7 @@ main.container { z-index: 2; }
 .cat-badge.cat-assess { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
 .cat-badge.cat-local { color: var(--accent-2); background: var(--surface-2); border-color: var(--line-strong); }
 .cat-badge.cat-suite { color: var(--low); background: var(--low-bg); border-color: var(--low-line); }
-/* JWT-00: a non-live, non-operational preview. Amber so it reads as
+/* A non-live, non-operational preview. Amber so it reads as
    "in development" rather than as a live/launchable tool. */
 .cat-badge.cat-preview { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .cat-badge.cat-local.cat-badge,
@@ -634,7 +634,7 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 }
 .status-led::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--low); box-shadow: 0 0 8px var(--low); }
 .status-led.beta::before { background: var(--med); box-shadow: 0 0 8px var(--med); }
-/* JWT-00: the preview led is amber and does not claim to be live. */
+/* The preview led is amber and does not claim to be live. */
 .status-led.preview::before { background: var(--med); box-shadow: 0 0 8px var(--med); }
 .status-led.soon::before { background: var(--faint); box-shadow: none; }
 .tool-card h3 { font-size: 1.12rem; margin: 0 0 5px; }
@@ -668,6 +668,17 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .risk.unknown, .risk.info { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
 .risk.unreachable { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
 .risk.bump { animation: riskPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Reproducibility (CSRF PoC Generator only).
+   The generator reports whether browser mechanics can carry a request — it is
+   explicitly NOT a vulnerability verdict, so it must not borrow the risk
+   palette. Green/red there would read backwards: a working PoC (READY) is the
+   strongest claim against the target, while NOT REPRESENTABLE is the mildest.
+   This is a deliberately neutral ramp: informational blue for a clean
+   reproduction, amber for a conditional one, muted grey for none. */
+.risk.repro-ready { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
+.risk.repro-limited { color: var(--med); background: var(--med-bg); border-color: var(--med-line); }
+.risk.repro-none { color: var(--faint); background: var(--chip-bg); border-color: var(--line-strong); }
 @keyframes riskPop { 0% { transform: scale(0.7); opacity: 0.4; } 100% { transform: scale(1); opacity: 1; } }
 
 .grade {
@@ -771,6 +782,9 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .verdict-banner.low { border-left-color: var(--low); background: var(--low-bg); }
 .verdict-banner.info, .verdict-banner.unknown { border-left-color: var(--info); background: var(--info-bg); }
 .verdict-banner.unreachable { border-left-color: var(--med); background: var(--med-bg); }
+.verdict-banner.repro-ready { border-left-color: var(--info); background: var(--info-bg); }
+.verdict-banner.repro-limited { border-left-color: var(--med); background: var(--med-bg); }
+.verdict-banner.repro-none { border-left-color: var(--faint); background: var(--chip-bg); }
 .verdict-main { flex: 1 1 240px; min-width: 0; }
 .verdict-text { color: var(--ink-2); font-size: 0.9rem; margin: 8px 0 0; }
 .protection-line {
@@ -781,6 +795,9 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 .protection-line.medium { color: var(--med); }
 .protection-line.high { color: var(--high); }
 .protection-line.unknown { color: var(--info); }
+.protection-line.repro-ready { color: var(--info); }
+.protection-line.repro-limited { color: var(--med); }
+.protection-line.repro-none { color: var(--faint); }
 .verdict-grade { display: flex; align-items: center; gap: 14px; flex: none; }
 @media (max-width: 560px) {
   .verdict-grade { width: 100%; justify-content: center; }
@@ -2221,7 +2238,7 @@ html.js .reveal.in,
 .csrf-notes-grid { margin-top: 18px; }
 
 /* ==========================================================================
-   JWT Security Workbench (JWT-01/02/03) — live workbench styles
+   JWT Security Workbench — live workbench styles
    Full local workbench: Analyze & Verify, Edit & Generate, Test Variants,
    and bounded Web Worker Secret Test.
    ========================================================================== */
@@ -2421,22 +2438,6 @@ html.js .reveal.in,
   .jwt-phase-grid { grid-template-columns: 1fr; }
 }
 
-/* JWT-00: "Preview" tag on the static no-JS hub card. */
-.hub-preview-tag {
-  font-family: var(--font-mono);
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--med);
-  border: 1px solid var(--med-line);
-  background: var(--med-bg);
-  border-radius: 999px;
-  padding: 2px 8px;
-  vertical-align: middle;
-  margin-left: 6px;
-}
-
 /* JWT guide preview-note callout. */
 .jwt-preview-note {
   border: 1px solid var(--med-line);
@@ -2451,7 +2452,7 @@ html.js .reveal.in,
 .jwt-preview-note strong { color: var(--ink); }
 
 /* ==========================================================================
-   JWT Security Workbench — JWT-01 functional Analyze & Verify UI
+   JWT Security Workbench — Analyze & Verify UI
    ========================================================================== */
 .jwt-input-card { margin-top: 6px; }
 .jwt-token-input {
@@ -2520,6 +2521,7 @@ html.js .reveal.in,
 .jwt-key-panel textarea { min-height: 120px; font-family: var(--font-mono); font-size: 0.8rem; }
 
 .jwt-verify-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 14px 0; }
+.jwt-export-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .jwt-pin-alg { font-size: 0.82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
 .jwt-verify-result {
   margin-top: 8px; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid;
@@ -2532,21 +2534,13 @@ html.js .reveal.in,
 .jwt-verify-bad { color: var(--high); background: var(--high-bg); border-color: var(--high-line); }
 .jwt-verify-bad strong { color: var(--high); }
 
-/* Preview-panel banner (JWT-02/03) */
-.jwt-preview-panel .jwt-preview-banner {
-  border: 1px solid var(--med-line); background: var(--med-bg);
-  border-radius: var(--radius-sm); padding: 12px 16px; margin: 6px 0 16px;
-  color: var(--ink-2); font-size: 0.9rem;
-}
-.jwt-preview-panel .jwt-preview-banner strong { color: var(--ink); }
-
 @media (max-width: 600px) {
   .jwt-claims { grid-template-columns: 1fr; }
   .jwt-key-tabs { flex-wrap: nowrap; overflow-x: auto; }
 }
 
 /* ==========================================================================
-   JWT Security Workbench — JWT-02 functional Edit & Generate UI
+   JWT Security Workbench — Edit & Generate UI
    ========================================================================== */
 .jwt-phase-live { color: var(--brand); background: var(--brand-soft); border-color: var(--brand); }
 
@@ -2705,7 +2699,7 @@ html.js .reveal.in,
 }
 
 /* ==========================================================================
-   JWT Security Workbench — JWT-03 functional Test Variants & Secret Test UI
+   JWT Security Workbench — Test Variants & Secret Test UI
    ========================================================================== */
 .jwt-var-base { margin: 6px 0 14px; color: var(--ink-2); }
 

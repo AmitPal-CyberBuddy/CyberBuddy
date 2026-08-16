@@ -803,9 +803,109 @@
     return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
   }
 
+  /* ------------------------------------------------------------------------
+     Markdown analysis export.
+
+     Privacy rules, deliberately stricter than the scanners' exports: the
+     Workbench handles live credentials, so the report carries the *shape* of
+     the token, never material that could authenticate. The raw token, the
+     signature bytes, any supplied key/secret and the values of claims that
+     commonly hold identifiers are omitted — registered claims are reported
+     by name, with timestamps rendered as readable times because those are
+     the analytically useful part. `verification` is optional; when the
+     analyst has not run a verify, the report says so rather than implying an
+     unverified token is fine.
+     ---------------------------------------------------------------------- */
+  var SENSITIVE_CLAIMS = ["sub", "jti", "email", "name", "preferred_username",
+    "given_name", "family_name", "phone_number", "sid", "nonce", "at_hash",
+    "c_hash", "azp", "act", "cnf"];
+
+  function fmtClaimTime(v) {
+    if (typeof v !== "number" || !isFinite(v)) return String(v);
+    try { return new Date(v * 1000).toISOString().replace(".000Z", "Z") + " (" + v + ")"; }
+    catch (e) { return String(v); }
+  }
+
+  function buildMarkdown(parsed, opts) {
+    opts = opts || {};
+    var h = parsed.header, p = parsed.payload;
+    var now = Math.floor(Date.now() / 1000);
+    var lines = [];
+    lines.push("# CyberBuddy — JWT Security Workbench");
+    lines.push("");
+    lines.push("## Token");
+    lines.push("- **Algorithm (header `alg`):** " + String(h.alg));
+    lines.push("- **Type (header `typ`):** " + (h.typ != null ? String(h.typ) : "(absent)"));
+    lines.push("- **Key id (header `kid`):** " + (h.kid != null ? String(h.kid) : "(absent)"));
+    var extraHeader = Object.keys(h).filter(function (k) {
+      return ["alg", "typ", "kid"].indexOf(k) === -1;
+    });
+    lines.push("- **Other header parameters:** " + (extraHeader.length ? extraHeader.join(", ") : "none"));
+    lines.push("- **Signature:** present, " + (parsed.signature ? parsed.signature.length : 0) +
+      " bytes (not reproduced here)");
+    lines.push("");
+
+    lines.push("## Claims");
+    var claimKeys = Object.keys(p);
+    if (!claimKeys.length) {
+      lines.push("- Payload carries no claims.");
+    } else {
+      claimKeys.forEach(function (k) {
+        var v = p[k];
+        var shown;
+        if (k === "exp" || k === "iat" || k === "nbf") shown = fmtClaimTime(v);
+        else if (SENSITIVE_CLAIMS.indexOf(k) !== -1) shown = "(present, value withheld)";
+        else if (typeof v === "object" && v !== null) shown = "(" + (Array.isArray(v) ? "array" : "object") + ")";
+        else shown = String(v);
+        lines.push("- **`" + k + "`:** " + shown);
+      });
+    }
+
+    if (typeof p.exp === "number") {
+      lines.push("- **Expiry status:** " + (p.exp < now
+        ? "expired " + Math.floor((now - p.exp) / 60) + " minute(s) ago"
+        : "valid for another " + Math.floor((p.exp - now) / 60) + " minute(s)"));
+      if (typeof p.iat === "number") {
+        lines.push("- **Issued lifetime:** " + Math.round((p.exp - p.iat) / 60) + " minute(s)");
+      }
+    }
+    lines.push("");
+
+    lines.push("## Observations");
+    var obs = observations(parsed);
+    if (!obs.length) lines.push("- No contextual observations.");
+    else obs.forEach(function (o) {
+      lines.push("- **" + (o.level === "high" ? "Notable" : "Context") + "** (`" + o.code + "`): " + o.message);
+    });
+    lines.push("");
+    lines.push("Observations are contextual, not a score or a verdict — they describe the decoded token only.");
+    lines.push("");
+
+    lines.push("## Verification");
+    if (!opts.verification) {
+      lines.push("- Not run. Decoding is not verification: nothing here says the signature is valid.");
+    } else {
+      lines.push("- **Result:** " + (opts.verification.valid ? "signature and claims verified" : "not verified"));
+      (opts.verification.lines || []).forEach(function (l) { lines.push("  - " + l); });
+      lines.push("- The key used for verification is not recorded in this report.");
+    }
+    lines.push("");
+
+    lines.push("## References");
+    lines.push("- RFC 7519 — JSON Web Token (JWT)");
+    lines.push("- RFC 7515 — JSON Web Signature (JWS)");
+    lines.push("- RFC 8725 — JSON Web Token Best Current Practices");
+    lines.push("- OWASP WSTG-SESS-10 — Testing JSON Web Tokens");
+    lines.push("");
+    lines.push("---");
+    lines.push("Generated with CyberBuddy — authorized testing only. Analysis runs entirely in the browser; the token, any key and any secret never leave it, and none are written to this report.");
+    return lines.join("\n");
+  }
+
   return {
     b64urlDecode: b64urlDecode,
     b64urlEncode: b64urlEncode,
+    buildMarkdown: buildMarkdown,
     parseToken: parseToken,
     tryParseToken: tryParseToken,
     observations: observations,

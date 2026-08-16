@@ -39,11 +39,11 @@
   }
 
   function setVerdict(risk, text) {
-    $("risk").textContent = risk;
-    $("risk").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-    bump($("risk"));
+    $("verdict").textContent = risk;
+    $("verdict").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
+    bump($("verdict"));
     $("summary").textContent = text;
-    $("verdict").className = "verdict-banner " +
+    $("verdictBanner").className = "verdict-banner " +
       (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
     const p = protectionLabel(risk);
     $("protection").textContent = p.text;

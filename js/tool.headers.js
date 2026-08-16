@@ -31,10 +31,10 @@
     $("grade").className = "grade " + (unreachable ? "unknown" : (gradeFor(score) || grade.toLowerCase()));
     bump($("grade"));
 
-    $("risk").textContent = risk;
-    $("risk").className = "risk " + (unreachable ? "unreachable" : (data.risk || "unknown"));
-    bump($("risk"));
-    $("verdict").className = "verdict-banner " + (unreachable ? "unreachable" : (data.risk || "unknown"));
+    $("verdict").textContent = risk;
+    $("verdict").className = "risk " + (unreachable ? "unreachable" : (data.risk || "unknown"));
+    bump($("verdict"));
+    $("verdictBanner").className = "verdict-banner " + (unreachable ? "unreachable" : (data.risk || "unknown"));
 
     $("mTarget").textContent = data.url || "—";
     $("mFinal").textContent = data.final_url || "—";

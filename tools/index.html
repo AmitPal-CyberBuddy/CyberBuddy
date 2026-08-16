@@ -34,13 +34,68 @@
   <link rel="manifest" href="../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
   <noscript><link rel="stylesheet" href="../css/noscript.css" /></noscript>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "Tools catalog — CyberBuddy",
+      "description": "Every CyberBuddy tool in one directory — target assessments and local utilities, with input type, target/local mode, evidence output, and OWASP/CWE mapping.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/",
+      "author": {
+        "@type": "Person",
+        "name": "Amit Pal"
+      },
+      "mainEntity": {
+        "@type": "ItemList",
+        "numberOfItems": 6,
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/headers/",
+            "name": "Security Headers Analyzer"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/",
+            "name": "CSP Policy Auditor"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/cors/",
+            "name": "CORS Validator"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/",
+            "name": "Clickjacking Validator"
+          },
+          {
+            "@type": "ListItem",
+            "position": 5,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/",
+            "name": "JWT Security Workbench"
+          },
+          {
+            "@type": "ListItem",
+            "position": 6,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/",
+            "name": "CSRF PoC Generator"
+          }
+        ]
+      }
+    }
+  </script>
   <script src="../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
-  <script src="../js/app.js?v=20260814h" defer></script>
-  <script src="../js/boot.js?v=20260814h" defer></script>
+  <link rel="stylesheet" href="../css/app.css?v=20260816a" />
+  <script src="../js/app.js?v=20260816a" defer></script>
+  <script src="../js/boot.js?v=20260816a" defer></script>
 </head>
 <body data-page="/tools/" data-init="renderToolCatalog">
 <main id="main" class="container page-hero">
@@ -61,7 +116,7 @@
          kept in the markup so the catalog remains readable without JS. -->
 
     <section class="catalog-group" id="assess-targets" aria-labelledby="assess-heading">
-      <div class="category-head">
+      <div class="category-head reveal">
         <h2 id="assess-heading">Assess a target</h2>
         <span class="cat-badge cat-suite">part of Run suite</span>
         <p>URL-based checks that read a target you point them at. These four tools
@@ -69,7 +124,7 @@
       </div>
       <div class="tool-catalog-grid">
 
-        <article class="card tool-catalog-card">
+        <article class="card tool-catalog-card reveal" style="--d: 0.05s">
           <div class="tool-catalog-head"><h3>Clickjacking Validator</h3><span class="cat-badge cat-assess">Assess targets</span></div>
           <p class="tool-catalog-purpose">Live frame test — if the real site UI appears in the frame, the page can be clickjacked. Screenshot the result as proof.</p>
           <dl class="catalog-meta">
@@ -81,7 +136,7 @@
           <a class="btn btn-primary btn-sm" href="clickjacking/">Launch Clickjacking Validator</a>
         </article>
 
-        <article class="card tool-catalog-card">
+        <article class="card tool-catalog-card reveal" style="--d: 0.11s">
           <div class="tool-catalog-head"><h3>Security Headers</h3><span class="cat-badge cat-assess">Assess targets</span></div>
           <p class="tool-catalog-purpose">Grade CSP, X-Frame-Options, HSTS and the isolation headers into an A–F score, with the raw value behind every finding.</p>
           <dl class="catalog-meta">
@@ -93,7 +148,7 @@
           <a class="btn btn-primary btn-sm" href="headers/">Launch Security Headers</a>
         </article>
 
-        <article class="card tool-catalog-card">
+        <article class="card tool-catalog-card reveal" style="--d: 0.17s">
           <div class="tool-catalog-head"><h3>CORS Validator</h3><span class="cat-badge cat-assess">Assess targets</span></div>
           <p class="tool-catalog-purpose">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
           <dl class="catalog-meta">
@@ -105,7 +160,7 @@
           <a class="btn btn-primary btn-sm" href="cors/">Launch CORS Validator</a>
         </article>
 
-        <article class="card tool-catalog-card">
+        <article class="card tool-catalog-card reveal" style="--d: 0.23s">
           <div class="tool-catalog-head"><h3>CSP Policy Auditor</h3><span class="cat-badge cat-assess">Assess targets</span></div>
           <p class="tool-catalog-purpose">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
           <dl class="catalog-meta">
@@ -121,7 +176,7 @@
     </section>
 
     <section class="catalog-group" id="local-utilities" aria-labelledby="local-heading">
-      <div class="category-head">
+      <div class="category-head reveal">
         <h2 id="local-heading">Local security utilities</h2>
         <span class="cat-badge cat-local">not in Run suite</span>
         <p>Generators and analyzers that run entirely in your browser. They do not
@@ -130,7 +185,7 @@
       </div>
       <div class="tool-catalog-grid">
 
-        <article class="card tool-catalog-card">
+        <article class="card tool-catalog-card reveal" style="--d: 0.05s">
           <div class="tool-catalog-head"><h3>CSRF PoC Generator</h3><span class="cat-badge cat-local">Local utilities</span></div>
           <p class="tool-catalog-purpose">Paste a raw Burp request and get a standalone HTML proof-of-concept for authorized CSRF testing — generated fully in your browser.</p>
           <dl class="catalog-meta">
@@ -142,10 +197,8 @@
           <a class="btn btn-primary btn-sm" href="csrf/">Launch CSRF PoC Generator</a>
         </article>
 
-        <!-- JWT-01/02/03: decode/inspect/verify, edit/generate, test variants,
-             and offline HMAC secret testing are all live. The JS catalog
-             renderer (renderToolCatalog) reads TOOLS_MENU. -->
-        <article class="card tool-catalog-card">
+        <!-- The JS catalog renderer (renderToolCatalog) reads TOOLS_MENU. -->
+        <article class="card tool-catalog-card reveal" style="--d: 0.11s">
           <div class="tool-catalog-head"><h3>JWT Security Workbench</h3><span class="cat-badge cat-local">Local utilities</span></div>
           <p class="tool-catalog-purpose">Decode, inspect, verify, edit, and re-sign JWTs locally in your browser with Web Crypto — HMAC, RSA-PKCS#1, RSA-PSS, and ECDSA. Test variant templates and run bounded HMAC secret dictionary searches.</p>
           <dl class="catalog-meta">

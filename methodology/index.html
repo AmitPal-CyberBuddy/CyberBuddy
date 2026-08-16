@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
+  <link rel="stylesheet" href="../css/app.css?v=20260816a" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -49,8 +49,8 @@
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../js/app.js?v=20260814h" defer></script>
-  <script src="../js/boot.js?v=20260814h" defer></script>
+  <script src="../js/app.js?v=20260816a" defer></script>
+  <script src="../js/boot.js?v=20260816a" defer></script>
 </head>
 <body data-page="/methodology/">
 <main id="main" class="container page-hero prose">
@@ -64,7 +64,7 @@
   </p>
 
   <div class="section-head reveal">
-    <h2>What each tool proves</h2>
+    <h2 id="tools">What each tool proves</h2>
   </div>
   <div class="method-grid">
     <article class="card reveal" style="--d: .06s;">
@@ -139,7 +139,7 @@
   </div>
 
   <div class="section-head reveal">
-    <h2>Header scoring (0–100)</h2>
+    <h2 id="scoring">Header scoring (0–100)</h2>
   </div>
   <article class="card reveal">
     <table class="method-table" aria-label="Header weights">
@@ -164,7 +164,7 @@
   </article>
 
   <div class="section-head reveal">
-    <h2>CSP risk</h2>
+    <h2 id="csp-risk">CSP risk</h2>
   </div>
   <article class="card reveal">
     <table class="method-table" aria-label="CSP risk">
@@ -181,7 +181,7 @@
   </article>
 
   <div class="section-head reveal">
-    <h2>Clickjacking risk</h2>
+    <h2 id="clickjacking-risk">Clickjacking risk</h2>
   </div>
   <article class="card reveal">
     <table class="method-table" aria-label="Clickjacking risk">
@@ -189,7 +189,7 @@
         <tr><th scope="col">Condition</th><th scope="col">Risk</th></tr>
       </thead>
       <tbody>
-        <tr><td>CSP <code>frame-ancestors</code> is <code>*</code> (or otherwise too open)</td><td>High — modern browsers honour CSP over XFO</td></tr>
+        <tr><td>CSP <code>frame-ancestors</code> is <code>*</code> (or otherwise too open)</td><td>High — modern browsers honor CSP over XFO</td></tr>
         <tr><td>Restrictive <code>frame-ancestors</code> is set</td><td>Low</td></tr>
         <tr><td>Only X-Frame-Options protects the page</td><td>Medium — add frame-ancestors</td></tr>
         <tr><td>Neither control is effective</td><td>High — likely clickjackable</td></tr>
@@ -198,7 +198,7 @@
   </article>
 
   <div class="section-head reveal">
-    <h2>JWT verification &amp; testing</h2>
+    <h2 id="jwt">JWT verification &amp; testing</h2>
   </div>
   <article class="card reveal">
     <table class="method-table" aria-label="JWT verification checks">
@@ -275,7 +275,7 @@
   </article>
 
   <div class="section-head reveal">
-    <h2>Authorized testing</h2>
+    <h2 id="authorized">Authorized testing</h2>
   </div>
   <article class="card reveal">
     <p>

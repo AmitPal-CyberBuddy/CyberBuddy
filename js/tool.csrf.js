@@ -545,17 +545,25 @@
     var activeCustomHeaders = parsed.customHeaders.filter(function (h) { return !excluded[h.uid]; });
     var customHeaderNames = activeCustomHeaders.map(function (h) { return h.name; });
     if (customHeaderNames.length) {
-      limitations.push("Custom header" + (customHeaderNames.length > 1 ? "s " : " ") +
+      var manyHeaders = customHeaderNames.length > 1;
+      limitations.push("Custom header" + (manyHeaders ? "s " : " ") +
         customHeaderNames.join(", ") +
-        " cannot be sent by a plain HTML form; they are carried only in the fetch variant, and their values are supplied by the PoC (a server that only checks for their presence is not protected).");
+        (manyHeaders ? " cannot be sent by a plain HTML form; they are" : " cannot be sent by a plain HTML form; it is") +
+        " carried only in the fetch variant, and " +
+        (manyHeaders ? "their values are" : "its value is") +
+        " supplied by the PoC (a server that only checks for " +
+        (manyHeaders ? "their" : "its") +
+        " presence is not protected).");
     }
 
     var excludedTokens = parsed.tokens.filter(function (t) { return excluded[t.uid]; });
     var includedTokens = parsed.tokens.filter(function (t) { return !excluded[t.uid]; });
     if (includedTokens.length) {
-      limitations.push("Likely CSRF-token field" + (includedTokens.length > 1 ? "s " : " ") +
+      var manyIncluded = includedTokens.length > 1;
+      limitations.push("Likely CSRF-token field" + (manyIncluded ? "s " : " ") +
         includedTokens.map(function (t) { return t.name; }).join(", ") +
-        " are included with the pasted (static) value. A real per-session token will not match \u2014 treat a failure as expected token validation, not a broken PoC.");
+        (manyIncluded ? " are included with their pasted (static) values." : " is included with its pasted (static) value.") +
+        " A real per-session token will not match \u2014 treat a failure as expected token validation, not a broken PoC.");
     }
     if (excludedTokens.length) {
       limitations.push("You excluded token field" + (excludedTokens.length > 1 ? "s " : " ") +
@@ -976,22 +984,37 @@
 
     function render(parsed, gen) {
       $("results").classList.remove("hidden");
-      var risk = gen.status === "READY" ? "low" : gen.status === "LIMITED" ? "medium" : "high";
+      /* Reproducibility, NOT risk. This tool reports whether browser mechanics
+         can carry the request; it never judges the target. Using the risk
+         palette here would read backwards (a working PoC is the strongest
+         claim, yet "low risk" is green), so it has its own neutral ramp. */
+      var repro = gen.status === "READY" ? "repro-ready"
+        : gen.status === "LIMITED" ? "repro-limited" : "repro-none";
       var verdict = $("verdict");
       verdict.textContent = gen.status;
-      verdict.className = "risk " + risk;
+      verdict.className = "risk " + repro;
+      /* Match the scanners' verdict-transition animation (re-triggered by
+         forcing a reflow, otherwise re-adding the class is a no-op). */
+      verdict.classList.remove("bump");
+      void verdict.offsetWidth;
+      verdict.classList.add("bump");
       var banner = $("verdictBanner");
-      if (banner) banner.className = "verdict-banner " + risk;
+      if (banner) banner.className = "verdict-banner " + repro;
 
       var prot = $("protection");
       if (prot) {
         prot.textContent = gen.status === "READY" ? "READY \u2014 reproduced as a simple browser request (no preflight)."
           : gen.status === "LIMITED" ? "LIMITED \u2014 reproduced but depends on a CORS preflight or server leniency."
           : "NOT DIRECTLY REPRESENTABLE \u2014 no browser mechanism can reproduce this request.";
-        prot.className = "protection-line " + risk;
+        prot.className = "protection-line " + repro;
       }
+      /* READY carries no `reason` (there is no caveat to report), so state the
+         positive outcome rather than leaving the line blank on the happy path. */
       var summary = $("summary");
-      if (summary) summary.textContent = gen.reason || "";
+      if (summary) {
+        summary.textContent = gen.reason
+          || "A plain HTML form reproduces this request cross-origin, so the browser will send it with the user's cookies. Whether the server accepts it is what your authorized test confirms.";
+      }
 
       $("mMethod").textContent = parsed.method;
       $("mUrl").textContent = parsed.url;

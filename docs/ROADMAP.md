@@ -412,61 +412,81 @@ PR.
 
 ## 5. Current handoff
 
-- **Last verified `origin/main`:** `e2a9a86` — PR #24 (JWT-00 preview +
-  JWT-01 decode/inspect/verify) merged as `b8a9fdc` (verified 2026-08-15).
-  This session started from `origin/main` with a clean tree.
-- **Work in review:** **JWT-02 (edit & generate) + JWT-03 (test variants
-  and bounded secret testing)** — branch `arena/01a004aa-cyberbuddy`,
-  **PR #25** (open, not merged). JWT-03 was folded into the JWT-02 PR at
-  the maintainer's request to merge once.
-- **Delivered (JWT-02, REVIEW §27):** functional Edit & Generate —
-  header/payload editors, standard-claim helpers, semantic diff,
-  HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
-  labels, token-only copy/download with confirmed private-key export.
-- **Delivered (JWT-03, REVIEW §28):**
-  - **Test Variants (functional):** `buildVariant` in the engine —
-    `alg:none`, claim tamper (original signature kept) and claim re-sign,
-    algorithm confusion (HS256 with the pasted public key as the HMAC
-    secret), embedded JWK, `jku`/`x5u`, path/SQL-style `kid` templates.
-    Every output is labelled **TEST TEMPLATE**, never a finding; re-signed
-    variants go through `signToken` so all JWT-02 guards apply; `alg:none`
-    stays rejected by parse/sign and exists only as a template.
-  - **Secret Test (functional):** `js/jwt.worker.js` runs the bounded
-    HS256/384/512 search off the main thread — `searchHmacSecret` in the
-    engine, progress every 250 candidates, cancel, explicit caps
-    (100,000 candidates, 120 s) checked between candidates, the uploaded
-    wordlist read inside the worker with `FileReaderSync`, a 32-key
-    built-in starter list. A match is a discovered secret for authorized
-    testing, never a verdict.
-  - **PWA shortcut added** (`manifest.webmanifest`) now that the workbench
-    is complete (deferred through JWT-01/02); manifest description and
-    README/`llms.txt`/guide updated (guide at 1185 of 1200 visible words).
-- **Last completed checks:** **274/274** stdlib tests OK
-  (`python3 -m unittest test_engines.py`) — 16 new/repurposed
-  `JwtWorkbenchTests` covering the Node-driven variant builder (including
-  the confusion signature verified against an independent HMAC while the
-  verify guard holds), `searchHmacSecret` (found/not-found/progress/stop),
-  and the worker message contract under a Node Worker-shim (found +
-  cancel with tested < total) · `node --check` clean on all 21 JS files
-  (incl. `js/jwt.worker.js`) · `py_compile` clean · JSON (manifest) + XML
-  valid · local Pages-assembly dry run green · live `server.py` JWT route
-  crawl (covered by the stdlib route tests) · Node DOM-shim smoke tests of
-  the full controller (JWT-01/02/03 flows, including the real worker file
-  driven through a fake `Worker`, the cache-bustered worker URL, the
-  cancel path and the HS-only guard on an RS256 base).
+- **Last verified `origin/main`:** `e10eb2e` — PR #28 merged, which brought
+  the JWT-02/JWT-03 work (previously PR #25) to `main`. The JWT-00 → JWT-03
+  series is complete and shipped. This session started from a clean tree.
+- **Work in review:** **POLISH-01 (consistency sweep)** — `IN REVIEW`,
+  branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not merged).
+  Not a numbered roadmap feature: a
+  verification pass over the shipped suite plus the drift it exposed. No new
+  tool, engine or scoring behaviour.
+- **Verified correct, unchanged:** JWT integration on `methodology/`,
+  `index.html` (scope, standards card, `06 live`) and `tools/index.html` ·
+  CORS PASS verdict in the live UI · `postureHtml` per-name badges + CSS ·
+  findings layout · footer social labels · posture strip on all four scan
+  tools · clickjacking copy · `.github/workflows/pages.yml` · `sitemap.xml`
+  (17 locs) · manifest JWT shortcut · first-person voice across shipped
+  pages (zero third-person narrator hits).
+- **Fixed this session:**
+  - **Methodology is a page, not an anchor.** Header nav now links
+    `/methodology/` labelled "Methodology". The same stale `/#methodology`
+    target was also corrected in `llms.txt`, `manifest.webmanifest`,
+    `404.html`, `js/404.js` and `.well-known/security.txt` (the last was a
+    published `Policy:` URL — worth grepping for on any URL change).
+  - **Anchor IDs on `methodology/index.html`:** `#tools`, `#scoring`,
+    `#csp-risk`, `#clickjacking-risk`, `#jwt`, `#authorized` (joining the
+    existing `#hosted-scans`/`#privacy`), so footer and cross-page deep
+    links resolve. `tools/audit_site.py` validates fragments, so a deep
+    link to a missing id now fails the build.
+  - **Footer "Learn" column** no longer ships two rows pointing at the same
+    content: Guides / Methodology / Scoring & weights (`#scoring`) / Privacy.
+  - **CORS PASS reaches the exports.** New `reportRiskLabel(data)` in
+    `js/app.js` is the single place that turns a raw risk into a display
+    label; CORS + `low` reads `PASS`. Applied to the Markdown, standalone
+    HTML, CSV and evidence-card hero paths. The JSON envelope deliberately
+    still carries the raw `risk` for automation.
+  - **Internal ticket IDs removed from visitor-facing surfaces.** The
+    "Implementation phases" panel on `/tools/jwt/` is now "What the
+    Workbench does" (capability cards); panel chips read
+    "Local · Web Crypto / templates / Web Worker" instead of
+    "JWT-02 · Live". Stale JWT-0x comments in `js/app.js`, `css/app.css`
+    and the roadmap phrasing in `guides/jwt/index.html` were corrected too.
+  - **Dead CSS deleted:** `.hub-preview-tag` and
+    `.jwt-preview-panel .jwt-preview-banner` had no markup referencing them.
+  - **`documentation/index.html`** gained a JWT capability table under
+    `#engines` ("Tools with no engine behind them") covering decode/inspect,
+    verify, edit/sign, test variants and bounded Worker secret testing. It
+    sits under an existing `h2` on purpose, so the DEV-NOTES four-part
+    checklist for new top-level sections does not apply.
+  - **Cache-buster** bumped `?v=20260814h` → `?v=20260816a`, 59 references
+    across 17 HTML files, all consistent.
+- **Test-suite change:** `test_edit_panel_is_functional` and
+  `test_variants_panel_is_functional` asserted the literal badge strings
+  `JWT-02 &middot; Live` / `JWT-03 &middot; Live`. They now assert the
+  `jwt-phase jwt-phase-live` marker class instead — the intent is "this
+  panel is live, not a preview stub", which must not break when
+  visitor-facing copy is reworded.
+- **Last completed checks:** **291/291** stdlib tests OK
+  (`python3 -m unittest test_engines.py`) · `node --check` clean ·
+  manifest JSON valid · `tools/audit_site.py` green against a full local
+  Pages assembly (an audit run against a missing `_site` passes vacuously —
+  always assemble first) · live `server.py --host 0.0.0.0 --port 8080
+  --allow-private` smoke test: `/`, `/methodology/`, `/documentation/`,
+  `/tools/jwt/`, `/tools/cors/`, `/.well-known/security.txt`, `/llms.txt`,
+  `/manifest.webmanifest` all 200, `/api/health` → `{"ok": true}`, empty
+  stderr.
 - **Real-browser suites:** not executed (no Chromium in the sandbox). The
-  `/tools/jwt/` page now has all four panels functional; run
-  `layout`/`dropdown`/`responsive` by hand before merge.
+  header nav label and the rebuilt `/tools/jwt/` capability panel are the
+  two visual changes; run `layout`/`dropdown`/`responsive` by hand before
+  merge.
 - **Next approved roadmap ID:** none set — the JWT series is complete.
   ABOUT-01 and DX-01 remain `TODO` for the maintainer to approve; the §6
   protocol's "exactly one NEXT" is intentionally not applied until then.
   FUTURE-01 stays `DEFERRED`.
-- **Files/traps the next session must read:** `REVIEW.md` §27/§28 ·
-  `docs/DEV-NOTES.md` ("JWT-02 traps" + "JWT-03 traps") · `js/jwt.engine.js`
-  + `js/tool.jwt.js` + `js/jwt.worker.js` (the engine contract the new
-  tests pin) · `docs/pages-workflow-patch.md` (no new entries needed —
-  `tools/jwt` is already on the workflow copy line and `js/*.js` is
-  copied whole, so the worker needs no line).
+- **Files/traps the next session must read:** `docs/DEV-NOTES.md`
+  ("Cross-surface URL changes" + the JWT traps) · `reportRiskLabel` in
+  `js/app.js` if any tool ever needs a display label that differs from its
+  raw risk.
 - **Known blockers:** none in code. No workflow edit was needed this
   session.
 

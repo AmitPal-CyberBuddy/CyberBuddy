@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- JWT-01/02/03: decode, inspect, verify, edit, generate, sign,
-       test-variant templates and bounded secret testing are all functional
-       and fully local. Nothing leaves the browser. -->
+  <!-- Decode, inspect, verify, edit, generate, sign, test-variant templates
+       and bounded secret testing are all functional and fully local.
+       Nothing leaves the browser. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'" />
   <title>JWT Security Workbench — CyberBuddy</title>
-  <meta name="description" content="Decode, inspect, verify, edit and re-sign JSON Web Tokens locally in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the browser." />
+  <meta name="description" content="Decode, verify, edit and re-sign JSON Web Tokens entirely in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the page." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -18,7 +18,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/" />
   <meta property="og:title" content="JWT Security Workbench — CyberBuddy" />
-  <meta property="og:description" content="Decode, inspect and verify JWTs locally in your browser with the key you supply." />
+  <meta property="og:description" content="Decode, verify, edit and re-sign JSON Web Tokens entirely in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the page." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/" />
@@ -28,7 +28,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="JWT Security Workbench — CyberBuddy" />
-  <meta name="twitter:description" content="Decode, inspect and verify JWTs locally in your browser with the key you supply." />
+  <meta name="twitter:description" content="Decode, verify, edit and re-sign JSON Web Tokens entirely in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the page." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../../icon-192.png" />
@@ -37,15 +37,42 @@
   <link rel="manifest" href="../../manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M10 2l-8 4v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cpath d='M7.5 12l2.5 2.5L16.5 8' fill='none' stroke='%233ee0c2' stroke-width='1.5'/%3E%3C/svg%3E" />
   <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "JWT Security Workbench — CyberBuddy",
+      "description": "Decode, verify, edit and re-sign JSON Web Tokens entirely in your browser. HMAC, RSA and ECDSA with keys you supply or generate — no token ever leaves the page.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Any (runs in a modern web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Amit Pal"
+      },
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "CyberBuddy",
+        "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/"
+      }
+    }
+  </script>
   <script src="../../js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260814h" />
-  <script src="../../js/app.js?v=20260814h" defer></script>
-  <script src="../../js/jwt.engine.js?v=20260814h" defer></script>
-  <script src="../../js/tool.jwt.js?v=20260814h" defer></script>
-  <script src="../../js/boot.js?v=20260814h" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260816a" />
+  <script src="../../js/app.js?v=20260816a" defer></script>
+  <script src="../../js/jwt.engine.js?v=20260816a" defer></script>
+  <script src="../../js/tool.jwt.js?v=20260816a" defer></script>
+  <script src="../../js/boot.js?v=20260816a" defer></script>
 </head>
 <body data-page="/tools/jwt/" data-init="initJwt">
 <main id="main" class="container page-hero">
@@ -80,7 +107,7 @@
     </p>
   </div>
 
-  <!-- Tab navigation. All four panels are functional (JWT-01/02/03). -->
+  <!-- Tab navigation. All four panels are functional. -->
   <div class="jwt-tabs reveal" style="--d: .16s;">
     <div class="jwt-tablist" role="tablist" aria-label="JWT Workbench panels">
       <button type="button" role="tab" id="jwt-tab-analyze" class="jwt-tab is-active"
@@ -93,7 +120,7 @@
         aria-selected="false" aria-controls="jwt-panel-secret" tabindex="-1">Secret Test</button>
     </div>
 
-    <!-- Analyze & Verify (JWT-01, functional) -->
+    <!-- Analyze & Verify -->
     <section role="tabpanel" id="jwt-panel-analyze" aria-labelledby="jwt-tab-analyze"
       class="jwt-panel is-active" tabindex="0">
 
@@ -187,15 +214,31 @@
 
           <div id="jwtVerifyResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
         </article>
+
+        <article class="card inset-card">
+          <h3 class="card-title">Export analysis</h3>
+          <p class="card note">
+            A Markdown write-up of the decoded token — header parameters,
+            claims by name, observations and the verification result. The
+            token itself, the signature, any key or secret you supplied, and
+            the values of identifying claims are deliberately left out, so
+            the report is safe to paste into a ticket.
+          </p>
+          <div class="jwt-export-actions">
+            <button type="button" id="jwtCopyMd" class="btn btn-ghost" disabled>Copy Markdown analysis</button>
+            <button type="button" id="jwtDownloadMd" class="btn btn-ghost" disabled>Download Markdown</button>
+            <span id="jwtExportStatus" class="form-hint" role="status" aria-live="polite"></span>
+          </div>
+        </article>
       </div>
     </section>
 
-    <!-- Edit & Generate (JWT-02, functional) -->
+    <!-- Edit & Generate -->
     <section role="tabpanel" id="jwt-panel-edit" aria-labelledby="jwt-tab-edit"
       class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Edit &amp; Generate</h2>
-        <span class="jwt-phase jwt-phase-live">JWT-02 &middot; Live</span>
+        <span class="jwt-phase jwt-phase-live">Local &middot; Web Crypto</span>
       </div>
       <div class="jwt-edit-note">
         <strong>Local signing, test-token output.</strong> Edit the header and
@@ -370,12 +413,12 @@
       </div>
     </section>
 
-    <!-- Test Variants (JWT-03, functional) -->
+    <!-- Test Variants -->
     <section role="tabpanel" id="jwt-panel-variants" aria-labelledby="jwt-tab-variants"
       class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Test variants</h2>
-        <span class="jwt-phase jwt-phase-live">JWT-03 &middot; Live</span>
+        <span class="jwt-phase jwt-phase-live">Local &middot; templates</span>
       </div>
       <div class="jwt-edit-note">
         <strong>Authorized-test templates.</strong> Every variant is built
@@ -495,12 +538,12 @@
       </div>
     </section>
 
-    <!-- Secret Test (JWT-03, functional) -->
+    <!-- Secret Test -->
     <section role="tabpanel" id="jwt-panel-secret" aria-labelledby="jwt-tab-secret"
       class="jwt-panel" hidden tabindex="0">
       <div class="jwt-panel-head">
         <h2>Secret test</h2>
-        <span class="jwt-phase jwt-phase-live">JWT-03 &middot; Live</span>
+        <span class="jwt-phase jwt-phase-live">Local &middot; Web Worker</span>
       </div>
       <div class="jwt-edit-note">
         <strong>Bounded HMAC secret testing.</strong> HS256/384/512 only, run
@@ -586,36 +629,38 @@
     </div>
   </section>
 
-  <!-- Phase status panel -->
+  <!-- Capability panel: what the Workbench does, in the visitor's terms. -->
   <section class="jwt-phases reveal" style="--d: .2s;">
-    <div class="section-head"><h2>Implementation phases</h2></div>
+    <div class="section-head"><h2>What the Workbench does</h2></div>
     <div class="jwt-phase-grid">
       <article class="card inset-card jwt-phase-card">
-        <span class="jwt-phase-tag">JWT-00 &middot; Shipped</span>
-        <h3>Workbench preview</h3>
-        <p>Project integration and the three-phase plan.</p>
+        <span class="jwt-phase-tag">Decode &amp; inspect</span>
+        <h3>Read a token honestly</h3>
+        <p>Strict compact-JWS parsing, header and payload display, a claim
+          timeline for <code>iat</code>/<code>nbf</code>/<code>exp</code>, and
+          observations in context — no persistence, no network.</p>
       </article>
       <article class="card inset-card jwt-phase-card">
-        <span class="jwt-phase-tag">JWT-01 &middot; Live</span>
-        <h3>Decode, inspect &amp; verify</h3>
-        <p>Strict compact-JWS parsing, header/payload display, claim timeline,
-          observations, and HMAC/RSA/PSS/ECDSA verification via Web Crypto. No
-          persistence, no network.</p>
+        <span class="jwt-phase-tag">Verify</span>
+        <h3>Check the signature</h3>
+        <p>HMAC, RSA-PKCS#1, RSA-PSS and ECDSA verification through Web Crypto
+          with the key you supply. The token's own <code>alg</code> never picks
+          the verifier, so algorithm confusion cannot slip through.</p>
       </article>
       <article class="card inset-card jwt-phase-card">
-        <span class="jwt-phase-tag">JWT-02 &middot; Live</span>
-        <h3>Edit &amp; generate</h3>
-        <p>Header/payload editors, standard-claim helpers, semantic diff,
-          HMAC/private-key signing, local RSA test-key generation, TEST TOKEN
-          labels, safe copy/download.</p>
+        <span class="jwt-phase-tag">Edit &amp; sign</span>
+        <h3>Rebuild a test token</h3>
+        <p>Header and payload editors, standard-claim helpers, a semantic diff,
+          local RSA test-key generation, and signing that labels every output a
+          <strong>TEST TOKEN</strong>.</p>
       </article>
-      <article class="card inset-card jwt-phase-card jwt-phase-current">
-        <span class="jwt-phase-tag">JWT-03 &middot; Live</span>
-        <h3>Test variants &amp; bounded secret testing</h3>
-        <p><code>alg:none</code>, claim manipulation, algorithm confusion,
-          embedded JWK, JKU/X5U and <code>kid</code> templates; bounded
-          HS256/384/512 secret testing in a Web Worker with progress and
-          cancel.</p>
+      <article class="card inset-card jwt-phase-card">
+        <span class="jwt-phase-tag">Test</span>
+        <h3>Templates &amp; secret testing</h3>
+        <p><code>alg:none</code>, claim tampering, algorithm confusion, embedded
+          JWK, <code>jku</code>/<code>x5u</code> and <code>kid</code> templates,
+          plus bounded HS256/384/512 secret testing in a Web Worker with
+          progress and cancel.</p>
       </article>
     </div>
   </section>

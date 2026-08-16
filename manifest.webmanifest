@@ -106,7 +106,7 @@
       "name": "Methodology",
       "short_name": "Method",
       "description": "How CyberBuddy scores findings",
-      "url": "./#methodology",
+      "url": "./methodology/",
       "icons": [
         {
           "src": "icon-192.png",

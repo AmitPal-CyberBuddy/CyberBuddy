@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../css/app.css?v=20260814h" />
+  <link rel="stylesheet" href="../css/app.css?v=20260816a" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -50,8 +50,8 @@
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../js/app.js?v=20260814h" defer></script>
-  <script src="../js/boot.js?v=20260814h" defer></script>
+  <script src="../js/app.js?v=20260816a" defer></script>
+  <script src="../js/boot.js?v=20260816a" defer></script>
 </head>
 <body data-page="/documentation/">
 <main id="main" class="container page-hero prose">
@@ -132,6 +132,54 @@ python3 server.py --host 0.0.0.0 --allow-private</code></pre>
     correct when they change.
   </p>
 
+  <h3 class="reveal">Tools with no engine behind them</h3>
+  <p class="reveal">
+    Two tools never touch any of the three layers above, because they never
+    scan a target. The <strong>CSRF PoC Generator</strong> builds an HTML proof
+    of concept from a request you describe. The
+    <strong>JWT Security Workbench</strong> works entirely on a token you paste.
+    Both run in the page itself, so there is no engine chip and no relay
+    prompt — and nothing to leak.
+  </p>
+  <article class="card reveal">
+    <p>
+      What the Workbench does with a pasted token, in one place:
+    </p>
+    <table class="method-table">
+      <thead>
+        <tr><th>Capability</th><th>How it runs</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Decode &amp; inspect</td>
+          <td>Strict compact-JWS parsing; header, payload and a claim timeline for <code>iat</code>, <code>nbf</code> and <code>exp</code>. Observations are reported in context, never as a score.</td>
+        </tr>
+        <tr>
+          <td>Verify a signature</td>
+          <td>HMAC, RSA-PKCS#1, RSA-PSS and ECDSA through <strong>Web Crypto</strong>, using a key you supply. The token's own <code>alg</code> never selects the verifier, so algorithm confusion cannot pass silently.</td>
+        </tr>
+        <tr>
+          <td>Edit, generate &amp; re-sign</td>
+          <td>Header and payload editors with standard-claim helpers, a semantic diff of your changes, local RSA test-key generation, and signing that stamps every result a <strong>TEST TOKEN</strong>.</td>
+        </tr>
+        <tr>
+          <td>Test variants</td>
+          <td>Templates for <code>alg:none</code>, claim tampering, algorithm confusion, embedded JWK, <code>jku</code>/<code>x5u</code> and <code>kid</code> injection — each labelled a <strong>TEST TEMPLATE</strong> until a target honors it.</td>
+        </tr>
+        <tr>
+          <td>Secret testing</td>
+          <td>Bounded HS256/384/512 dictionary search in an isolated <strong>Web Worker</strong>, with live progress and cancel, so the interface stays responsive. A match is a secret you have recovered for your own testing — not a verdict about the target.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The Workbench will not send a token to a target, a JWKS URL or any third
+      party. Confirming that a target actually accepts one of these tokens is a
+      separate, deliberate step you take yourself against a system you are
+      authorized to test.
+    </p>
+  </article>
+
   <div class="section-head reveal">
     <h2 id="cli">Command line</h2>
   </div>
@@ -164,10 +212,14 @@ python3 csp_checker.py https://example.com --json</code></pre>
   </div>
   <article class="card reveal">
     <p>
-      Every tool renders a self-contained <strong>report card</strong>: target,
-      final URL, HTTP status, UTC timestamp, verdict, per-finding evidence, and
-      a provenance strip naming the tool, engine and time — so even a cropped
-      screenshot still identifies itself.
+      Each of the four scanners renders a self-contained
+      <strong>report card</strong>: target, final URL, HTTP status, UTC
+      timestamp, verdict, per-finding evidence, and a provenance strip naming
+      the tool, engine and time — so even a cropped screenshot still identifies
+      itself. The two local utilities have no target to report on, so they
+      produce their own artifacts instead: the CSRF PoC Generator exports the
+      PoC and a Markdown assessment, and the JWT Security Workbench exports a
+      Markdown analysis of the pasted token.
     </p>
     <p>
       <strong>Evidence mode</strong> is on by default. Once results render it
@@ -179,7 +231,7 @@ python3 csp_checker.py https://example.com --json</code></pre>
         <tr><th>Export</th><th>What you get</th></tr>
       </thead>
       <tbody>
-        <tr><td>Print / Save as PDF</td><td>Full card in a paper layout, colours and PoC overlay preserved</td></tr>
+        <tr><td>Print / Save as PDF</td><td>Full card in a paper layout, colors and PoC overlay preserved</td></tr>
         <tr><td>Evidence card (PNG)</td><td>Tool-specific card drawn from the scan data — no live frame</td></tr>
         <tr><td>Copy or download Markdown</td><td>Paste-ready metadata, tool-specific context, findings, evidence and recommendations</td></tr>
         <tr><td>Copy or download JSON</td><td>Versioned <code>cyberbuddy-report/v1</code> envelope for automation and archival</td></tr>
@@ -188,7 +240,7 @@ python3 csp_checker.py https://example.com --json</code></pre>
       </tbody>
     </table>
     <p>
-      One honest limitation: a cross-origin iframe cannot be rasterised in
+      One honest limitation: a cross-origin iframe cannot be rasterized in
       JavaScript — canvas pixels would be tainted. So CyberBuddy never asks for
       screen-capture permission and uses no third-party JavaScript. When the
       live frame itself is the evidence, use Evidence mode plus your operating
