@@ -4673,5 +4673,83 @@ class PagesExclusionTests(unittest.TestCase):
         self.assertIn("cp -a guides _site/", patch)
 
 
+class LinkLabelTests(unittest.TestCase):
+    """Link labels name the destination — they never echo the path or URL.
+
+    A visible label of ``/tools/jwt/`` or ``https://…`` turns a link into a
+    raw location instead of a readable destination, and it leaks the site's
+    internal layout into prose. Every link must say what it points at
+    ("JWT Workbench"), not where it lives. Three deliberate exceptions are
+    pinned by the tests below so the rule cannot silently spread to them:
+    the README's file-tree table rows (the repo path is the row content),
+    llms.txt's bare-URL bullets (a machine index where the URL is the
+    payload), and the methodology page's security.txt disclosure link (the
+    filename is the point of the link, per RFC 9116).
+    """
+
+    #: label forms that echo the destination: root-relative paths, bare
+    #: fragments, and URL schemes. A leading-dot filename like
+    #: ``.well-known/security.txt`` is a name, not a path form.
+    PATH_OR_URL = re.compile(r"^(?:/|\.{1,2}/|#|//|[a-z][a-z0-9+.-]*://)")
+
+    #: the one HTML link whose label is deliberately the filename: the
+    #: disclosure link must say where reports go (RFC 9116).
+    DISCLOSURE_HREF = "../.well-known/security.txt"
+
+    SKIP_TOP = {"_site", "node_modules", ".git", "__pycache__"}
+
+    def _html_files(self):
+        for path in sorted(ROOT.rglob("*.html")):
+            rel = path.relative_to(ROOT)
+            if rel.parts and rel.parts[0] in self.SKIP_TOP:
+                continue
+            yield path
+
+    def test_html_links_name_the_destination(self):
+        """No published page labels a link with a path, fragment or URL."""
+        link_re = re.compile(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.S)
+        for page in self._html_files():
+            text = page.read_text(encoding="utf-8", errors="replace")
+            for href, inner in link_re.findall(text):
+                if href == self.DISCLOSURE_HREF:
+                    continue
+                label = " ".join(re.sub(r"<[^>]+>", " ", inner).split())
+                with self.subTest(page=page.relative_to(ROOT), label=label):
+                    self.assertIsNone(
+                        self.PATH_OR_URL.match(label),
+                        "link label %r echoes its destination" % label,
+                    )
+
+    def test_readme_links_name_the_destination(self):
+        """README links (outside the file-tree table rows) do the same."""
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        text = re.sub(r"```.*?```", "", text, flags=re.S)  # file-tree blocks
+        link_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+        for line in text.splitlines():
+            if line.lstrip().startswith("|"):
+                continue  # file-tree table rows are repo paths by design
+            for label, _url in link_re.findall(line):
+                label = label.replace("`", "").strip()
+                with self.subTest(label=label):
+                    self.assertIsNone(
+                        self.PATH_OR_URL.match(label),
+                        "README link label %r echoes its destination" % label,
+                    )
+
+    def test_llms_txt_url_bullets_are_intentional(self):
+        """llms.txt is exempt: a machine index labels entries with their
+        bare URL, so the label rule does not apply there. Pin the exception
+        so a cleanup never rewrites the URL bullets into something else."""
+        text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        for name in ("Hub", "Tools catalog", "Guides", "Documentation", "Methodology"):
+            line = next(l for l in text.splitlines() if l.startswith("- %s: " % name))
+            with self.subTest(bullet=name):
+                self.assertRegex(
+                    line,
+                    r"^- %s: https?://\S+$" % re.escape(name),
+                    "llms.txt %s bullet must keep its bare-URL label" % name,
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
