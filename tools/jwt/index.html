@@ -68,11 +68,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260816a" />
-  <script src="../../js/app.js?v=20260816a" defer></script>
-  <script src="../../js/jwt.engine.js?v=20260816a" defer></script>
-  <script src="../../js/tool.jwt.js?v=20260816a" defer></script>
-  <script src="../../js/boot.js?v=20260816a" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260816b" />
+  <script src="../../js/app.js?v=20260816b" defer></script>
+  <script src="../../js/jwt.engine.js?v=20260816b" defer></script>
+  <script src="../../js/tool.jwt.js?v=20260816b" defer></script>
+  <script src="../../js/boot.js?v=20260816b" defer></script>
 </head>
 <body data-page="/tools/jwt/" data-init="initJwt">
 <main id="main" class="container page-hero">
@@ -155,6 +155,43 @@
           <ul id="jwtObservations" class="scope-list"></ul>
           <p class="card note">Observations are contextual, not a score or a
             verdict — they describe the decoded token only.</p>
+        </article>
+
+        <article class="card inset-card jwt-vapt hidden" id="jwtVapt">
+          <div class="jwt-vapt-head">
+            <h3 class="card-title">VAPT Testing Suggestions &amp; Test Payloads</h3>
+            <span class="jwt-vapt-scope">manual proxy verification &middot; authorized testing only</span>
+          </div>
+          <p class="card note">
+            Prioritised test vectors derived from this token's algorithm,
+            header parameters, claims and lifetime — for manual verification
+            in Burp Suite or another intercepting proxy. Every payload is
+            built locally in this tab as a <strong>TEST PAYLOAD</strong>:
+            building the bytes proves nothing until the target honors them.
+          </p>
+          <div id="jwtVaptList" class="jwt-vapt-list"></div>
+          <p id="jwtVaptStatus" class="jwt-gen-status" role="status" aria-live="polite"></p>
+
+          <div id="jwtVaptOut" class="jwt-vapt-out hidden" role="status" aria-live="polite">
+            <div class="jwt-test-banner">
+              <strong>TEST PAYLOAD</strong> &mdash; generated locally for the
+              authorized assessment selected above. A payload is not a
+              finding: only the target's actual behavior decides.
+            </div>
+            <p id="jwtVaptOutNote" class="jwt-var-note"></p>
+            <label class="jwt-field"><span id="jwtVaptOutLabel">Test payload (compact JWS)</span>
+              <textarea id="jwtVaptToken" readonly class="jwt-edit-output"></textarea></label>
+            <div class="jwt-btn-row">
+              <button type="button" id="jwtVaptCopy" class="btn">Copy token</button>
+              <button type="button" id="jwtVaptCopyBurp" class="btn">Copy as Burp Authorization header</button>
+              <button type="button" id="jwtVaptRefine" class="btn btn-ghost">Refine in Test Variants</button>
+              <span id="jwtVaptCopyStatus" class="jwt-copy-status" role="status"></span>
+            </div>
+            <div class="jwt-vapt-howto">
+              <p class="jwt-vapt-howto-title">How to test in Burp Suite</p>
+              <ul id="jwtVaptHowTo" class="jwt-vapt-howto-list"></ul>
+            </div>
+          </div>
         </article>
 
         <article class="card inset-card">
@@ -618,6 +655,12 @@
           Building the bytes proves nothing until the target actually honors
           the token; a secret-testing match is a discovered secret for your
           own testing, never a verdict about the target.</li>
+        <li><strong>VAPT suggestions are prioritized test vectors, never
+          findings.</strong> They are derived from the decoded token's
+          structure, cover the classic JWS attack classes, and every
+          one-click payload is labelled TEST PAYLOAD for authorized
+          assessment. Only the target's response in Burp Suite decides
+          whether a vector matters.</li>
         <li><strong>Live target testing is not part of the hosted tool.</strong>
           CyberBuddy will not send a JWT to a target, a JWKS URL or a third party.</li>
         <li><strong>Context over score.</strong> There is no numeric security
@@ -656,11 +699,12 @@
       </article>
       <article class="card inset-card jwt-phase-card">
         <span class="jwt-phase-tag">Test</span>
-        <h3>Templates &amp; secret testing</h3>
-        <p><code>alg:none</code>, claim tampering, algorithm confusion, embedded
-          JWK, <code>jku</code>/<code>x5u</code> and <code>kid</code> templates,
-          plus bounded HS256/384/512 secret testing in a Web Worker with
-          progress and cancel.</p>
+        <h3>VAPT suggestions, templates &amp; secret testing</h3>
+        <p>Context-aware VAPT suggestions with one-click TEST PAYLOADs and
+          Burp-ready copy, plus <code>alg:none</code>, claim tampering,
+          algorithm confusion, embedded JWK, <code>jku</code>/<code>x5u</code>
+          and <code>kid</code> templates, and bounded HS256/384/512 secret
+          testing in a Web Worker with progress and cancel.</p>
       </article>
     </div>
   </section>

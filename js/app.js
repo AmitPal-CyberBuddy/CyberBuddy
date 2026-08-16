@@ -8,6 +8,10 @@
 
 document.documentElement.classList.add("js");
 
+// This file is always loaded deferred: the DOM is parsed by the time it
+// runs, so the fragment target (if any) can be looked up immediately.
+initAnchorResnap();
+
 /* ---------- Icon set ---------------------------------------------------- */
 const ICONS = {
   logo: '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="7" stroke="currentColor" stroke-width="2.2"/><path d="M8 16h4l3-7 6 14 3-7h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -123,6 +127,33 @@ function initThemeToggle() {
 }
 
 /* ---------- Scroll chrome (header state + back-to-top) ------------------ */
+
+/* Fragment targets are scrolled to by the browser BEFORE the reveal
+   animations (translateY → 0) and webfonts settle, so cross-page
+   "/page/#section" links could land noticeably off — further compounded by
+   the sticky header overlapping the heading. html{scroll-padding-top}
+   covers the header; this one-shot re-snap on load fixes the residual
+   transform/font shift. It only fires when the user has not scrolled since
+   the navigation, so it never fights a deliberate scroll. */
+function initAnchorResnap() {
+  const hash = window.location.hash;
+  if (!hash || hash.length < 2) return;
+  let el = null;
+  try { el = document.getElementById(decodeURIComponent(hash.slice(1))); }
+  catch (_) { el = null; }
+  if (!el) return;
+  const initialY = window.scrollY || 0;
+  const resnap = () => {
+    if ((window.scrollY || 0) !== initialY) return; // the user already took over
+    requestAnimationFrame(() => {
+      if ((window.scrollY || 0) !== initialY) return;
+      try { el.scrollIntoView({ block: "start", behavior: "auto" }); }
+      catch (_) { /* older engines: ignore */ }
+    });
+  };
+  if (document.readyState === "complete") resnap();
+  else window.addEventListener("load", resnap);
+}
 
 function initScrollChrome() {
   const header = document.querySelector(".site-header");
@@ -1332,17 +1363,25 @@ function applyEvidenceMode(on) {
   document.body.classList.toggle("evidence", !!on);
 }
 
+/* Bring a result region to the top of the viewport after a run completes.
+   Reduced-motion users still get the navigation, just without the smooth
+   animation — before this helper existed they (and anyone who had toggled
+   evidence mode off) were left at the scan form with results rendered
+   below the fold, reading as "nothing happened". */
+function scrollResultsIntoView(el) {
+  if (!el || typeof el.scrollIntoView !== "function") return;
+  requestAnimationFrame(() => {
+    try {
+      el.scrollIntoView({ block: "start", behavior: prefersReduced() ? "auto" : "smooth" });
+    } catch (_) {
+      try { el.scrollIntoView(); } catch (_) { /* older engines: ignore */ }
+    }
+  });
+}
+
 function enterEvidenceMode() {
-  if (!evidenceEnabled()) return;
-  applyEvidenceMode(true);
-  const results = document.getElementById("results");
-  if (results && !prefersReduced() && typeof results.scrollIntoView === "function") {
-    requestAnimationFrame(() => {
-      try {
-        results.scrollIntoView({ block: "start", behavior: "smooth" });
-      } catch (_) { /* older engines: ignore */ }
-    });
-  }
+  if (evidenceEnabled()) applyEvidenceMode(true);
+  scrollResultsIntoView(document.getElementById("results"));
 }
 
 function initEvidenceToggle() {
@@ -3627,6 +3666,11 @@ function initSuite() {
     out.innerHTML = pipelineHtml(url);
     const setStage = pipelineController(out.querySelector(".scan-pipeline"));
     setStage("normalize", "done");
+    // Move straight to the results region: the pipeline animates there and
+    // the report replaces it in place, so a cached instant answer and a
+    // slow live scan both leave the analyst looking at the output. Without
+    // this a fast CACHED demo run felt like the tools never ran.
+    scrollResultsIntoView(out);
 
     // Engine detection ran at page load; surface its verdict as a stage so
     // the analyst sees WHICH engine will answer before the scan proceeds.

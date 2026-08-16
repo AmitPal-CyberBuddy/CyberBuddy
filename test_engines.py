@@ -3794,6 +3794,436 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertIn("JWT analysis &amp; verification", landing)
 
 
+class JwtVaptTests(unittest.TestCase):
+    """VAPT Testing Suggestions & Test Payloads: the Analyze & Verify panel
+    derives prioritized authorized-test vectors from the decoded token
+    (engine: J.vaptRecommendations — pure rules, Node-tested here), builds
+    one-click TEST PAYLOADs locally (J.buildVaptPayload), and routes to the
+    matching workbench tab with the same values prefilled.
+
+    Accuracy rules pinned here: everything stays client-side; suggestions are
+    test vectors, never findings; severities come from a fixed vocabulary;
+    the alg:none suggestion keeps parse/verify guards intact; RS→HS
+    confusion requires the pasted public key (never fetched); kid probes
+    keep the original signature so they never need a key; self-signed probes
+    (embedded-JWK, jku/x5u) re-declare the signing algorithm in the header
+    because the alg switch is part of the test.
+    """
+
+    PAGE = ROOT / "tools" / "jwt" / "index.html"
+    CONTROLLER = ROOT / "js" / "tool.jwt.js"
+    ENGINE = ROOT / "js" / "jwt.engine.js"
+
+    def _page(self) -> str:
+        return self.PAGE.read_text(encoding="utf-8")
+
+    def _controller(self) -> str:
+        return self.CONTROLLER.read_text(encoding="utf-8")
+
+    def _engine(self) -> str:
+        return self.ENGINE.read_text(encoding="utf-8")
+
+    def _run_engine(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        engine = self.ENGINE.read_text(encoding="utf-8")
+        script = engine + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    @staticmethod
+    def _hs_token(payload: dict, header_extra: dict | None = None) -> str:
+        """Sign an HS256 token through the engine itself (inside Node)."""
+        import tempfile
+        node = shutil.which("node")
+        if not node:
+            return ""
+        header = {"alg": "HS256", "typ": "JWT"}
+        header.update(header_extra or {})
+        harness = (
+            "CyberBuddyJwt.signToken(%s,%s,'secret',{alg:'HS256'})"
+            ".then(r=>console.log(JSON.stringify({token:r.token})));"
+            % (json.dumps(header), json.dumps(payload))
+        )
+        engine = (ROOT / "js" / "jwt.engine.js").read_text(encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(engine + "\n" + harness)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout.strip().splitlines()[-1])["token"]
+
+    def _recs(self, token: str):
+        out = self._run_engine(
+            "const p = CyberBuddyJwt.parseToken(%s);\n"
+            "console.log(JSON.stringify(CyberBuddyJwt.vaptRecommendations(p)));"
+            % json.dumps(token)
+        )
+        return out
+
+    # --- suggestion rules ----------------------------------------------
+
+    def test_hs_token_offers_secret_test_but_no_confusion(self):
+        token = self._hs_token({"sub": "alice", "exp": 4102444800, "iat": 4102444800 - 3600})
+        recs = self._recs(token)
+        ids = [r["id"] for r in recs]
+        self.assertIn("hmac-secret", ids)
+        self.assertIn("alg-none", ids)
+        self.assertNotIn("alg-confusion", ids)
+        secret = next(r for r in recs if r["id"] == "hmac-secret")
+        self.assertEqual(secret["action"], "secret")
+        self.assertEqual(secret["tab"], "secret")
+        self.assertEqual(secret["actionLabel"], "Launch secret test")
+
+    def test_rs_token_offers_confusion_as_critical(self):
+        token = self._hs_token({"sub": "a"})  # header alg rewritten below
+        out = self._run_engine("""
+(async () => {
+  const pair = await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'}, true, ['sign','verify']);
+  const s = await CyberBuddyJwt.signToken({alg:'RS256',typ:'JWT'}, {sub:'a', exp:4102444800, iat:4102444800-3600}, pair.privateKey, {alg:'RS256'});
+  const recs = CyberBuddyJwt.vaptRecommendations(CyberBuddyJwt.parseToken(s.token));
+  const conf = recs.filter(r=>r.id==='alg-confusion')[0];
+  console.log(JSON.stringify({ids: recs.map(r=>r.id), confSev: conf && conf.severity,
+    confNeedsPem: !!(conf && conf.needsPem), confLabel: conf && conf.actionLabel,
+    hasSecretTest: recs.some(r=>r.id==='hmac-secret')}));
+})();
+""")
+        self.assertIn("alg-confusion", out["ids"])
+        self.assertEqual(out["confSev"], "critical")
+        self.assertTrue(out["confNeedsPem"])
+        self.assertIn("RS-to-HMAC", out["confLabel"])
+        self.assertFalse(out["hasSecretTest"])
+
+    def test_alg_none_suggested_for_every_signed_token(self):
+        for payload in ({"sub": "a"}, {"x": 1}):
+            recs = self._recs(self._hs_token(payload))
+            none = next(r for r in recs if r["id"] == "alg-none")
+            self.assertEqual(none["severity"], "critical")
+            self.assertEqual(none["payload"], "alg-none")
+            self.assertIn("alg:none", none["actionLabel"])
+
+    def test_kid_severity_depends_on_presence_and_offers_vectors(self):
+        with_kid = self._recs(self._hs_token({"sub": "a"}, {"kid": "key-7"}))
+        kid = next(r for r in with_kid if r["id"] == "kid")
+        self.assertEqual(kid["severity"], "high")
+        self.assertIn("key-7", kid["why"])  # reasons cite the token's own kid
+        without_kid = self._recs(self._hs_token({"sub": "a"}))
+        kid2 = next(r for r in without_kid if r["id"] == "kid")
+        self.assertEqual(kid2["severity"], "info")  # defense-in-depth
+        for recs in (with_kid, without_kid):
+            k = next(r for r in recs if r["id"] == "kid")
+            joined = " ".join(k["howTo"])
+            self.assertIn("dev/null", joined)
+            self.assertIn("OR 1=1", joined)
+
+    def test_jku_x5u_always_suggested_and_reflects_existing_header(self):
+        recs = self._recs(self._hs_token({"sub": "a"}))
+        jku = next(r for r in recs if r["id"] == "jku-x5u")
+        self.assertEqual(jku["severity"], "high")
+        self.assertTrue(jku["needsUrl"])
+        self.assertIn("no jku/x5u", jku["why"])
+        recs2 = self._recs(self._hs_token({"sub": "a"}, {"jku": "https://keys.example/jwks.json"}))
+        jku2 = next(r for r in recs2 if r["id"] == "jku-x5u")
+        self.assertIn("already declares", jku2["why"])
+
+    def test_claim_tamper_only_when_authorization_claims_exist(self):
+        recs = self._recs(self._hs_token({"sub": "a", "role": "user", "scopes": ["read"]}))
+        ids = [r["id"] for r in recs]
+        self.assertIn("claim-tamper", ids)
+        tamper = next(r for r in recs if r["id"] == "claim-tamper")
+        self.assertEqual(tamper["action"], "edit")
+        self.assertEqual(tamper["tab"], "edit")
+        self.assertIn("role", tamper["claims"])
+        self.assertIn("scopes", tamper["claims"])
+        bare = self._recs(self._hs_token({"sub": "a", "name": "Alice"}))
+        self.assertNotIn("claim-tamper", [r["id"] for r in bare])
+
+    def test_lifetime_suggestion_for_long_lived_or_never_expiring(self):
+        long_lived = self._recs(self._hs_token(
+            {"exp": 4102444800, "iat": 4102444800 - 86400 * 30}))
+        self.assertIn("lifetime", [r["id"] for r in long_lived])
+        no_exp = self._recs(self._hs_token({"sub": "a"}))
+        self.assertIn("lifetime", [r["id"] for r in no_exp])
+        normal = self._recs(self._hs_token(
+            {"exp": 4102444800, "iat": 4102444800 - 900}))
+        self.assertNotIn("lifetime", [r["id"] for r in normal])
+
+    def test_every_suggestion_is_well_formed(self):
+        token = self._hs_token({"sub": "a", "role": "user", "kid-free": 1}, {"kid": "k"})
+        recs = self._recs(token)
+        self.assertTrue(len(recs) >= 5)
+        for r in recs:
+            self.assertIn(r["severity"], ("critical", "high", "info"), r["id"])
+            self.assertTrue(r["title"], r["id"])
+            self.assertTrue(r["why"], r["id"])
+            self.assertIn(r["action"], ("build", "edit", "secret"), r["id"])
+            self.assertTrue(r["actionLabel"], r["id"])
+            self.assertIn(r["tab"], ("variants", "edit", "secret"), r["id"])
+            self.assertGreaterEqual(len(r["howTo"]), 2, r["id"])
+            self.assertLessEqual(len(r["howTo"]), 3, r["id"])
+            joined = " ".join(r["howTo"]).lower()
+            self.assertIn("burp", joined, r["id"])
+            # Each how-to names the vulnerable signal, not just the action.
+            self.assertTrue("401" in joined or "403" in joined or "vulnerable" in joined, r["id"])
+
+    # --- one-click payload generation -----------------------------------
+
+    def test_payload_alg_none_is_unsigned_and_still_rejected_by_parse(self):
+        token = self._hs_token({"sub": "alice", "role": "user"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const v = await CyberBuddyJwt.buildVaptPayload(parsed, 'alg-none');
+  const header = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(v.token.split('.')[0])));
+  console.log(JSON.stringify({alg: header.alg, emptySig: v.token.endsWith('.'),
+    parseRejects: !CyberBuddyJwt.tryParseToken(v.token).ok, type: v.type, note: !!v.note}));
+})();
+""" % json.dumps(token))
+        self.assertEqual(out["alg"], "none")
+        self.assertTrue(out["emptySig"])
+        self.assertTrue(out["parseRejects"])
+        self.assertEqual(out["type"], "alg-none")
+        self.assertTrue(out["note"])
+
+    def test_payload_kid_keeps_original_signature(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const path = await CyberBuddyJwt.buildVaptPayload(parsed, 'kid', {kid:'../../../dev/null'});
+  const sql = await CyberBuddyJwt.buildVaptPayload(parsed, 'kid', {kid:"1' OR 1=1--"});
+  const dflt = await CyberBuddyJwt.buildVaptPayload(parsed, 'kid', {});
+  const kidOf = (t) => JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(t.split('.')[0]))).kid;
+  console.log(JSON.stringify({
+    pathKeepsSig: path.token.split('.')[2] === parsed.raw.split('.')[2],
+    pathKid: kidOf(path.token), sqlKid: kidOf(sql.token), dfltKid: kidOf(dflt.token)}));
+})();
+""" % json.dumps(token))
+        self.assertTrue(out["pathKeepsSig"])  # needs no key at all
+        self.assertEqual(out["pathKid"], "../../../dev/null")
+        self.assertIn("OR 1=1", out["sqlKid"])
+        self.assertEqual(out["dfltKid"], "../../../dev/null")
+
+    def test_payload_alg_confusion_signs_with_pasted_public_key(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+const crypto2 = require('crypto');
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pem = '-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAA\\n-----END PUBLIC KEY-----';
+  const v = await CyberBuddyJwt.buildVaptPayload(parsed, 'alg-confusion', {publicKeyPem: pem});
+  const parts = v.token.split('.');
+  const header = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(parts[0])));
+  const expected = crypto2.createHmac('sha256', pem).update(parts[0] + '.' + parts[1]).digest();
+  console.log(JSON.stringify({alg: header.alg,
+    sigOk: expected.equals(Buffer.from(CyberBuddyJwt.b64urlDecode(parts[2]))),
+    needsPem: (await CyberBuddyJwt.buildVaptPayload(parsed, 'alg-confusion', {})).error}));
+})();
+""" % json.dumps(token))
+        self.assertEqual(out["alg"], "HS256")
+        self.assertTrue(out["sigOk"])
+        self.assertTrue(out["needsPem"])  # refused without the pasted PEM
+
+    def test_payload_embedded_jwk_flips_alg_and_verifies_with_own_key(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pair = await CyberBuddyJwt.generateRsaTestPair('RS256');
+  const v = await CyberBuddyJwt.buildVaptPayload(parsed, 'embedded-jwk',
+    {publicJwk: pair.publicJwk, alg:'RS256', key: pair.privateKey});
+  const header = JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(v.token.split('.')[0])));
+  const check = await CyberBuddyJwt.verifyToken(v.token, header.jwk, {alg:'RS256'});
+  console.log(JSON.stringify({alg: header.alg, hasJwk: !!header.jwk, ok: check.valid}));
+})();
+""" % json.dumps(token))
+        # HS256 base: the self-signed probe re-declares its signing alg — the
+        # switch is part of the embedded-JWK test.
+        self.assertEqual(out["alg"], "RS256")
+        self.assertTrue(out["hasJwk"])
+        self.assertTrue(out["ok"])
+
+    def test_payload_jku_x5u_carry_the_url_and_verify(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const pair = await CyberBuddyJwt.generateRsaTestPair('RS256');
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const jku = await CyberBuddyJwt.buildVaptPayload(parsed, 'jku',
+    {url:'https://attacker.example/jwks.json', alg:'RS256', key: pair.privateKey});
+  const x5u = await CyberBuddyJwt.buildVaptPayload(parsed, 'x5u',
+    {url:'https://attacker.example/c.pem', alg:'RS256', key: pair.privateKey});
+  const dec = (t) => JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(t.split('.')[0])));
+  const check = await CyberBuddyJwt.verifyToken(jku.token, pub, {alg:'RS256'});
+  console.log(JSON.stringify({jku: dec(jku.token).jku, x5u: dec(x5u.token).x5u,
+    alg: dec(jku.token).alg, verifies: check.valid}));
+})();
+""" % json.dumps(token))
+        self.assertEqual(out["jku"], "https://attacker.example/jwks.json")
+        self.assertEqual(out["x5u"], "https://attacker.example/c.pem")
+        self.assertEqual(out["alg"], "RS256")
+        self.assertTrue(out["verifies"])
+
+    def test_payload_requires_base_token_and_known_kind(self):
+        out = self._run_engine("""
+(async () => {
+  const noBase = await CyberBuddyJwt.buildVaptPayload(null, 'alg-none');
+  const s = await CyberBuddyJwt.signToken({alg:'HS256'},{x:1},'s',{alg:'HS256'});
+  const badKind = await CyberBuddyJwt.buildVaptPayload(CyberBuddyJwt.parseToken(s.token), 'wipe-server');
+  console.log(JSON.stringify({noBase: noBase.error, badKind: badKind.error}));
+})();
+""")
+        self.assertIn("base token", out["noBase"].lower())
+        self.assertIn("Unknown VAPT payload kind", out["badKind"])
+
+    # --- UI wiring -------------------------------------------------------
+
+    def test_vapt_section_present_in_analyze_panel(self):
+        page = self._page()
+        for kid in ("jwtVapt", "jwtVaptList", "jwtVaptStatus", "jwtVaptOut",
+                    "jwtVaptOutNote", "jwtVaptOutLabel", "jwtVaptToken",
+                    "jwtVaptCopy", "jwtVaptCopyBurp", "jwtVaptRefine",
+                    "jwtVaptCopyStatus", "jwtVaptHowTo"):
+            self.assertIn('id="%s"' % kid, page, kid)
+        self.assertIn("VAPT Testing Suggestions", page)
+        self.assertIn("TEST PAYLOAD", page)
+        # Sits inside the Analyze & Verify panel, below the claims analysis.
+        analyze = page[page.index('id="jwt-panel-analyze"'):page.index('id="jwt-panel-edit"')]
+        self.assertIn('id="jwtVapt"', analyze)
+        self.assertLess(analyze.index('id="jwtClaims"'), analyze.index('id="jwtVapt"'))
+        # Copy affordances contract: raw token and a Burp-ready header.
+        self.assertIn("Copy as Burp Authorization header", page)
+        self.assertIn("authorized testing only", analyze.replace("&middot;", "·"))
+
+    def test_vapt_controller_wiring(self):
+        ctrl = self._controller()
+        self.assertIn("vaptRecommendations(", ctrl)
+        self.assertIn("buildVaptPayload(", ctrl)
+        self.assertIn("initVaptPanel", ctrl)
+        self.assertIn("renderVapt(parsed)", ctrl)
+        self.assertIn("renderVapt(null)", ctrl)
+        # The Burp-ready copy composes the Authorization header locally.
+        self.assertIn('"Authorization: Bearer "', ctrl)
+        # Refine routes cover all three workbench tabs.
+        for tab in ("jwt-tab-edit", "jwt-tab-variants", "jwt-tab-secret"):
+            self.assertIn(tab, ctrl)
+        # Secret test can launch straight from the suggestion card.
+        self.assertIn("startSecretTest();", ctrl)
+
+    def test_vapt_styles_cover_severity_tags_and_layout(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        for needle in (".jwt-vapt-list", ".jwt-vapt-item", ".jwt-vapt-tag",
+                       ".jwt-vapt-tag-critical", ".jwt-vapt-tag-high",
+                       ".jwt-vapt-tag-info", ".jwt-vapt-out",
+                       ".jwt-vapt-howto", ".jwt-vapt-inline"):
+            self.assertIn(needle, css, needle)
+        # The tags reuse the theme variables, so light/dark stay in sync.
+        start = css.index(".jwt-vapt-tag-critical")
+        block = css[start:start + 300]
+        self.assertIn("var(--high", block)
+
+
+class NavAndScrollContractTests(unittest.TestCase):
+    """Site-chrome contracts behind three reported UX regressions:
+
+    1. Header/footer "Methodology" must always point at the dedicated
+       /methodology/ page — never back at the hub's #methodology summary
+       section.
+    2. Fragment links (/tools/#assess-targets, /methodology/#scoring, …)
+       must land with the target heading visible below the sticky header —
+       html{scroll-padding-top} + the load-time re-snap guarantee it.
+    3. After a scan — cached demo answers included — the page must move to
+       the results region, for every tool and for the hub suite, so a fast
+       run never reads as "the tool didn't run".
+    """
+
+    def _app(self) -> str:
+        return (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+    def _css(self) -> str:
+        return (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    @staticmethod
+    def _strip_js_comments(js: str) -> str:
+        js = re.sub(r"/\*.*?\*/", " ", js, flags=re.S)
+        js = re.sub(r"//[^\n]*", " ", js)
+        return js
+
+    def test_nav_methodology_points_to_the_page_not_the_hub_section(self):
+        app = self._app()
+        # Header nav → the dedicated methodology page.
+        self.assertIn('navLink(base, "/methodology/", "Methodology", current)', app)
+        # Footer "Learn" column → the same page (one Methodology entry).
+        self.assertIn("'/methodology/\">Methodology</a>'", app)
+        # No chrome link may target the hub's #methodology summary section.
+        stripped = self._strip_js_comments(app)
+        self.assertNotIn("/#methodology", stripped)
+        self.assertNotIn('"#methodology"', stripped)
+        # The hub section keeps its anchor id — it is the footer/section
+        # target, just never the nav destination.
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="methodology"', hub)
+
+    def test_fragment_links_clear_the_sticky_header(self):
+        css = self._css()
+        self.assertIn("scroll-padding-top", css)
+        html_rule = re.search(r"html \{[^}]*scroll-padding-top:\s*(\d+)px", css, flags=re.S)
+        self.assertTrue(html_rule, "html rule must carry scroll-padding-top")
+        # Header is ~60px tall; padding must exceed it.
+        self.assertGreaterEqual(int(html_rule.group(1)), 61)
+        # Result regions that are programmatically scrolled to get margins.
+        self.assertRegex(css, r"#results,\s*#suiteResults\s*\{\s*scroll-margin-top:")
+
+    def test_anchor_resnap_runs_once_after_load(self):
+        app = self._app()
+        self.assertIn("function initAnchorResnap()", app)
+        self.assertIn('addEventListener("load"', app)
+        self.assertIn("scrollIntoView", app)
+        # Never fights a deliberate user scroll.
+        self.assertIn("the user already took over", app)
+
+    def test_hub_suite_scrolls_to_results_on_run(self):
+        app = self._app()
+        start = app.index("async function run()")
+        body = app[start:start + 4000]
+        self.assertIn("scrollResultsIntoView(out)", body)
+        self.assertIn('out.innerHTML = pipelineHtml(url)', body)
+
+    def test_every_tool_scrolls_to_results_after_a_scan(self):
+        app = self._app()
+        self.assertIn("function scrollResultsIntoView(el)", app)
+        # Evidence mode no longer gates the navigation itself — only the
+        # page-collapse it was designed for.
+        start = app.index("function enterEvidenceMode()")
+        body = app[start:app.index("}", app.index("scrollResultsIntoView", start))]
+        self.assertIn("evidenceEnabled()", body)
+        self.assertIn('scrollResultsIntoView(document.getElementById("results"))', body)
+        # Reduced-motion users still get the jump, minus the animation.
+        helper = app[app.index("function scrollResultsIntoView(el)"):]
+        helper = helper[:helper.index("\n}\n") + 2]
+        self.assertIn('prefersReduced() ? "auto" : "smooth"', helper)
+        # All four scan tools route through enterEvidenceMode on completion.
+        for tool in ("clickjacking", "headers", "cors", "csp"):
+            ctrl = (ROOT / "js" / ("tool.%s.js" % tool)).read_text(encoding="utf-8")
+            self.assertIn("enterEvidenceMode();", ctrl, tool)
+
+
+
 class CspPastedHeaderTests(unittest.TestCase):
     """The CSP Policy Auditor must accept a pasted Content-Security-Policy
     header value (with or without the header name) and grade it with no
