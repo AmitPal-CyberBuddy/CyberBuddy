@@ -347,9 +347,9 @@ const TOOLS_MENU = [
     category: "local",
     input: "JWT / Bearer token",
     mode: "Local in your browser — no token leaves the page",
-    evidence: "Decoded claims, signature verification, semantic diff, signed variants, and bounded secret-test results",
-    desc: "Decode, inspect, verify, edit, re-sign and test JWTs locally — HMAC, RSA, RSA-PSS and ECDSA via Web Crypto, with no token or key leaving your browser.",
-    tags: ["JWT", "decode", "verify", "sign", "variants", "secret test"],
+    evidence: "Decoded claims, signature verification, prioritized VAPT test payloads, semantic diff, signed variants, and bounded secret-test results",
+    desc: "Decode, inspect, verify, edit, re-sign and test JWTs locally — HMAC, RSA, RSA-PSS and ECDSA via Web Crypto — with prioritized VAPT suggestions and one-click Burp-ready test payloads. No token or key leaves your browser.",
+    tags: ["JWT", "decode", "verify", "sign", "vapt payloads", "variants", "secret test"],
     std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];

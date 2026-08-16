@@ -46,7 +46,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="css/app.css?v=20260816b" />
+  <link rel="stylesheet" href="css/app.css?v=20260816c" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -69,9 +69,9 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260816b" defer></script>
-  <script src="js/hub.js?v=20260816b" defer></script>
-  <script src="js/boot.js?v=20260816b" defer></script>
+  <script src="js/app.js?v=20260816c" defer></script>
+  <script src="js/hub.js?v=20260816c" defer></script>
+  <script src="js/boot.js?v=20260816c" defer></script>
 </head>
 <body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
 <main id="main" class="container">
@@ -169,7 +169,7 @@
         <li><strong>CORS analysis</strong> — cross-origin access posture</li>
         <li><strong>Framing analysis</strong> — live clickjacking proof</li>
         <li><strong>CSRF PoC generation</strong> — standalone HTML from a pasted request, fully local</li>
-        <li><strong>JWT analysis &amp; verification</strong> — local decode, claim inspection, crypto verification, variant generation and secret testing</li>
+        <li><strong>JWT analysis &amp; verification</strong> — local decode, claim inspection, crypto verification, prioritized VAPT test suggestions &amp; payloads, variant generation and secret testing</li>
         <li><strong>Evidence collection</strong> — screenshot-ready report cards</li>
       </ul>
     </article>
@@ -259,7 +259,7 @@
            registry (renderToolCards) replaces this grid from TOOLS_MENU. -->
       <a class="tool-card card corner-card" href="tools/jwt/">
         <h3>JWT Security Workbench</h3>
-        <p class="tool-card-desc">Decode, inspect and verify JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto. No token leaves the page.</p>
+        <p class="tool-card-desc">Decode, inspect, verify, edit and re-sign JWTs locally in your browser with the key you supply — HMAC, RSA-PKCS#1, RSA-PSS and ECDSA via Web Crypto — plus prioritized VAPT test suggestions with one-click TEST PAYLOADs. No token leaves the page.</p>
         <div class="tool-card-std"><span class="std-id" title="RFC 7519 — JSON Web Token">RFC 7519</span><span class="std-id" title="CWE-347 — Improper Verification of Cryptographic Signature">CWE-347</span></div>
       </a>
     </div>
@@ -393,7 +393,7 @@
         <span class="std-id" title="RFC 7519 — JSON Web Token">RFC 7519</span>
         <span class="std-id" title="CWE-347 — Improper Verification of Cryptographic Signature">CWE-347</span>
       </div>
-      <p class="std-meta">Client-side token decode, Web Crypto signature verification, algorithm tampering templates, and offline dictionary testing.</p>
+      <p class="std-meta">Client-side token decode, Web Crypto signature verification, algorithm tampering templates, prioritized VAPT test payloads, and offline dictionary testing.</p>
     </div>
   </div>
   <p class="form-hint reveal" style="--d: .26s;">
@@ -426,7 +426,7 @@
     </article>
     <article class="card reveal" style="--d: .3s;">
       <h3>JWT Workbench</h3>
-      <p class="std-meta">Local cryptographic verification and claim validation via Web Crypto API. Builds test templates (<code>alg:none</code>, key confusion, embedded JWK, <code>kid</code> traversal) and tests HMAC secrets offline. Zero network transmission.</p>
+      <p class="std-meta">Local cryptographic verification and claim validation via Web Crypto API. Builds test templates (<code>alg:none</code>, key confusion, embedded JWK, <code>kid</code> traversal), derives prioritized VAPT suggestions with one-click TEST PAYLOADs and Burp steps, and tests HMAC secrets offline. Zero network transmission.</p>
     </article>
     <article class="card reveal" style="--d: .36s;">
       <h3>Hosted scan layers</h3>
