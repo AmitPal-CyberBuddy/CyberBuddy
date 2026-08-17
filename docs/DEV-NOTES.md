@@ -107,6 +107,52 @@ methodology table used `.card:has(> .method-table)`; `display: block` on the
 table itself achieves the same scroll container with no support caveat. A
 test asserts `:has(` never appears in the stylesheet's real rules.
 
+## Responsive system (RESP-01) — tokens, ladder, wide monitors
+
+The multi-device layout is a small, deliberate system, not a pile of
+breakpoints. Three moving parts in `css/app.css`:
+
+- **Fluid type/spacing scale** — `--fs-h1/…/--fs-lead`, `--space-section`,
+  `--card-pad`, `--grid-gap` are `clamp()` tokens in `:root`, so type and
+  density scale *continuously* instead of snapping at each breakpoint.
+  Headings and `.lead` consume the tokens; do not reintroduce hardcoded
+  `font-size` for them.
+- **A documented device ladder** — `--bp-phone/tablet/laptop/wide/xwide/monitor`
+  in `:root`. CSS **cannot read custom properties inside `@media` conditions**
+  (a platform limitation), so the ladder values are the single source of
+  truth in that comment block and are re-stated as literal px in the media
+  blocks. Every *layout dimension* they drive is a token, so a tier change is
+  one line.
+- **`auto-fit`/`minmax()` card grids** — `.tool-grid`, `.suite-grid`,
+  `.blog-grid`, `.tool-catalog-grid`, `.roadmap` reflow to fill their
+  container (`minmax(min(100%, Npx), 1fr)`), which is how they go 1-up on a
+  phone and 4-up on a 32" monitor with no per-size rules. The `min(100%, N)`
+  floor keeps a single card from overflowing a narrow column.
+
+Large monitors are handled by **re-defining `--container-max`** (1160px →
+1320px → 1480px → 1560px at 1440/1920/2560px), which `.container` reads via
+`var(--container-max)`. The card grids then gain columns for free. Prose stays
+capped by its own `max-width` (62–72ch) so body copy never runs the width of a
+26" panel.
+
+**`prefers-contrast: more`** re-defines the border/surface tokens (both
+themes) and thickens the focus ring — tokens only, so it cannot drift from the
+rest of the system.
+
+Why **no container queries**: `container-type: inline-size` imposes layout
+containment, and this site's cards deliberately host absolutely-positioned
+children that paint *outside* their box (the score gauges, the radar). The
+responsive suite measures those against the viewport, so containment would
+either clip them or force their repositioning. `auto-fit`/`minmax` covers the
+same "component reflows to available width" need with no containment side
+effects — a stdlib test pins the absence of `@container`/`container-type` for
+that reason.
+
+Trap: the wide-monitor tiers live at the **end of `app.css`** (after the JWT
+section) so they never disturb the `@media print` → `@media (max-width:
+760px)` block slicing that `PrintStylesheetTests` and
+`ResponsiveLayoutTests` rely on. Keep new `min-width` tiers there too.
+
 ## Real-browser test suites
 
 `test_engines.py` stays stdlib-only so CI can run it anywhere; it can only

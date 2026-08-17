@@ -448,6 +448,40 @@ PR.
   consent gate is separate from the header relay gate (a domain is all that is
   ever disclosed).
 
+### RESP-01 — Multi-device, standards-first responsive layout
+- **Status:** `IN REVIEW`
+- **Goal:** Rework the site's responsiveness from ad-hoc breakpoints into a
+  deliberate, standards-based multi-device layout — a fluid type/spacing
+  scale (`clamp()` + custom-property tokens), `auto-fit`/`minmax()` card
+  grids, a documented breakpoint ladder, and a large-monitor tier so a
+  2560px panel uses its width instead of leaving huge gutters.
+- **Scope:** `css/app.css` (design tokens, `.container` width tiers, card
+  grids, `prefers-contrast: more`), `tests/browser/responsive.js` (wide-monitor
+  + contrast assertions), `test_engines.py` (a stdlib gate for the new rules),
+  and the docs.
+- **Non-goals:** No new tools; no scoring/engine/behaviour change; no brand
+  redesign or content restructure; no container queries (`container-type`
+  imposes layout containment that would clip the absolutely-positioned score
+  gauges/radar); no `.github/workflows/**` change.
+- **Dependencies:** none (pure presentation over the shipped suite).
+- **Acceptance criteria:** every page adapts intentionally at phone / tablet /
+  laptop / desktop / wide-monitor widths; `python3 -m unittest test_engines.py`
+  stays green; `node --check` clean; `tools/audit_site.py` green on an
+  assembled `_site/`; the real-browser suites (responsive/layout/dropdown/
+  overlays) pass.
+- **Required tests:** `FluidResponsiveSystemTests` (stdlib) + the extended
+  `tests/browser/responsive.js` §7 (wide-monitor column, auto-fit columns,
+  prefers-contrast).
+- **PR/commit:** branch `arena/01a00e47-cyberbuddy` (open).
+- **Notes/traps:** media queries cannot read custom properties, so breakpoint
+  *values* stay literals (documented in `:root`) while every *dimension* they
+  drive is a token. The wide-monitor tiers live at the end of `app.css` to
+  avoid disturbing the `@media print` → `@media (max-width: 760px)` block
+  slicing the existing tests depend on. No Chromium in the Arena sandbox (and
+  none installable — apt mirrors and the puppeteer download host are both
+  unreachable), so the real-browser suites were extended but not executed;
+  run `responsive`/`layout`/`dropdown`/`overlays` by hand before merge.
+
 ### FUTURE-01 — External payload-corpus integration
 - **Status:** `DEFERRED`
 - **Goal:** (Mention only) A separately maintained payload corpus may be
@@ -463,7 +497,21 @@ PR.
 
 ## 5. Current handoff
 
-> **This session (DNS-01, branch `arena/01a00c48-cyberbuddy`):** the
+> **This session (RESP-01, branch `arena/01a00e47-cyberbuddy`):** a
+> multi-device, standards-first responsive rework — a fluid type/spacing
+> scale (`clamp()` + custom-property tokens in `css/app.css`), `auto-fit`/
+> `minmax()` card grids, a documented breakpoint ladder, a large-monitor tier
+> that widens `.container` via `--container-max` (1160 → 1560px at 2560px),
+> and `prefers-contrast: more` support. No tools, engines, scoring or
+> behaviour changed. Python tests now **361** (6 new `FluidResponsiveSystemTests`);
+> `tests/browser/responsive.js` gained a §7 (wide-monitor column, auto-fit
+> columns, prefers-contrast). Real-browser suites were **not executed** — the
+> sandbox has no Chromium and cannot install one (apt mirrors and the
+> puppeteer download host are unreachable); run `responsive`/`layout`/
+> `dropdown`/`overlays` by hand before merge. No workflow edit was needed.
+> Open as a PR; not merged.
+
+> **Previous session (DNS-01, branch `arena/01a00c48-cyberbuddy`):** the
 > **DNS & Domain Security Analyzer** is implemented end-to-end — `dns_security.py`
 > (stdlib DNS wire client + pure `grade_dns_from_records`), `/api/dns` in
 > `server.py` + `api/dns.py`, `tools/dns/index.html` + `js/tool.dns.js`, the
