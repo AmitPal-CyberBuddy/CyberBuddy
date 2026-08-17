@@ -3497,22 +3497,30 @@ function assessFrameAncestors(cspValue) {
   if (!cspValue) {
     return { name: "CSP frame-ancestors", status: "missing", detail: "No Content-Security-Policy header. frame-ancestors is the modern clickjacking control.", evidence: "" };
   }
-  const d = parseCsp(cspValue);
-  if (!("frame-ancestors" in d)) {
-    return { name: "CSP frame-ancestors", status: "missing", detail: "CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.", evidence: cspValue.slice(0, 300) };
+  const policies = cspValue.split("\n").map((p) => p.trim()).filter(Boolean);
+  const list = policies.length ? policies : [cspValue];
+  let hasProtected = false, hasWeak = false;
+  let weakEv = "", protEv = "";
+  for (const policy of list) {
+    const d = parseCsp(policy);
+    if (!("frame-ancestors" in d)) continue;
+    const sources = d["frame-ancestors"];
+    const ev = "frame-ancestors " + sources.join(" ");
+    if (!sources.length || (sources.length === 1 && sources[0] === "'none'")) { hasProtected = true; protEv = ev; }
+    else if (sources.length === 1 && sources[0] === "'self'") { hasProtected = true; protEv = ev; }
+    else if (sources.indexOf("*") !== -1) { hasWeak = true; weakEv = ev; }
+    else { hasProtected = true; protEv = ev; }
   }
-  const sources = d["frame-ancestors"];
-  const ev = "frame-ancestors " + sources.join(" ");
-  if (!sources.length || (sources.length === 1 && sources[0] === "'none'")) {
-    return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors 'none' forbids all framing (strongest modern control).", evidence: ev };
+  if (hasProtected) {
+    let detail = "frame-ancestors allowlist is set. Confirm every listed origin is trusted.";
+    if (protEv === "frame-ancestors 'none'") detail = "frame-ancestors 'none' forbids all framing (strongest modern control).";
+    else if (protEv === "frame-ancestors 'self'") detail = "frame-ancestors 'self' allows only same-origin frames.";
+    return { name: "CSP frame-ancestors", status: "protected", detail: detail, evidence: protEv || cspValue.slice(0, 300) };
   }
-  if (sources.length === 1 && sources[0] === "'self'") {
-    return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors 'self' allows only same-origin frames.", evidence: ev };
+  if (hasWeak) {
+    return { name: "CSP frame-ancestors", status: "weak", detail: "frame-ancestors * allows any origin to frame the page.", evidence: weakEv };
   }
-  if (sources.indexOf("*") !== -1) {
-    return { name: "CSP frame-ancestors", status: "weak", detail: "frame-ancestors * allows any origin to frame the page.", evidence: ev };
-  }
-  return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors allowlist is set. Confirm every listed origin is trusted.", evidence: ev };
+  return { name: "CSP frame-ancestors", status: "missing", detail: "CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.", evidence: cspValue.slice(0, 300) };
 }
 
 function scoreClickjacking(findings) {

@@ -82,6 +82,8 @@ Each tool’s collection, grading, and reporting were re-checked for one session
 
 For each checked item: no new speculative checks were added, no mutating requests are sent, and where a counterpart exists the Python and JS graders were kept in parity (CORS per-method ladder, CSP duplicate handling, DNS DS vs DKIM, etc.) with matching guide/methodology wording and a stdlib/Node regression test. This record is the controlled verification; public-target claims remain out of scope.
 
+**Discrepancy fixed in this sweep — clickjacking multiple CSP:** `assess_frame_ancestors` previously kept only the last `Content-Security-Policy` header's `frame-ancestors` (overwriting earlier ones). With two headers `frame-ancestors 'none'` and `frame-ancestors *` the last wins, so `*` + `none` in either order incorrectly reported weak. Multiple enforced CSP headers combine restrictively (intersection), so a restrictive policy in any header must win. Fixed Python (`clickjacking_validator.py`) and JS (`js/app.js` `assessFrameAncestors`) to split on `\n`, collect all `frame-ancestors` directives, and return protected if any policy is restrictive (`'none'`/`'self'`/allowlist without `*`), otherwise weak if any is `*`, otherwise missing. Added `MultipleCspFrameAncestorsTests` (Python + Node parity) and kept the existing clickjacking “assessment not proof” and XFO/CSP precedence wording.
+
 ## Browser limitation
 
 The actual Chromium suites still require a Chromium binary. This sandbox has

@@ -306,41 +306,55 @@ def assess_frame_ancestors(csp_value: str | None) -> Finding:
             status="missing",
             detail="No Content-Security-Policy header. frame-ancestors is the modern clickjacking control.",
         )
-    directives = parse_csp(csp_value)
-    if "frame-ancestors" not in directives:
-        return Finding(
-            name="CSP frame-ancestors",
-            status="missing",
-            detail="CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.",
-            evidence=csp_value[:300],
-        )
-    sources = directives["frame-ancestors"]
-    if not sources or sources == ["'none'"]:
+    # Multiple CSP headers combine restrictively — a restrictive policy in any
+    # header still blocks framing even if another header is permissive.
+    policies = [p.strip() for p in csp_value.split("\n") if p.strip()]
+    if not policies:
+        policies = [csp_value]
+    has_protected = False
+    has_weak = False
+    weak_evidence = ""
+    protected_evidence = ""
+    for policy in policies:
+        directives = parse_csp(policy)
+        if "frame-ancestors" not in directives:
+            continue
+        sources = directives["frame-ancestors"]
+        ev = "frame-ancestors " + " ".join(sources)
+        if not sources or sources == ["'none'"]:
+            has_protected = True
+            protected_evidence = ev
+        elif sources == ["'self'"]:
+            has_protected = True
+            protected_evidence = ev
+        elif "*" in sources:
+            has_weak = True
+            weak_evidence = ev
+        else:
+            has_protected = True
+            protected_evidence = ev
+    if has_protected:
+        # Restrictive wins over permissive when multiple policies combine
         return Finding(
             name="CSP frame-ancestors",
             status="protected",
-            detail="frame-ancestors 'none' forbids all framing (strongest modern control).",
-            evidence="frame-ancestors " + " ".join(sources),
+            detail="frame-ancestors allowlist is set. Confirm every listed origin is trusted." if protected_evidence not in ("frame-ancestors 'none'", "frame-ancestors 'self'") else
+                   ("frame-ancestors 'none' forbids all framing (strongest modern control)." if protected_evidence == "frame-ancestors 'none'" else "frame-ancestors 'self' allows only same-origin frames."),
+            evidence=protected_evidence or csp_value[:300],
         )
-    if sources == ["'self'"]:
-        return Finding(
-            name="CSP frame-ancestors",
-            status="protected",
-            detail="frame-ancestors 'self' allows only same-origin frames.",
-            evidence="frame-ancestors " + " ".join(sources),
-        )
-    if "*" in sources:
+    if has_weak:
         return Finding(
             name="CSP frame-ancestors",
             status="weak",
             detail="frame-ancestors * allows any origin to frame the page.",
-            evidence="frame-ancestors " + " ".join(sources),
+            evidence=weak_evidence,
         )
+    # No policy contained frame-ancestors
     return Finding(
         name="CSP frame-ancestors",
-        status="protected",
-        detail="frame-ancestors allowlist is set. Confirm every listed origin is trusted.",
-        evidence="frame-ancestors " + " ".join(sources),
+        status="missing",
+        detail="CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.",
+        evidence=csp_value[:300],
     )
 
 

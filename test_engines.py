@@ -188,6 +188,52 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(risk, "high")
 
 
+class MultipleCspFrameAncestorsTests(unittest.TestCase):
+    def test_multiple_csp_with_restrictive_wins(self):
+        # Multiple CSP headers combine restrictively — a restrictive policy in any header still blocks framing
+        csp = "frame-ancestors 'none'\nframe-ancestors *"
+        result = assess_frame_ancestors(csp)
+        self.assertEqual(result.status, "protected")
+        # Reverse order also protected
+        csp2 = "frame-ancestors *\nframe-ancestors 'none'"
+        result2 = assess_frame_ancestors(csp2)
+        self.assertEqual(result2.status, "protected")
+        # Both permissive -> weak
+        csp3 = "frame-ancestors *\nframe-ancestors *"
+        result3 = assess_frame_ancestors(csp3)
+        self.assertEqual(result3.status, "weak")
+        # One missing + one permissive -> weak (no restrictive)
+        csp4 = "default-src 'self'\nframe-ancestors *"
+        result4 = assess_frame_ancestors(csp4)
+        self.assertEqual(result4.status, "weak")
+        # Both missing -> missing
+        csp5 = "default-src 'self'\nscript-src 'self'"
+        result5 = assess_frame_ancestors(csp5)
+        self.assertEqual(result5.status, "missing")
+        # JS parity check
+        import shutil, tempfile, subprocess, json, os
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\nconsole.log(JSON.stringify({a: assessFrameAncestors('frame-ancestors \\'none\\'' + String.fromCharCode(10) + 'frame-ancestors *').status, b: assessFrameAncestors('frame-ancestors *').status}));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script); p = fh.name
+        try:
+            proc = subprocess.run([node, p], capture_output=True, text=True, timeout=15)
+        finally:
+            os.unlink(p)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(out["a"], "protected")
+        self.assertEqual(out["b"], "weak")
+
 class OutcomeRollupTests(unittest.TestCase):
     def _cors_result(self, first_headers, second_headers, null_headers=None):
         responses = [
