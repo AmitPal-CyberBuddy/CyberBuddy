@@ -103,7 +103,41 @@ async function runScan(page, path) {
     }
   }
 
-  /* ---- 2. Every page, viewport and theme -------------------------------- */
+  /* ---- 2. CORS method picker: one readable control per row -------------- */
+  for (const [vn, w, h] of [["phone", 390, 844], ["tablet", 768, 1024], ["wide", 1440, 1000]]) {
+    const page = await newPage(browser, { w, h });
+    await page.goto(BASE + "/tools/cors/", { waitUntil: "networkidle2" });
+    const before = await page.evaluate(() => {
+      const picker = document.querySelector(".method-picker-grid");
+      const pickerBox = picker.getBoundingClientRect();
+      const labels = [...picker.querySelectorAll("label")].map((label) => {
+        const box = label.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, right: box.right };
+      });
+      const input = document.getElementById("corsPreflightHeaders");
+      const inputBox = input.getBoundingClientRect();
+      return {
+        grid: getComputedStyle(picker).display,
+        labels,
+        inputDisabled: input.disabled,
+        inputFullWidth: Math.abs(inputBox.width - pickerBox.width) < 2,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    await page.click("#corsPreflightPost");
+    const enabled = await page.$eval("#corsPreflightHeaders", (input) => !input.disabled);
+    const vertical = before.labels.length === 4 &&
+      before.labels[1].top >= before.labels[0].bottom - 1 &&
+      before.labels[2].top >= before.labels[1].bottom - 1 &&
+      before.labels[3].top >= before.labels[2].bottom - 1;
+    const labelsFit = before.labels.every((label) => label.right <= w + 1);
+    r.check(before.grid === "grid" && vertical && labelsFit && before.inputDisabled &&
+      enabled && before.inputFullWidth && before.overflow === 0,
+    `cors-method-picker ${vn} ${JSON.stringify(before)} enabled=${enabled}`);
+    await page.close();
+  }
+
+  /* ---- 3. Every page, viewport and theme -------------------------------- */
   for (const [pn, path] of PAGES) {
     for (const [vn, w, h] of VIEWPORTS) {
       for (const theme of ["dark", "light"]) {
@@ -149,7 +183,7 @@ async function runScan(page, path) {
     }
   }
 
-  /* ---- 3. Invalid URLs produce visible, announced feedback -------------- */
+  /* ---- 4. Invalid URLs produce visible, announced feedback -------------- */
   for (const [name, path, input, button, error] of [
     ["hub", "/", "#suiteUrl", "#suiteGo", "#suiteUrlError"],
     ["clickjacking", "/tools/clickjacking/", "#url", "#go", "#urlError"],
@@ -183,7 +217,7 @@ async function runScan(page, path) {
     await page.close();
   }
 
-  /* ---- 4. PoC attacker layer leaves the target at full opacity ---------- */
+  /* ---- 5. PoC attacker layer leaves the target at full opacity ---------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
     await runScan(page, "/tools/clickjacking/");
@@ -216,7 +250,7 @@ async function runScan(page, path) {
     await page.close();
   }
 
-  /* ---- 5. Real reports for all four tools ------------------------------- */
+  /* ---- 6. Real reports for all four tools ------------------------------- */
   for (const [tn, path] of TOOLS) {
     for (const [vn, w, h] of [["desktop", 1920, 1080], ["phone", 390, 844]]) {
       for (const theme of ["dark", "light"]) {
@@ -284,7 +318,7 @@ async function runScan(page, path) {
     }
   }
 
-  /* ---- 6. Print / PDF evidence layout ----------------------------------- */
+  /* ---- 7. Print / PDF evidence layout ----------------------------------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
     await runScan(page, "/tools/headers/");
@@ -311,7 +345,7 @@ async function runScan(page, path) {
     await page.close();
   }
 
-  /* ---- 7. Hub category layout + scalable footer ------------------------- */
+  /* ---- 8. Hub category layout + scalable footer ------------------------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
     await page.goto(BASE + "/", { waitUntil: "networkidle2" });

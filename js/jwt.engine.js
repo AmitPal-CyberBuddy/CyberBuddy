@@ -59,6 +59,13 @@
 
   function b64urlDecode(str) {
     if (typeof str !== "string") throw new TypeError("base64url: expected string");
+    // Compact JWS serializations use unpadded base64url only (RFC 7515).
+    // Do not silently accept standard-base64 characters, padding, whitespace
+    // or impossible one-character remainders: permissive decoding can make a
+    // displayed token differ from what a strict verifier receives.
+    if (!/^[A-Za-z0-9_-]*$/.test(str) || str.length % 4 === 1) {
+      throw new Error("base64url: invalid compact-JWS encoding");
+    }
     str = str.replace(/-/g, "+").replace(/_/g, "/");
     while (str.length % 4) str += "=";
     if (typeof atob === "function") {
@@ -123,8 +130,18 @@
     catch (e) { throw new Error("Header is not valid JSON"); }
     try { payload = JSON.parse(new TextDecoder().decode(payloadBytes)); }
     catch (e) { throw new Error("Payload is not valid JSON"); }
-    if (!header || typeof header !== "object") throw new Error("Header is not a JSON object");
-    if (!payload || typeof payload !== "object") throw new Error("Payload is not a JSON object");
+    if (!header || typeof header !== "object" || Array.isArray(header)) throw new Error("Header is not a JSON object");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Payload is not a JSON object");
+    // This workbench implements no JWS critical-header extensions. RFC 7515
+    // requires a verifier to reject a token when it does not understand every
+    // member named by crit; accepting it would be an unsafe partial parse.
+    if (Object.prototype.hasOwnProperty.call(header, "crit")) {
+      if (!Array.isArray(header.crit) || !header.crit.length ||
+          header.crit.some(function (name) { return typeof name !== "string"; })) {
+        throw new Error("Header crit must be a non-empty array of extension names");
+      }
+      throw new Error("Unsupported critical JWS header parameter(s): " + header.crit.join(", "));
+    }
     var alg = header.alg;
     if (!alg) throw new Error("Header has no alg");
     if (!algSpec(alg)) throw new Error("Unsupported alg: " + alg);
@@ -195,20 +212,53 @@
     opts = opts || {};
     var errors = [];
     var now = Math.floor(Date.now() / 1000);
-    var clockTolerance = Number(opts.clockTolerance) || 0;
-    var exp = normalizeTime(payload.exp);
+    // Tolerance is an analyst-provided non-negative number; never allow an
+    // invalid or negative value to make time validation more permissive.
+    var clockTolerance = Number(opts.clockTolerance);
+    clockTolerance = isFinite(clockTolerance) && clockTolerance >= 0 ? clockTolerance : 0;
+    var has = function (name) { return Object.prototype.hasOwnProperty.call(payload, name); };
+    var timeClaim = function (name) {
+      if (!has(name)) return null;
+      // NumericDate is a JSON number. A numeric string must not silently
+      // pass: a relying party may reject it or interpret it differently.
+      if (typeof payload[name] !== "number" || !isFinite(payload[name])) {
+        errors.push({ code: name, message: name + " must be a numeric NumericDate" });
+        return null;
+      }
+      return payload[name];
+    };
+    var exp = timeClaim("exp");
+    var nbf = timeClaim("nbf");
+    var iat = timeClaim("iat");
     if (exp != null && now > exp + clockTolerance) {
       errors.push({ code: "exp", message: "Token has expired" });
     }
-    var nbf = normalizeTime(payload.nbf);
     if (nbf != null && now < nbf - clockTolerance) {
       errors.push({ code: "nbf", message: "Token is not yet valid (nbf)" });
     }
+    if (exp != null && nbf != null && exp < nbf) {
+      errors.push({ code: "time-order", message: "exp is earlier than nbf" });
+    }
+    if (exp != null && iat != null && exp < iat) {
+      errors.push({ code: "time-order", message: "exp is earlier than iat" });
+    }
+    if (has("iss") && typeof payload.iss !== "string") {
+      errors.push({ code: "iss", message: "iss must be a string" });
+    }
+    if (has("sub") && typeof payload.sub !== "string") {
+      errors.push({ code: "sub", message: "sub must be a string" });
+    }
+    if (has("jti") && typeof payload.jti !== "string") {
+      errors.push({ code: "jti", message: "jti must be a string" });
+    }
+    var aud = payload.aud;
+    var audWellFormed = !has("aud") || typeof aud === "string" ||
+      (Array.isArray(aud) && aud.length > 0 && aud.every(function (v) { return typeof v === "string"; }));
+    if (!audWellFormed) errors.push({ code: "aud", message: "aud must be a string or a non-empty array of strings" });
     if (opts.iss != null && payload.iss !== opts.iss) {
       errors.push({ code: "iss", message: "Issuer mismatch" });
     }
     if (opts.aud != null) {
-      var aud = payload.aud;
       var audList = Array.isArray(aud) ? aud : (aud == null ? [] : [aud]);
       if (audList.indexOf(opts.aud) === -1) {
         errors.push({ code: "aud", message: "Audience mismatch" });
@@ -714,7 +764,20 @@
         task = signToken(header, payload, opts.key, { alg: opts.alg });
       } else if (type === "jku" || type === "x5u") {
         if (!opts.url) return Promise.resolve({ error: "Supply the URL the template should carry." });
-        header[type] = opts.url;
+        // jku/x5u are URI-valued JOSE header parameters. Reject malformed
+        // values early so an output described as a URL-based test payload is
+        // actually a syntactically meaningful HTTP(S) URL.
+        var parsedUrl;
+        try { parsedUrl = new URL(String(opts.url)); }
+        catch (e) { return Promise.resolve({ error: "The " + type + " value must be an absolute HTTP(S) URL." }); }
+        if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+          return Promise.resolve({ error: "The " + type + " value must use http or https." });
+        }
+        header[type] = parsedUrl.href;
+        // A JKU resolver commonly selects a key by kid. When a generated
+        // public JWK has a matching kid, carry it into the header so the
+        // published JWKS can actually select the test key.
+        if (opts.kid != null && opts.kid !== "") header.kid = String(opts.kid);
         task = signToken(header, payload, opts.key, { alg: opts.alg });
       } else if (type === "kid") {
         if (opts.kid == null || opts.kid === "") return Promise.resolve({ error: "Supply the kid value." });
@@ -784,7 +847,10 @@
     var out = [];
     function add(s) { out.push(s); }
 
-    if (/^RS(256|384|512)$/.test(alg)) {
+    // RSA-PSS keys are RSA public keys too. A verifier that improperly lets
+    // an attacker switch PS* (or RS*) to HMAC can suffer the same public-key
+    // as secret confusion; do not hide that test vector for PS-signed tokens.
+    if (/^(RS|PS)(256|384|512)$/.test(alg)) {
       add({
         id: "alg-confusion",
         severity: "critical",
@@ -887,8 +953,8 @@
       refineLabel: "Refine in Test Variants",
       needsUrl: true,
       howTo: [
-        "The payload is self-signed with a local throwaway RSA pair and points jku/x5u at your URL — host the shown public JWK there (JWKS form: {\"keys\":[ … ]}).",
-        "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — and an inbound hit on your endpoint proves the server fetched an untrusted key URL. 401/403 with no inbound hit means URL fetching is pinned or blocked.",
+          "For jku, host the shown public JWK as a JWKS ({\"keys\":[ … ]}) and keep its kid equal to the token header. For x5u, host an X.509 certificate whose public key matches the signing key; a JWK is not an x5u response. The tool does not create or host certificates.",
+          "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — and an inbound hit on your endpoint proves the server fetched an untrusted key URL. 401/403 with no inbound hit means URL fetching is pinned or blocked.",
         "Never point this at a host you do not control; CyberBuddy itself makes no request to the URL."
       ]
     });
@@ -999,7 +1065,7 @@
       if (kind === "embedded-jwk") {
         return buildVariant(base, kind, { publicJwk: opts.publicJwk, alg: signAlg, key: opts.key });
       }
-      return buildVariant(base, kind, { url: opts.url, alg: signAlg, key: opts.key });
+      return buildVariant(base, kind, { url: opts.url, alg: signAlg, key: opts.key, kid: opts.kid });
     }
     if (kind === "kid") {
       try {

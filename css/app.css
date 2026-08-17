@@ -1851,7 +1851,11 @@ html.js .tool-card-icon svg .dashed {
   stroke-dasharray: 3 3 !important; stroke-dashoffset: 0 !important;
   animation: none !important;
 }
-html.js .tool-card.reveal.in .tool-card-icon svg * {
+/* The catalog uses the same icon component as hub cards. Its cards are
+   `.tool-catalog-card`, so include them in the reveal selector; otherwise
+   their stroked SVG paths remain at the initial dash offset and look empty. */
+html.js .tool-card.reveal.in .tool-card-icon svg *,
+html.js .tool-catalog-card.reveal.in .tool-card-icon svg * {
   animation: iconDraw 0.9s ease-out 0.1s forwards;
 }
 @keyframes iconDraw { to { stroke-dashoffset: 0; } }
@@ -2581,7 +2585,8 @@ html.js .reveal.in,
 
 .jwt-verify-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 14px 0; }
 .jwt-export-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-.jwt-pin-alg { font-size: 0.82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.jwt-pin-alg { font-size: 0.82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.jwt-pin-alg .jwt-select { width: auto; min-width: 185px; padding: 7px 28px 7px 9px; font-size: 0.78rem; }
 .jwt-verify-result {
   margin-top: 8px; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid;
 }
@@ -2918,4 +2923,52 @@ html.js .reveal.in,
     --surface-2: #ffffff;
   }
   :focus-visible { outline-width: 3px; }
+}
+
+/* CORS method-aware coverage: one control per row at every viewport. */
+.cors-method-picker { padding: 16px; }
+.cors-method-picker .method-picker-grid {
+  display: grid;
+  gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 14px 0 8px;
+}
+.cors-method-picker .method-picker-grid label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  min-width: 0;
+}
+.cors-method-picker .method-picker-grid input[type="checkbox"] {
+  margin-top: 4px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.cors-method-picker .method-picker-grid input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.cors-method-picker .method-picker-grid input[type="text"]:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.cors-method-picker .method-picker-grid code {
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }

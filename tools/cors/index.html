@@ -86,6 +86,7 @@
     <div class="field">
       <label for="url">Target URL</label>
       <input id="url" type="url" placeholder="https://example.com/api" autocomplete="url" spellcheck="false" required aria-describedby="urlError" />
+      <p id="urlHint" class="form-hint">Enter the exact API path you are authorized to test, not just <code>https://host/</code>.</p>
       <p id="urlError" class="field-error hidden" role="alert"></p>
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>

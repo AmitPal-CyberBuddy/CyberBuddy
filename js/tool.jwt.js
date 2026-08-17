@@ -207,9 +207,9 @@
     updateVariantBase();
     renderVapt(parsed);
 
-    // Reflect the token alg in the optional pin label.
-    var pinLabel = $("jwtPinAlgLabel");
-    if (pinLabel) pinLabel.textContent = parsed.header.alg;
+    // Do not silently use the token's header as an expected-algorithm policy.
+    // The analyst may choose an issuer-configured expected value in the
+    // verification panel; Auto remains deliberately explicit.
 
     // Auto-run claim validation so the analyst sees time/iss/aud state
     // without having to supply a key.
@@ -274,7 +274,8 @@
       sub: $("jwtExpSub").value.trim() || undefined,
       clockTolerance: parseInt($("jwtSkew").value, 10) || 0
     };
-    if ($("jwtPinAlg").checked) opts.alg = lastParsed.header.alg;
+    var expectedAlg = $("jwtExpectedAlg").value;
+    if (expectedAlg) opts.alg = expectedAlg;
 
     var btn = $("jwtVerify");
     if (btn) { btn.disabled = true; btn.textContent = "Verifying…"; }
@@ -1223,6 +1224,10 @@
       vaptRsaBusy = null;
       if (!res || res.error) return { error: (res && res.error) || "RSA test-pair generation failed." };
       varGen = res;
+      // JWKS resolvers commonly choose a key by kid. Bind a fresh local kid
+      // to the generated public JWK and carry the same value into JKU test
+      // headers, so the hosted JWKS can select the key that signed the token.
+      if (!res.publicJwk.kid) res.publicJwk.kid = "cb-" + J.randomJti();
       var pub = $("jwtVarGenPub");
       if (pub) pub.value = prettyJson(res.publicJwk);
       var st = $("jwtVarGenStatus");
@@ -1290,6 +1295,7 @@
       if (pairJku.error) { vaptStatus(pairJku.error); return; }
       opts.alg = pairJku.alg;
       opts.key = pairJku.privateKey;
+      opts.kid = pairJku.publicJwk && pairJku.publicJwk.kid;
     } else if (sug.payload === "embedded-jwk") {
       var pairEmb = await ensureVaptRsaPair();
       if (pairEmb.error) { vaptStatus(pairEmb.error); return; }

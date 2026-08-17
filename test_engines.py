@@ -3546,6 +3546,32 @@ console.log(JSON.stringify({ ok: r.ok, alg: r.token && r.token.header.alg,
             self.assertFalse(out["ok"], name + " should not parse")
             self.assertTrue(out["err"], name)
 
+    def test_engine_rejects_noncanonical_compact_jws_and_critical_headers(self):
+        """JWT parsing is strict: compact JWS uses unpadded base64url, JSON
+        objects for both header/payload, and no unimplemented crit extension."""
+        cases = {
+            "standard-base64": "eyJhbGciOiJIUzI1NiJ9+.eyJzdWIiOiJhIn0.sig",
+            "padded": "eyJhbGciOiJIUzI1NiJ9=.eyJzdWIiOiJhIn0.sig",
+            "payload-array": "eyJhbGciOiJIUzI1NiJ9.W10.sig",
+            "critical": "eyJhbGciOiJIUzI1NiIsImNyaXQiOlsiZXhwIl19.eyJzdWIiOiJhIn0.sig",
+        }
+        for name, token in cases.items():
+            out = self._run_engine(
+                "const r=CyberBuddyJwt.tryParseToken(%s); console.log(JSON.stringify({ok:r.ok,error:r.error}));"
+                % json.dumps(token))
+            self.assertFalse(out["ok"], name)
+            self.assertTrue(out["error"], name)
+
+    def test_claim_validation_rejects_malformed_registered_claims(self):
+        out = self._run_engine("""
+const r = CyberBuddyJwt.validateClaims({exp:'4102444800', nbf:20, iat:30,
+  iss:7, sub:[], aud:['api', 7], jti:9});
+console.log(JSON.stringify({valid:r.valid, codes:r.errors.map(e=>e.code), messages:r.errors.map(e=>e.message)}));
+""")
+        self.assertFalse(out["valid"])
+        for code in ("exp", "iss", "sub", "aud", "jti"):
+            self.assertIn(code, out["codes"])
+
     def test_engine_rejects_alg_none_even_with_signature(self):
         # A token that declares alg:none must not verify.
         out = self._run_engine("""
@@ -4196,8 +4222,10 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertIn('id="jwtVerify"', page)
         for kid in ("jwtHeader", "jwtPayload", "jwtTimeline", "jwtClaims",
                     "jwtObservations", "jwtSecret", "jwtPem", "jwtJwk", "jwtJwks",
-                    "jwtExpIss", "jwtExpAud", "jwtExpSub", "jwtSkew"):
+                    "jwtExpIss", "jwtExpAud", "jwtExpSub", "jwtSkew", "jwtExpectedAlg"):
             self.assertIn('id="%s"' % kid, page, kid)
+        self.assertIn("Expected algorithm", page)
+        self.assertNotIn('id="jwtPinAlg"', page)
         # The verify button is enabled (not a preview).
         self.assertNotIn('id="jwtVerify" disabled', page)
 
@@ -4485,6 +4513,22 @@ class JwtVaptTests(unittest.TestCase):
         self.assertIn("RS-to-HMAC", out["confLabel"])
         self.assertFalse(out["hasSecretTest"])
 
+    def test_ps_token_also_offers_rsa_to_hmac_confusion_vector(self):
+        """PS* uses an RSA public key; header-driven fallback to HMAC is the
+        same class of verifier mistake as RS* → HS* confusion."""
+        out = self._run_engine("""
+(async () => {
+  const pair = await CyberBuddyJwt.generateRsaTestPair('PS256');
+  const s = await CyberBuddyJwt.signToken({alg:'PS256',typ:'JWT'}, {sub:'a'}, pair.privateKey, {alg:'PS256'});
+  const recs = CyberBuddyJwt.vaptRecommendations(CyberBuddyJwt.parseToken(s.token));
+  const c = recs.find(r => r.id === 'alg-confusion');
+  console.log(JSON.stringify({has:!!c, severity:c && c.severity, title:c && c.title}));
+})();
+""")
+        self.assertTrue(out["has"], out)
+        self.assertEqual(out["severity"], "critical")
+        self.assertIn("PS256", out["title"])
+
     def test_alg_none_suggested_for_every_signed_token(self):
         for payload in ({"sub": "a"}, {"x": 1}):
             recs = self._recs(self._hs_token(payload))
@@ -4642,19 +4686,35 @@ const crypto2 = require('crypto');
   const pair = await CyberBuddyJwt.generateRsaTestPair('RS256');
   const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
   const jku = await CyberBuddyJwt.buildVaptPayload(parsed, 'jku',
-    {url:'https://attacker.example/jwks.json', alg:'RS256', key: pair.privateKey});
+    {url:'https://attacker.example/jwks.json', alg:'RS256', key: pair.privateKey, kid:'test-jwks-key'});
   const x5u = await CyberBuddyJwt.buildVaptPayload(parsed, 'x5u',
-    {url:'https://attacker.example/c.pem', alg:'RS256', key: pair.privateKey});
+    {url:'https://attacker.example/c.pem', alg:'RS256', key: pair.privateKey, kid:'test-cert-key'});
   const dec = (t) => JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(t.split('.')[0])));
   const check = await CyberBuddyJwt.verifyToken(jku.token, pub, {alg:'RS256'});
   console.log(JSON.stringify({jku: dec(jku.token).jku, x5u: dec(x5u.token).x5u,
+    jkuKid: dec(jku.token).kid, x5uKid: dec(x5u.token).kid,
     alg: dec(jku.token).alg, verifies: check.valid}));
 })();
 """ % json.dumps(token))
         self.assertEqual(out["jku"], "https://attacker.example/jwks.json")
         self.assertEqual(out["x5u"], "https://attacker.example/c.pem")
+        self.assertEqual(out["jkuKid"], "test-jwks-key")
+        self.assertEqual(out["x5uKid"], "test-cert-key")
         self.assertEqual(out["alg"], "RS256")
         self.assertTrue(out["verifies"])
+
+    def test_url_header_payloads_require_absolute_http_urls(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const bad = await CyberBuddyJwt.buildVaptPayload(parsed, 'jku', {url:'javascript:alert(1)', alg:'RS256', key:{}});
+  const relative = await CyberBuddyJwt.buildVariant(parsed, 'x5u', {url:'/cert.pem', alg:'HS256', key:'secret'});
+  console.log(JSON.stringify({bad:bad.error, relative:relative.error}));
+})();
+""" % json.dumps(token))
+        self.assertIn("http or https", out["bad"])
+        self.assertIn("absolute HTTP(S) URL", out["relative"])
 
     def test_payload_requires_base_token_and_known_kind(self):
         out = self._run_engine("""

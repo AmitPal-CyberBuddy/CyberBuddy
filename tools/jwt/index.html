@@ -245,9 +245,17 @@
 
           <div class="jwt-verify-actions">
             <button type="button" id="jwtVerify" class="btn btn-primary">Verify signature &amp; claims</button>
-            <label class="jwt-pin-alg"><input type="checkbox" id="jwtPinAlg" />
-              Pin algorithm to token header (<code id="jwtPinAlgLabel">—</code>)</label>
+            <label class="jwt-pin-alg" for="jwtExpectedAlg">Expected algorithm
+              <select id="jwtExpectedAlg" class="jwt-select">
+                <option value="">Auto from compatible supplied key</option>
+                <option value="HS256">HS256</option><option value="HS384">HS384</option><option value="HS512">HS512</option>
+                <option value="RS256">RS256</option><option value="RS384">RS384</option><option value="RS512">RS512</option>
+                <option value="PS256">PS256</option><option value="PS384">PS384</option><option value="PS512">PS512</option>
+                <option value="ES256">ES256</option><option value="ES384">ES384</option>
+              </select>
+            </label>
           </div>
+          <p class="form-hint">Set an expected algorithm when your issuer configuration defines one. “Auto” still rejects an incompatible key family, but an explicit value also rejects a different token header algorithm.</p>
 
           <div id="jwtVerifyResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
         </article>
@@ -533,7 +541,7 @@
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">JKU / X5U</h3>
-          <p>Points the header at an analyst-controlled URL (you host the key set). No request is made by the tool.</p>
+          <p><code>jku</code> must serve a matching JWKS; <code>x5u</code> must serve a matching X.509 certificate. Supply the matching signing key and analyst-controlled HTTP(S) URL — the tool does not fetch or host either resource.</p>
           <div class="jwt-btn-row">
             <select id="jwtVarJkuX5u" aria-label="Header field">
               <option value="jku">jku</option>
