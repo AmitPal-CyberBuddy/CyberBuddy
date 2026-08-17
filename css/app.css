@@ -1851,7 +1851,11 @@ html.js .tool-card-icon svg .dashed {
   stroke-dasharray: 3 3 !important; stroke-dashoffset: 0 !important;
   animation: none !important;
 }
-html.js .tool-card.reveal.in .tool-card-icon svg * {
+/* The catalog uses the same icon component as hub cards. Its cards are
+   `.tool-catalog-card`, so include them in the reveal selector; otherwise
+   their stroked SVG paths remain at the initial dash offset and look empty. */
+html.js .tool-card.reveal.in .tool-card-icon svg *,
+html.js .tool-catalog-card.reveal.in .tool-card-icon svg * {
   animation: iconDraw 0.9s ease-out 0.1s forwards;
 }
 @keyframes iconDraw { to { stroke-dashoffset: 0; } }
