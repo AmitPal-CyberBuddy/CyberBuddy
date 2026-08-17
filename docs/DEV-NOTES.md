@@ -883,3 +883,19 @@ and the secret-test worker honest:
   as Google returns it (base64) while Python prints a key summary. Scoring
   only tests *presence*, so the parity test compares checks/score/grade — not
   the DNSKEY string format.
+
+## CORS fallback honesty (CORS-accuracy)
+
+- The Python CORS engine must send **three** probes: `ATTACKER_A`,
+  `ATTACKER_B`, and `Origin: null`. A reflected `null` origin is HIGH with
+  credentials and MEDIUM without; do not mistake it for a fixed ACAO value.
+  Keep the null-origin test in the same mocked response sequence as the two
+  attacker origins.
+- Browser JavaScript cannot forge `Origin`, so Pages cannot prove arbitrary or
+  null-origin reflection. If its own concrete origin is echoed with
+  `Access-Control-Allow-Credentials: true`, report MEDIUM and explicitly say
+  that arbitrary reflection cannot be ruled out and `python3 server.py` is
+  needed for two-origin proof. Never render that observation as CORS PASS.
+- Share URLs are not reports. Per-tool and suite share controls were removed;
+  exports and the suite JSON download are the shareable artifacts. Keep any
+  shortcut/help or browser test from promising a copied site link.

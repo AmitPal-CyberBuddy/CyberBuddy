@@ -112,15 +112,9 @@ const { BASE, VIEWPORTS, launch, newPage, scanHeaders, sleep, reporter } = requi
         `kbd-dialog ${vn} ${theme} ${JSON.stringify(m)}`
       );
 
-      /* ---- Share control gives feedback --------------------------------- */
-      m = await page.evaluate(async () => {
-        const btn = document.getElementById("shareLink");
-        const before = btn.textContent;
-        btn.click();
-        await new Promise((r) => setTimeout(r, 400));
-        return { changed: btn.textContent !== before, text: btn.textContent.slice(0, 24) };
-      });
-      r.check(m.changed, `share-control ${vn} ${theme} ${JSON.stringify(m)}`);
+      /* Per-tool share buttons were removed: URLs are not report artifacts. */
+      m = await page.evaluate(() => !document.getElementById("shareLink"));
+      r.check(m, `no-misleading-share-control ${vn} ${theme}`);
 
       await page.close();
     }

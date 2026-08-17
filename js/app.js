@@ -385,7 +385,8 @@ function toolsMenu(base, uid) {
     // preview today; the branch stays so the next one lands correctly.
     const label = t.status === "preview" ? "preview" : t.status;
     return '<a class="nav-menu-item' + (active ? " active" : "") + '" href="' + base + t.href + '">' +
-      t.label + '<span class="nav-status ' + t.status + '">' + label + "</span></a>";
+      '<span class="nav-menu-label"><span class="nav-menu-icon" aria-hidden="true">' + ICONS[t.icon] + '</span>' + esc(t.label) + '</span>' +
+      '<span class="nav-status ' + t.status + '">' + label + "</span></a>";
   };
 
   // Group live tools by category (assess vs local) so the menu stays small
@@ -3762,11 +3763,15 @@ async function gradeClickjackingLive(url) {
   return gradeClickjackingFromMap(url, looked.status_code, looked.final_url || url, looked.headers, looked.source);
 }
 
-function browserCorsRisk(acao, acac) {
-  // A single browser Origin cannot establish reflection. The only measured
-  // misconfiguration promoted here is the invalid wildcard+credentials pair.
-  return acao === "*" && String(acac || "").trim().toLowerCase() === "true"
-    ? "medium" : "low";
+function browserCorsRisk(acao, acac, origin) {
+  const credentials = String(acac || "").trim().toLowerCase() === "true";
+  // A concrete echo plus credentials is suspicious evidence, not two-origin
+  // proof; never call it PASS from the hosted single-origin fallback.
+  if (acao === origin && origin && origin !== "null" && credentials) return "medium";
+  // A null-origin browser context is uncommon, but when present it can observe
+  // the explicit null bypass just like the Python probe.
+  if (acao === "null" && origin === "null") return credentials ? "high" : "medium";
+  return acao === "*" && credentials ? "medium" : "low";
 }
 
 async function probeCorsLive(url) {
@@ -3779,48 +3784,35 @@ async function probeCorsLive(url) {
     const acao = res.headers.get("access-control-allow-origin");
     const acac = res.headers.get("access-control-allow-credentials");
     const vary = res.headers.get("vary") || "";
+    const credentials = String(acac || "").trim().toLowerCase() === "true";
+    const concreteReflection = acao === origin && origin !== "null" && credentials;
+    const nullReflection = acao === "null" && origin === "null";
     if (!acao) {
       checks.push(check("Access-Control-Allow-Origin", "ok", "This origin cannot read the response. Restrictive and safe.", "ACAO: (absent)", 0));
     } else if (acao === "*") {
       checks.push(check("Access-Control-Allow-Origin", "info", "Any website can read this resource. Fine only for fully public data.", "ACAO: *", 0));
+    } else if (nullReflection) {
+      checks.push(check("Access-Control-Allow-Origin: null", "weak", "This null-origin browser context was allowed. Opaque origins must not be trusted.", "ACAO: null", 0));
+    } else if (concreteReflection) {
+      checks.push(check("Access-Control-Allow-Origin", "weak", "This concrete browser Origin was echoed with credentials. Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin proof.", "ACAO: " + acao + "   ACAC: true", 0));
     } else {
       checks.push(check("Access-Control-Allow-Origin", "info", "This origin is allowed. Confirm it is an intentional allowlist, not a reflection of every caller. A second-origin reflection proof needs the Python engine.", "ACAO: " + acao, 0));
     }
-    if (acac && acac.trim().toLowerCase() === "true") {
-      checks.push(check("Allow-Credentials", "info", "The server is willing to allow credentials for CORS reads.", "ACAC: " + acac, 0));
-    }
-    if (acao && acao !== "*" && !/origin/i.test(vary)) {
-      checks.push(check("Vary: Origin", "weak", "Origin-specific CORS headers without Vary: Origin. Shared caches may reuse one caller’s policy.", "Vary: " + (vary || "(absent)"), 0));
-    } else if (/origin/i.test(vary)) {
-      checks.push(check("Vary: Origin", "ok", "Cached responses are partitioned by caller origin.", "Vary: " + vary, 0));
-    }
-    // One browser Origin cannot prove arbitrary reflection. Keep a missing
-    // Vary recommendation on its own row, but do not promote that secondary
-    // cache gap into a measured MEDIUM CORS outcome.
+    if (credentials) checks.push(check("Allow-Credentials", "info", "The server is willing to allow credentials for CORS reads.", "ACAC: " + acac, 0));
+    if (acao && acao !== "*" && !/origin/i.test(vary)) checks.push(check("Vary: Origin", "weak", "Origin-specific CORS headers without Vary: Origin. Shared caches may reuse one caller’s policy.", "Vary: " + (vary || "(absent)"), 0));
+    else if (/origin/i.test(vary)) checks.push(check("Vary: Origin", "ok", "Cached responses are partitioned by caller origin.", "Vary: " + vary, 0));
     return {
-      url: url, final_url: res.url || url, status_code: status,
-      checks: checks,
-      risk: browserCorsRisk(acao, acac),
-      summary: "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe only — use server.py for a genuine two-origin reflection proof.",
-      headers: {
-        "access-control-allow-origin": acao || "",
-        "access-control-allow-credentials": acac || "",
-        "vary": vary || ""
-      },
-      origins_tested: [origin],
-      _source: "browser"
+      url: url, final_url: res.url || url, status_code: status, checks: checks,
+      risk: browserCorsRisk(acao, acac, origin),
+      summary: concreteReflection
+        ? "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin proof."
+        : "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe only — use server.py for a genuine two-origin reflection proof.",
+      headers: { "access-control-allow-origin": acao || "", "access-control-allow-credentials": acac || "", "vary": vary || "" },
+      origins_tested: [origin], _source: "browser"
     };
   } catch (err) {
     checks.push(check("Fetch result", "ok", "The browser blocked the cross-origin read, or the request failed. That usually means this origin is not allowed.", String(err && err.message ? err.message : err), 0));
-    return {
-      url: url, final_url: url, status_code: null,
-      checks: checks,
-      risk: "low",
-      summary: "This origin cannot read the target.",
-      headers: {},
-      origins_tested: [origin],
-      _source: "browser"
-    };
+    return { url: url, final_url: url, status_code: null, checks: checks, risk: "low", summary: "This origin cannot read the target.", headers: {}, origins_tested: [origin], _source: "browser" };
   }
 }
 
@@ -4102,6 +4094,42 @@ async function apiDns(domain) {
 
 /* ---------- Hub suite --------------------------------------------------- */
 
+function suiteResults(suite) {
+  return (suite.active || []).map((key) => ({ tool: key, report: suite[key] })).filter((item) => item.report);
+}
+
+function suiteExportEnvelope(suite) {
+  return {
+    schema: "cyberbuddy-suite-report/v1",
+    generated_at: new Date().toISOString(),
+    target: redactUrlCredentials(suite.url),
+    tools: suiteResults(suite).map((item) => ({ tool: item.tool, report: reportExportEnvelope(item.report) }))
+  };
+}
+
+function suiteMarkdown(suite) {
+  return suiteResults(suite).map((item) => toMarkdown(item.report)).join("\n\n");
+}
+
+function suiteCsv(suite) {
+  const rows = suiteResults(suite).map((item) => {
+    const csv = toCsv(item.report).replace(/^\uFEFF/, "").split("\r\n");
+    return csv.slice(1).map((line) => csvSafe(item.tool) + "," + line);
+  }).flat();
+  return "\uFEFF\"suite_tool\",\"record_type\",\"name\",\"status\",\"severity\",\"assessment\",\"evidence\",\"recommendation\"\r\n" + rows.join("\r\n");
+}
+
+function suiteStandaloneHtml(suite) {
+  const reports = suiteResults(suite);
+  if (!reports.length) return "";
+  // Keep the individual export's hardened standalone shell, then append every
+  // selected report as readable Markdown. The JSON remains the lossless form.
+  const first = toStandaloneHtml(reports[0].report);
+  const appendix = reports.slice(1).map((item) =>
+    "<h2>" + esc(item.tool) + " report</h2><pre>" + esc(toMarkdown(item.report)) + "</pre>").join("");
+  return first.replace("</body></html>", appendix + "</body></html>");
+}
+
 function initSuite() {
   const input = document.getElementById("suiteUrl");
   const go = document.getElementById("suiteGo");
@@ -4111,8 +4139,8 @@ function initSuite() {
 
   let lastSuite = null;
   const toolbar = document.getElementById("suiteToolbar");
-  const shareBtn = document.getElementById("suiteShare");
   const copyBtn = document.getElementById("suiteCopy");
+  const downloadMenu = document.getElementById("suiteDownloadMenu");
   const toolInputs = Array.from(document.querySelectorAll('input[name="suiteTool"]'));
   const pickerError = document.getElementById("suitePickerError");
   const selectAll = document.getElementById("suiteSelectAll");
@@ -4239,19 +4267,26 @@ function initSuite() {
 
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
-  if (shareBtn) {
-    shareBtn.addEventListener("click", async () => {
-      const ok = await copyText(window.location.href);
-      flashBtn(shareBtn, ok, "Link copied ✓");
-    });
-  }
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
       if (!lastSuite) return;
-      const parts = (lastSuite.active || []).map((key) => toMarkdown(lastSuite[key]));
-      const ok = await copyText(parts.join("\n\n"));
+      const ok = await copyText(suiteMarkdown(lastSuite));
       flashBtn(copyBtn, ok, "Suite copied ✓");
     });
+  }
+  if (downloadMenu) {
+    downloadMenu.querySelectorAll("[data-suite-export]").forEach((btn) => btn.addEventListener("click", () => {
+      if (!lastSuite) { flashBtn(btn, false, "Run suite first"); return; }
+      const kind = btn.getAttribute("data-suite-export");
+      const exports = {
+        md: [suiteMarkdown(lastSuite), "text/markdown;charset=utf-8", "md", "Suite Markdown saved ✓"],
+        json: [JSON.stringify(suiteExportEnvelope(lastSuite), null, 2), "application/json;charset=utf-8", "json", "Suite JSON saved ✓"],
+        csv: [suiteCsv(lastSuite), "text/csv;charset=utf-8", "csv", "Suite CSV saved ✓"],
+        html: [suiteStandaloneHtml(lastSuite), "text/html;charset=utf-8", "html", "Suite HTML saved ✓"]
+      }[kind];
+      downloadTextReport(exports[0], exports[1], "cyberbuddy-suite", lastSuite, exports[2], btn, exports[3]);
+      downloadMenu.removeAttribute("open");
+    }));
   }
   initSuggestedTargets();
   const initialParams = new URLSearchParams(location.search);
@@ -4773,19 +4808,6 @@ function attestedClickjacking(base, verdict) {
     evidence: "Visual confirmation at " + fmtStampUtc()
   }];
   return data;
-}
-
-/* ---------- Share link (tool pages) ------------------------------------ */
-/* Copies the current tool URL (with ?url= param) to the clipboard so
-   pentesters can drop a shareable link straight into a report. */
-
-function initShareButton() {
-  const btn = document.getElementById("shareLink");
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
-    const ok = await copyText(window.location.href);
-    flashBtn(btn, ok, "Link copied ✓");
-  });
 }
 
 /* ---------- Recent scans (hub page) ----------------------------------- */

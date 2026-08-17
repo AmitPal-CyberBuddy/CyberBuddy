@@ -29,7 +29,7 @@ from clickjacking_validator import (
     score,
     validate_target,
 )
-from cors_validator import ATTACKER_A, ATTACKER_B, scan_cors
+from cors_validator import ATTACKER_A, ATTACKER_B, NULL_ORIGIN, scan_cors
 from csp_checker import grade_csp_from_map, parse_policy, split_policies
 from security_headers import (
     check_coep,
@@ -189,10 +189,11 @@ class ScoreTests(unittest.TestCase):
 
 
 class OutcomeRollupTests(unittest.TestCase):
-    def _cors_result(self, first_headers, second_headers):
+    def _cors_result(self, first_headers, second_headers, null_headers=None):
         responses = [
             (200, "https://api.example.test/data", first_headers),
             (200, "https://api.example.test/data", second_headers),
+            (200, "https://api.example.test/data", null_headers or {}),
         ]
         with (
             patch("cors_validator.validate_target"),
@@ -224,6 +225,15 @@ class OutcomeRollupTests(unittest.TestCase):
         reflected_a["access-control-allow-credentials"] = "true"
         reflected_b["access-control-allow-credentials"] = "true"
         self.assertEqual(self._cors_result(reflected_a, reflected_b).risk, "high")
+
+    def test_null_origin_reflection_is_medium_or_high(self):
+        null_only = {"access-control-allow-origin": NULL_ORIGIN, "vary": "Origin"}
+        medium = self._cors_result({}, {}, null_only)
+        self.assertEqual(medium.risk, "medium")
+        self.assertIn("null Origin", medium.summary)
+        self.assertIn("Access-Control-Allow-Origin: null", {c.name for c in medium.checks})
+        null_only["access-control-allow-credentials"] = "true"
+        self.assertEqual(self._cors_result({}, {}, null_only).risk, "high")
 
     def test_strong_csp_with_reporting_only_gaps_stays_low(self):
         policy = (
@@ -673,12 +683,18 @@ console.log(JSON.stringify(values.map((value) => ({ value, ...urlValidation(valu
     def test_single_origin_browser_cors_ignores_vary_as_headline_risk(self):
         result = self._run_app_js(r'''
 console.log(JSON.stringify({
-  fixedAllowlist: browserCorsRisk("https://trusted.example", "true"),
-  wildcardCredentials: browserCorsRisk("*", "true"),
-  wildcardPublic: browserCorsRisk("*", "")
+  fixedAllowlist: browserCorsRisk("https://trusted.example", "true", "https://cyberbuddy.example"),
+  reflectedCredentialed: browserCorsRisk("https://cyberbuddy.example", "true", "https://cyberbuddy.example"),
+  nullCredentialed: browserCorsRisk("null", "true", "null"),
+  nullPublic: browserCorsRisk("null", "", "null"),
+  wildcardCredentials: browserCorsRisk("*", "true", "https://cyberbuddy.example"),
+  wildcardPublic: browserCorsRisk("*", "", "https://cyberbuddy.example")
 }));
 ''')
         self.assertEqual(result["fixedAllowlist"], "low")
+        self.assertEqual(result["reflectedCredentialed"], "medium")
+        self.assertEqual(result["nullCredentialed"], "high")
+        self.assertEqual(result["nullPublic"], "medium")
         self.assertEqual(result["wildcardCredentials"], "medium")
         self.assertEqual(result["wildcardPublic"], "low")
 
@@ -2600,6 +2616,21 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("apiScan", body)
         self.assertIn("apiCsp", body)
         self.assertNotIn("csrf", body.lower())
+
+    def test_suite_exports_and_menu_icons_are_report_artifacts(self):
+        app = self._app()
+        self.assertIn("suiteExportEnvelope", app)
+        self.assertIn("suiteMarkdown", app)
+        self.assertIn("suiteCsv", app)
+        self.assertIn("suiteStandaloneHtml", app)
+        self.assertIn("ICONS[t.icon]", app)
+        self.assertNotIn("initShareButton", app)
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Download suite report", hub)
+        for format_name in ("Markdown", "JSON", "CSV", "HTML"):
+            self.assertIn("Download " + format_name, hub)
+        for slug in ("clickjacking", "headers", "cors", "csp", "dns"):
+            self.assertNotIn("shareLink", (ROOT / "tools" / slug / "index.html").read_text(encoding="utf-8"))
 
     def test_catalog_page_uses_established_shell(self):
         """The catalog keeps the shared theme/meta CSP contract like every
