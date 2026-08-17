@@ -21,6 +21,7 @@ from clickjacking_validator import fetch_headers, normalize_url, redact_userinfo
 
 ATTACKER_A = "https://evil.cyberbuddy.test"
 ATTACKER_B = "https://probe.cyberbuddy.test"
+NULL_ORIGIN = "null"
 
 
 @dataclass
@@ -86,6 +87,10 @@ def scan_cors(
             url, timeout=timeout, insecure=insecure, allow_private=allow_private,
             extra_headers={"Origin": ATTACKER_B},
         )
+        _code_null, _final_null, hdr_null = fetch_headers(
+            url, timeout=timeout, insecure=insecure, allow_private=allow_private,
+            extra_headers={"Origin": NULL_ORIGIN},
+        )
     except Exception as exc:  # noqa: BLE001
         return CorsResult(
             url=safe_url, final_url=safe_url, status_code=None,
@@ -95,15 +100,24 @@ def scan_cors(
 
     acao_a = _acao(hdr_a)
     acao_b = _acao(hdr_b)
-    creds = _acac(hdr_a) or _acac(hdr_b)
-    vary = _vary(hdr_a) or _vary(hdr_b)
+    acao_null = _acao(hdr_null)
+    creds = _acac(hdr_a) or _acac(hdr_b) or _acac(hdr_null)
+    vary = _vary(hdr_a) or _vary(hdr_b) or _vary(hdr_null)
     checks: list[Check] = []
 
     reflected = acao_a == ATTACKER_A and acao_b == ATTACKER_B
     wildcard = acao_a == "*" and acao_b == "*"
-    both_absent = acao_a is None and acao_b is None
+    null_reflected = acao_null == NULL_ORIGIN
+    both_absent = acao_a is None and acao_b is None and acao_null is None
 
-    if both_absent:
+    if null_reflected:
+        checks.append(Check(
+            "Access-Control-Allow-Origin: null", "weak",
+            "The server allows the opaque null Origin. Sandboxed documents and data URLs can use it to read responses" +
+            (" with credentials." if creds else "."),
+            evidence=f"Origin null → ACAO: {acao_null}   ACAC: {'true' if creds else '(absent)'}",
+        ))
+    elif both_absent:
         checks.append(Check(
             "Access-Control-Allow-Origin", "ok",
             "No ACAO for either probe origin — cross-origin reads are blocked. Restrictive and safe.",
@@ -154,7 +168,7 @@ def scan_cors(
             evidence="ACAC: true",
         ))
 
-    origin_specific = (acao_a not in (None, "*")) or (acao_b not in (None, "*"))
+    origin_specific = (acao_a not in (None, "*")) or (acao_b not in (None, "*")) or (acao_null == NULL_ORIGIN)
     if origin_specific and not re_origin_in_vary(vary):
         checks.append(Check(
             "Vary: Origin", "weak",
@@ -179,7 +193,13 @@ def scan_cors(
     # cache-hardening finding. A fixed ACAO without Vary: Origin still needs
     # remediation, but two different attacker Origins were *not* reflected;
     # that recommendation must not turn a restrictive result into MEDIUM.
-    if reflected and creds:
+    if null_reflected and creds:
+        risk = "high"
+        summary = "The server reflects the null Origin and allows credentials; opaque-origin documents can read authenticated responses."
+    elif null_reflected:
+        risk = "medium"
+        summary = "The server reflects the null Origin; opaque-origin documents can read this response."
+    elif reflected and creds:
         risk = "high"
         summary = "Arbitrary Origin reflection with credentials was confirmed across two probe Origins."
     elif reflected:
@@ -211,6 +231,8 @@ def scan_cors(
             interesting[key] = hdr_a[key]
         elif key in hdr_b:
             interesting[key] = hdr_b[key]
+        elif key in hdr_null:
+            interesting[key] = hdr_null[key]
 
     return CorsResult(
         url=url,
@@ -220,7 +242,7 @@ def scan_cors(
         risk=risk,
         summary=summary,
         headers=interesting,
-        origins_tested=[ATTACKER_A, ATTACKER_B],
+        origins_tested=[ATTACKER_A, ATTACKER_B, NULL_ORIGIN],
     )
 
 

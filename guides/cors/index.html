@@ -138,14 +138,14 @@
   <article class="card reveal">
     <ol>
       <li>Open the <a href="../../tools/cors/">CORS Validator</a> and paste an endpoint you are authorized to test — an API path, not the marketing homepage.</li>
-      <li>Press <strong>Probe</strong>. It sends two read-only <code>GET</code>s with two <em>different</em> attacker origins.</li>
+      <li>Press <strong>Probe</strong>. The Python engine sends read-only <code>GET</code>s with two <em>different</em> attacker origins and <code>Origin: null</code>; the hosted fallback can only observe this page's single origin.</li>
       <li>Compare the two <code>Access-Control-Allow-Origin</code> values. Both echoed back means arbitrary reflection, and two distinct probes rule out a coincidental allowlist hit.</li>
       <li>Check <code>Access-Control-Allow-Credentials</code>. That flag is what turns a permissive policy into readable authenticated data.</li>
       <li>Export the report card — it carries both probe origins, the raw headers, the final URL, the status and the timestamp.</li>
     </ol>
     <p>
       The risk it prints follows the observed outcome: reflection
-      <em>with</em> credentials is <strong>High</strong>; reflection alone, or
+      <em>with</em> credentials — including a reflected <code>null</code> origin — is <strong>High</strong>; reflection alone, a reflected <code>null</code> origin without credentials, or
       a wildcard alongside credentials, is <strong>Medium</strong>; a wildcard
       without credentials or a fixed <code>Access-Control-Allow-Origin</code>
       is <strong>Low</strong>. <code>Vary: Origin</code> is reported as its own

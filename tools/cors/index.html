@@ -70,7 +70,7 @@
   <script src="../../js/tool.cors.js?v=20260816f" defer></script>
   <script src="../../js/boot.js?v=20260816f" defer></script>
 </head>
-<body data-page="/tools/cors/" data-init="initCors initShareButton">
+<body data-page="/tools/cors/" data-init="initCors">
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 03</p>
@@ -89,9 +89,8 @@
       <p id="urlError" class="field-error hidden" role="alert"></p>
     </div>
     <button id="go" type="button" class="btn btn-primary">Probe</button>
-    <div role="group" aria-label="Export and share">
+    <div role="group" aria-label="Export report">
       <span id="exportMenu"></span>
-      <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
     </div>
   </div>
   <div id="evidenceToggle"></div>
@@ -102,7 +101,7 @@
     <div class="pages-note-body">
       <p>This page fetches the target as a cross-origin caller — exactly what a hostile website would do to read your data. The browser enforces CORS, so the probe measures the real policy from outside.</p>
       <div class="pages-flow"><span>This page (caller origin)</span><span class="pf-arrow">→ GET →</span><span>Target server</span><span class="pf-arrow">→ ACAO decision →</span><span>Allow / block</span></div>
-      <p>On the hosted site this is a single-origin probe. The Python engine probes a second origin to prove whether <code>Access-Control-Allow-Origin</code> reflects any caller or honors an allowlist.</p>
+      <p>On the hosted site this is a single-origin probe. An echoed concrete origin with credentials is flagged because arbitrary reflection cannot be ruled out; run <code>python3 server.py</code> for two-origin proof. The Python engine also probes <code>Origin: null</code> for the opaque-origin bypass.</p>
     </div>
   </details>
 

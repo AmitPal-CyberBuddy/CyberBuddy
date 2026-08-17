@@ -128,8 +128,16 @@
       <div id="recentScans" class="recent-scans hidden" aria-label="Recent scans"></div>
       <div id="relayGate" class="hidden"></div>
       <div id="suiteToolbar" class="suite-toolbar hidden">
-        <button type="button" id="suiteShare" class="btn btn-ghost btn-sm">Share suite</button>
         <button type="button" id="suiteCopy" class="btn btn-ghost btn-sm">Copy suite report</button>
+        <details class="export-menu suite-export-menu" id="suiteDownloadMenu">
+          <summary>Download suite report</summary>
+          <div class="export-menu-panel" role="menu">
+            <button type="button" class="export-menu-item" role="menuitem" data-suite-export="md">Download Markdown (.md)</button>
+            <button type="button" class="export-menu-item" role="menuitem" data-suite-export="json">Download JSON (.json)</button>
+            <button type="button" class="export-menu-item" role="menuitem" data-suite-export="csv">Download CSV (.csv)</button>
+            <button type="button" class="export-menu-item" role="menuitem" data-suite-export="html">Download HTML (.html)</button>
+          </div>
+        </details>
       </div>
       <div id="suiteResults" class="suite-results hidden" aria-live="polite"></div>
     </div>

@@ -88,9 +88,8 @@
     <article class="card reveal" style="--d: .18s;">
       <h3>CORS Validator</h3>
       <p>
-        The Python engine probes two fake origins to prove reflection vs an
-        allowlist. When no CORS headers are returned, cross-origin reads are blocked
-        by default (Pass). On GitHub Pages, the browser performs a single-origin probe.
+        The Python engine probes two fake origins and <code>Origin: null</code> to prove reflection, allowlist behavior and null-origin bypasses. When no CORS headers are returned, cross-origin reads are blocked
+        by default (Pass). On GitHub Pages, the browser performs a single-origin probe; a concrete echoed origin plus credentials is flagged because arbitrary reflection cannot be ruled out.
       </p>
       <p class="std-line">OWASP WSTG-CLNT-07 · CWE-942</p>
     </article>
@@ -264,7 +263,7 @@
   <div class="roadmap">
     <div class="roadmap-item reveal" style="--d: .05s;">
       <div class="rm-title">01 · Python engine</div>
-      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin CORS.</p>
+      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin and null-origin CORS probes.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .12s;">
       <div class="rm-title">02 · Published report</div>
