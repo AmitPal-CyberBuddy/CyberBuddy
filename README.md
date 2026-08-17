@@ -19,6 +19,7 @@ responsible for having permission to test them. All checks are read-only GETs.
 | **Security Headers** | Grades CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP + cookie flags; score 0–100, grade A–F | Python API when `server.py` is up; opt-in lookup on GitHub Pages |
 | **CORS Validator** | Two-origin engine probe (ACAO reflection vs allowlist, credentials, `Vary: Origin`); cookie-less in-browser fallback | Python for reflection proof; hosted site probes from this origin |
 | **CSP Policy Auditor** | Audits enforced vs Report-Only CSP, effective script/style sources, object/base/framing/form controls, duplicates, mixed content, Trusted Types, and reporting | Python API/cache when available; identical browser grader with opt-in header lookup on GitHub Pages |
+| **DNS & Domain Security Analyzer** | Grades a domain's public-DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA, MX and name-server redundancy — 0–100 with the raw record behind each finding | Python engine reads the system resolver; identical browser grader over DNS-over-HTTPS (Google Public DNS) after consent |
 | **CSRF PoC Generator** | Paste a raw Burp request → standalone HTML PoC (GET/POST forms, text/plain, JSON fetch, multipart), labelled READY / LIMITED / NOT DIRECTLY REPRESENTABLE | 100% local in the browser — nothing sent, stored, cached, or relayed; the PoC never executes inside CyberBuddy |
 | **JWT Security Workbench** | Decode, inspect, verify and re-sign JWTs locally, get prioritized VAPT suggestions with one-click TEST PAYLOADs and Burp guidance, build test-variant templates, and run bounded HS256/384/512 secret testing — compact JWS parsing, claim timeline, observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign, a semantic diff and local RSA test-key generation. | 100% local in the browser — no token, key or wordlist is ever sent, stored or placed in the URL |
 
@@ -44,6 +45,7 @@ concise, not a full article library.
 | [`guides/csp/`](guides/csp/) | CSP Policy Auditor | OWASP WSTG-CONF-12 · CWE-79 |
 | [`guides/csrf/`](guides/csrf/) | CSRF PoC Generator | OWASP WSTG-SESS-05 · CWE-352 |
 | [`guides/jwt/`](guides/jwt/) | JWT Security Workbench | RFC 7519 · RFC 7515 · OWASP WSTG-SESS-10 · CWE-347 |
+| [`guides/dns/`](guides/dns/) | DNS & Domain Security Analyzer | RFC 7489 · RFC 7208 · RFC 6376 · RFC 4033 · CWE-290 |
 
 ## Documentation page
 
@@ -61,6 +63,7 @@ python3 server.py
 # catalog: /tools/
 # tools: /tools/clickjacking/  /tools/headers/  /tools/cors/  /tools/csp/  /tools/csrf/
 # JWT: /tools/jwt/  (decode, inspect, verify, VAPT payloads, edit & generate)
+# DNS: /tools/dns/  (SPF, DMARC, DKIM, DNSSEC, CAA posture)
 ```
 
 Binds **127.0.0.1** (loopback only) by default. Cloud-metadata and link-local
@@ -82,6 +85,13 @@ selection is preserved in share links with the target URL. On GitHub Pages,
 a consent-gated A/AAAA lookup through Google Public DNS distinguishes
 NXDOMAIN / domains with no web address from ordinary CORS or relay failures.
 The Python engine performs its own authoritative system-DNS check locally.
+
+The DNS & Domain Security Analyzer reads public DNS end to end: the Python
+engine queries the system resolver (`/etc/resolv.conf`, public fallback only
+if none is configured), and the identical browser grader reads the same
+records over DNS-over-HTTPS (`dns.google`) on GitHub Pages after a
+DNS-specific consent prompt, labelling the result unverified. It never
+connects to the target's own servers, and it does not join the hub Run suite.
 
 URL fields accept bare public domains (`example.com` becomes
 `https://example.com`) and local host/port input (`localhost:8080` becomes
@@ -107,6 +117,7 @@ guides/
   csp/index.html                # guide, paired with the CSP Policy Auditor
   csrf/index.html               # guide, paired with the CSRF PoC Generator
   jwt/index.html                # guide, paired with the JWT Security Workbench
+  dns/index.html                # guide, paired with the DNS & Domain Security Analyzer
 css/app.css                     # shared design system
 css/noscript.css                # no-JS fallback (reveal animations off)
 css/404.css                     # standalone styles for 404.html
@@ -120,6 +131,7 @@ js/tool.cors.js                 # CORS page controller
 js/tool.csp.js                  # CSP audit page controller
 js/tool.csrf.js                 # CSRF PoC generator (parser + HTML builder + controller)
 js/tool.jwt.js                  # JWT Workbench controller (analyze/verify + VAPT suggestions + edit/generate/sign)
+js/tool.dns.js                  # DNS & Domain Security Analyzer controller
 js/404-boot.js / js/404.js      # 404 theme + legacy-URL repair
 tools/
   index.html                    # tools catalog (every tool in one directory)
@@ -129,6 +141,7 @@ tools/
   csp/index.html                # CSP policy audit report
   csrf/index.html               # CSRF PoC generator (local-only)
   jwt/index.html                # JWT Security Workbench (decode/inspect/verify + VAPT payloads + edit/generate)
+  dns/index.html                # DNS & Domain Security Analyzer (public-DNS posture)
   build_cache.py                # pre-scan urls.txt -> cache/<host>.json
 LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
@@ -153,6 +166,7 @@ clickjacking_validator.py       # clickjacking engine + shared fetch/URL safety
 security_headers.py             # headers engine + CLI
 cors_validator.py               # two-origin CORS engine + CLI
 csp_checker.py                  # dedicated CSP audit engine + CLI
+dns_security.py                 # DNS & domain security engine + CLI (stdlib DNS wire client)
 server.py                       # local API + static host (stdlib)
 test_engines.py                 # stdlib unittest suite
 ```

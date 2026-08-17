@@ -126,6 +126,14 @@ python3 server.py --host 0.0.0.0 --allow-private</code></pre>
     </div>
   </div>
   <p>
+    The <strong>DNS &amp; Domain Security Analyzer</strong> uses the same first
+    and third layers: the Python engine reads records through your system
+    resolver, and the in-browser grader reads the same records over
+    DNS-over-HTTPS (<code>dns.google</code>) after consent. There is no cached
+    DNS layer — published reports are HTTP checks only. Either way, the
+    domain's own servers are never contacted.
+  </p>
+  <p>
     The grading rules themselves — score bands, risk levels, what each finding
     means — live on the <a href="../methodology/">methodology page</a>. I keep
     them there rather than repeating them here so there is exactly one place to
@@ -196,7 +204,8 @@ python3 server.py --host 0.0.0.0 --allow-private</code></pre>
 python3 security_headers.py https://example.com
 python3 security_headers.py -f urls.txt --json --workers 8
 python3 cors_validator.py https://example.com/api
-python3 csp_checker.py https://example.com --json</code></pre>
+python3 csp_checker.py https://example.com --json
+python3 dns_security.py example.com --json</code></pre>
     <p>
       Add <code>--public-only</code> to refuse loopback and RFC1918 targets.
       Exit code <code>1</code> means at least one target scored high risk,
@@ -267,6 +276,7 @@ python3 csp_checker.py https://example.com --json</code></pre>
       <li>HSTS is header-only too. <code>github.io</code> is preloaded at the domain level, so it is covered in practice, but by nothing in this repo.</li>
       <li>Consequently <strong>the hosted site does not score A against itself, while <code>server.py</code> does</strong> (95/100 — the remaining points are the plain-HTTP loopback transport warning). That is a hosting limit, not a scoring bug.</li>
       <li><code>robots.txt</code> and <code>.well-known/security.txt</code> only take effect at a domain root, so on a project Pages site they sit under <code>/CyberBuddy/</code> and crawlers will not read them until this moves to a custom domain.</li>
+      <li>The <strong>DNS &amp; Domain Security Analyzer</strong> needs no response headers, so it runs on Pages through a consent-gated DNS-over-HTTPS lookup (<code>dns.google</code>) — the one target check whose hosted fallback is not a header relay. The Python engine uses the system resolver instead.</li>
     </ul>
     <p>
       Only the Clickjacking Validator is permitted to frame arbitrary targets;
@@ -290,7 +300,12 @@ python3 csp_checker.py https://example.com --json</code></pre>
       the hostname, and anything they return is flagged unverified. The hosted
       fallback also sends that hostname to <code>dns.google</code> for A/AAAA
       resolution after consent, so NXDOMAIN is reported as unreachable rather
-      than receiving a misleading security grade.
+      than receiving a misleading security grade. The DNS &amp; Domain Security
+      Analyzer works the same way at full depth: on the hosted site it reads
+      the domain's public records (SPF, DMARC, DKIM, DNSSEC, CAA, MX, NS)
+      through <code>dns.google</code> after consent, sends only the domain
+      name, and labels the result unverified. Locally it uses your system
+      resolver with no third party at all.
     </p>
     <p>
       For a scan where nothing leaves your machine at all, run

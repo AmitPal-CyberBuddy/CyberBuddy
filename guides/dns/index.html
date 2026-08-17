@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>DNS guide — CyberBuddy</title>
+  <meta name="description" content="A short DNS guide: how SPF, DMARC, DKIM, DNSSEC and CAA protect a domain, what each missing record actually risks, and how the CyberBuddy DNS &amp; Domain Security Analyzer grades them." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/dns/" />
+  <meta property="og:title" content="DNS guide — CyberBuddy" />
+  <meta property="og:description" content="How SPF, DMARC, DKIM, DNSSEC and CAA protect a domain, and what a missing record actually risks." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/dns/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DNS guide — CyberBuddy" />
+  <meta name="twitter:description" content="How SPF, DMARC, DKIM, DNSSEC and CAA protect a domain, and what a missing record actually risks." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260816f" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "DNS: the records that stop email spoofing and tampering",
+      "description": "How SPF, DMARC, DKIM, DNSSEC and CAA protect a domain, what each missing record actually risks, and how the CyberBuddy DNS & Domain Security Analyzer grades them.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/dns/",
+      "author": { "@type": "Person", "name": "Amit Pal" }
+    }
+  </script>
+  <script src="../../js/app.js?v=20260816f" defer></script>
+  <script src="../../js/boot.js?v=20260816f" defer></script>
+</head>
+<body data-page="/guides/dns/">
+<main id="main" class="container page-hero prose">
+
+  <p class="kicker reveal"><a href="../">Guides</a> · 5 min read</p>
+  <h1 class="reveal">DNS: the records that stop email spoofing and tampering</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    A domain's DNS records decide two things an attacker cares about:
+    whether mail can be forged in its name, and whether its answers can be
+    quietly redirected. Reading them is easy; reading them correctly is where
+    the mistakes happen.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>RFC 7489</strong> (DMARC) &middot; <strong>RFC 7208</strong> (SPF) &middot; <strong>RFC 6376</strong> (DKIM) &middot; <strong>RFC 4033</strong> (DNSSEC) &middot; <strong>CWE-290</strong> &mdash; authentication bypass by spoofing</p>
+
+  <p class="reveal" style="--d: .12s;">
+    <a class="btn btn-primary btn-sm" href="../../tools/dns/">Open the DNS &amp; Domain Security Analyzer</a>
+  </p>
+
+  <div class="section-head reveal">
+    <h2>Why DNS is an authentication layer</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      Email is the classic example. When a mailbox receives a message claiming
+      to be from <code>@example.com</code>, the receiving server can look up
+      three things in DNS to decide whether to believe it: the SPF record
+      (which hosts may send), the DKIM key (a cryptographic signature), and
+      the DMARC policy (what to do when neither checks out). None of them make
+      a domain "secure" by themselves — they are identity evidence for a
+      specific claim, which is exactly why their absence maps to CWE-290,
+      authentication bypass by spoofing.
+    </p>
+    <p>
+      I think of SPF, DKIM and DMARC as one chain: SPF says who may send,
+      DKIM proves who actually did, and DMARC tells the receiver what to do
+      when the first two disagree. A domain with all three present and
+      enforced is much harder to spoof than one with none.
+    </p>
+    <p>
+      The second risk is the DNS itself. Without DNSSEC, an on-path attacker
+      who can inject answers can redirect the domain's traffic or mail to a
+      host they control, and without CAA, any public certificate authority
+      can issue a certificate for the name.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>What each record actually does</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      <strong>SPF</strong> is a whitelist of senders, published as a TXT record
+      that starts <code>v=spf1</code> and ends in a qualifier. The qualifier is
+      the part that matters most: <code>-all</code> means "reject everyone
+      else", <code>~all</code> means "treat everyone else with suspicion",
+      <code>?all</code> is neutral and barely a policy, and <code>+all</code>
+      authorizes <em>any</em> host — which is worse than having no record at
+      all.
+    </p>
+    <p>
+      <strong>DMARC</strong> lives at <code>_dmarc.example.com</code> and tells
+      receivers what to do with mail that fails SPF and DKIM alignment. Its
+      <code>p=</code> tag is the whole story: <code>none</code> only observes,
+      <code>quarantine</code> diverts, and <code>reject</code> discards. A
+      domain with SPF but <code>p=none</code> is still spoofable; it has just
+      agreed to watch it happen.
+    </p>
+    <p>
+      <strong>DKIM</strong> signs mail with a key published under a selector —
+      <code>selector._domainkey.example.com</code>. A tool can only probe the
+      selectors it knows, so a "no DKIM found" result is a hint, never a proof
+      that no key exists.
+    </p>
+    <p>
+      <strong>DNSSEC</strong> signs the zone so answers can be verified end to
+      end. The signal that matters is the DS record published at the parent
+      zone — that is what chains the domain's key into a trust anchor.
+    </p>
+    <p>
+      <strong>CAA</strong> restricts which certificate authorities may issue
+      for the name. Absent, any public CA may issue; present, a mis-issued
+      certificate is easier to catch.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Reading the grade</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="DNS posture weights">
+      <thead>
+        <tr><th scope="col">Record</th><th scope="col">Weight</th><th scope="col">What earns full marks</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="k">DMARC</td><td>20</td><td><code>p=quarantine</code> or <code>p=reject</code>, not <code>p=none</code>.</td></tr>
+        <tr><td class="k">SPF</td><td>15</td><td>One record ending in <code>-all</code> (or <code>~all</code>), within the 10-lookup budget.</td></tr>
+        <tr><td class="k">DKIM</td><td>10</td><td>A key on the common selectors the tool probes.</td></tr>
+        <tr><td class="k">DNSSEC</td><td>10</td><td>A DS record published at the parent zone.</td></tr>
+        <tr><td class="k">Name servers</td><td>10</td><td>At least two authoritative name servers.</td></tr>
+        <tr><td class="k">CAA</td><td>5</td><td>An issuance policy that names (or forbids) CAs.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      A domain that does not handle email is not penalized for missing SPF,
+      DMARC or DKIM — the analyzer labels those checks informational instead.
+      The full scoring contract is documented on the
+      <a href="../../methodology/">methodology page</a>.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>Go deeper</h2>
+  </div>
+  <article class="card reveal">
+    <ul>
+      <li><a href="https://datatracker.ietf.org/doc/html/rfc7489" target="_blank" rel="noopener noreferrer">RFC 7489 — DMARC</a></li>
+      <li><a href="https://datatracker.ietf.org/doc/html/rfc7208" target="_blank" rel="noopener noreferrer">RFC 7208 — SPF</a></li>
+      <li><a href="https://datatracker.ietf.org/doc/html/rfc6376" target="_blank" rel="noopener noreferrer">RFC 6376 — DKIM</a></li>
+      <li><a href="https://datatracker.ietf.org/doc/html/rfc4033" target="_blank" rel="noopener noreferrer">RFC 4033 — DNSSEC</a></li>
+      <li><a href="https://datatracker.ietf.org/doc/html/rfc8659" target="_blank" rel="noopener noreferrer">RFC 8659 — CAA</a></li>
+      <li><a href="https://cwe.mitre.org/data/definitions/290.html" target="_blank" rel="noopener noreferrer">CWE-290 — Authentication Bypass by Spoofing</a></li>
+    </ul>
+  </article>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span><strong>Authorized testing only.</strong> Analyze domains you own or have written permission to assess.</span>
+  </div>
+
+</main>
+
+</body>
+</html>

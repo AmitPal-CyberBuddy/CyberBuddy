@@ -61,7 +61,12 @@ const PAGES = [
   // TOOLS = PAGES.slice(1, 5) stays the four URL-based scan tools; the JWT
   // preview is local/non-operational and must never join the Run suite.
   ["jwt-preview", "/tools/jwt/"],
-  ["guide-jwt", "/guides/jwt/"]
+  ["guide-jwt", "/guides/jwt/"],
+  // DNS-01: standalone target tool + its guide. Also appended at the end:
+  // the DNS analyzer takes a domain, not a URL, so it must never join the
+  // four-scan-tool TOOLS slice either.
+  ["dns", "/tools/dns/"],
+  ["guide-dns", "/guides/dns/"]
 ];
 const TOOLS = PAGES.slice(1, 5);
 

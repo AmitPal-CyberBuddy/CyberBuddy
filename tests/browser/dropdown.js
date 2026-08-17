@@ -36,6 +36,8 @@ const PAGES = [
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
   ["guide-jwt", "/guides/jwt/"],
+  ["dns", "/tools/dns/"],
+  ["guide-dns", "/guides/dns/"],
   ["documentation", "/documentation/"],
   ["404", "/404.html"]
 ];

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
+  <title>DNS &amp; Domain Security Analyzer — CyberBuddy</title>
+  <meta name="description" content="Grade a domain's public DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding." />
+  <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
+  <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/dns/" />
+  <meta property="og:title" content="DNS &amp; Domain Security Analyzer — CyberBuddy" />
+  <meta property="og:description" content="Grade a domain's public DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CyberBuddy" />
+  <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/dns/" />
+  <meta property="og:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DNS &amp; Domain Security Analyzer — CyberBuddy" />
+  <meta name="twitter:description" content="Grade a domain's public DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding." />
+  <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
+  <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
+  <link rel="apple-touch-icon" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="../../icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="../../icon-512.png" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='1.5'/%3E%3Cg fill='none' stroke='%233ee0c2' stroke-width='1.5'%3E%3Ccircle cx='16' cy='16' r='9'/%3E%3Cpath d='M7 16h18' stroke-dasharray='2 2'/%3E%3Cpath d='M16 7c2.5 2.5 2.5 15 0 18M16 7c-2.5 2.5-2.5 15 0 18'/%3E%3C/g%3E%3C/svg%3E" />
+  <noscript><link rel="stylesheet" href="../../css/noscript.css" /></noscript>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "DNS & Domain Security Analyzer — CyberBuddy",
+      "description": "Grade a domain's public DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding.",
+      "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/dns/",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Any (runs in a modern web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Amit Pal"
+      },
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "CyberBuddy",
+        "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/"
+      }
+    }
+  </script>
+  <script src="../../js/theme-boot.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260816f" />
+  <script src="../../js/app.js?v=20260816f" defer></script>
+  <script src="../../js/tool.dns.js?v=20260816f" defer></script>
+  <script src="../../js/boot.js?v=20260816f" defer></script>
+</head>
+<body data-page="/tools/dns/" data-init="initDns initShareButton">
+<main id="main" class="container page-hero">
+
+  <p class="kicker reveal">Tool 07</p>
+  <h1 class="reveal">DNS &amp; Domain Security Analyzer</h1>
+  <p class="lead reveal" style="--d: .08s;">
+    Grade a domain's public DNS posture in one pass — SPF, DMARC, DKIM,
+    DNSSEC, CAA and name-server redundancy — with the raw record behind
+    every finding.
+  </p>
+  <p class="std-line reveal" style="--d: .1s;">Aligned with <strong>RFC 7489</strong> (DMARC) &middot; <strong>RFC 7208</strong> (SPF) &middot; <strong>RFC 6376</strong> (DKIM) &middot; <strong>RFC 4033</strong> (DNSSEC) &middot; <strong>CWE-290</strong> &mdash; authentication bypass by spoofing</p>
+  <p class="guide-link reveal" style="--d: .12s;">New to this check? Read the <a href="../../guides/dns/">5-minute DNS guide</a> first.</p>
+
+  <div class="bar reveal" style="--d: .14s;">
+    <div class="field">
+      <label for="domain">Domain</label>
+      <input id="domain" type="text" placeholder="example.com" autocomplete="url" spellcheck="false" required aria-describedby="domainError" />
+      <p id="domainError" class="field-error hidden" role="alert"></p>
+    </div>
+    <button id="go" type="button" class="btn btn-primary">Analyze</button>
+    <div role="group" aria-label="Export and share">
+      <span id="exportMenu"></span>
+      <button id="shareLink" type="button" class="btn btn-ghost">Share link</button>
+    </div>
+  </div>
+  <div id="evidenceToggle"></div>
+  <div id="relayGate" class="hidden"></div>
+
+  <details class="pages-note how-note">
+    <summary>ℹ How this check works</summary>
+    <div class="pages-note-body">
+      <p>This tool reads a domain's <em>public DNS records</em> — it never connects to the domain's own servers. The Python engine sends DNS queries to your system resolver; on the hosted site the same lookups run over DNS-over-HTTPS (Google Public DNS) after your consent and are labelled <span class="unverified-flag">unverified</span>.</p>
+      <div class="pages-flow"><span>Domain</span><span class="pf-arrow">→ DNS query →</span><span>Resolver</span><span class="pf-arrow">→ records →</span><span>Grade A–F</span></div>
+      <p>Each check shows the raw record value it used. A missing DKIM key on common selectors is labelled honestly — it is not proof that no key exists.</p>
+    </div>
+  </details>
+
+  <section id="results" class="results hidden">
+    <article class="card report-card">
+      <div class="report-head">
+        <div>
+          <h2>DNS posture<span id="reportTitleFlag"></span></h2>
+        </div>
+        <div class="report-actions">
+          <span id="sourceChip" class="source-chip hidden"></span>
+          <span id="verdict" class="risk unknown">—</span>
+        </div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Domain</span>
+          <span id="mDomain" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label" title="Which resolver answered the queries — your system resolver locally, or Google Public DNS on the hosted site">Resolver</span>
+          <span id="mResolver" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Scanned</span>
+          <span id="mStamp" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label" title="Which engine produced this result — hover the source chip for details">Engine</span>
+          <span id="mEngine" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Method</span>
+          <span id="mMethod" class="meta-value mono">DNS query · resolver only</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Checks</span>
+          <span id="mChecks" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Duration</span>
+          <span id="mDuration" class="meta-value mono">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Score</span>
+          <span id="mScore" class="meta-value mono">—</span>
+        </div>
+      </div>
+
+      <div id="verdictBanner" role="status" aria-live="polite" class="verdict-banner unknown">
+        <div class="verdict-grade">
+          <div id="gauge" class="score-gauge"></div>
+          <span id="grade" class="grade f">—</span>
+        </div>
+        <div class="verdict-main">
+          <p id="summary" class="verdict-text">Run an analysis to generate the report.</p>
+          <div id="posture" class="posture-strip" aria-label="Finding rollup"></div>
+        </div>
+      </div>
+
+      <div class="headers-report-stack">
+        <article class="card inset-card">
+          <h3 class="card-title">Findings</h3>
+          <table id="checks" class="findings" aria-label="DNS posture findings">
+            <thead><tr><th scope="col">Check</th><th scope="col">Assessment</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </article>
+
+        <article class="card inset-card">
+          <h3 class="card-title">DNS records</h3>
+          <table id="records" class="findings" aria-label="DNS records returned">
+            <thead><tr><th scope="col">Type</th><th scope="col">Values</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </article>
+      </div>
+
+      <div id="reportProvenance" class="report-provenance"></div>
+    </article>
+  </section>
+
+  <div id="staticNotice" class="notice hidden">
+    <h3>DNS analysis unavailable</h3>
+    <p>
+      No DNS records could be read for this domain from this hosted page.
+      Public DNS lookups may have been declined, blocked or rate-limited.
+      Run <code>python3 server.py</code> locally for a resolver-local scan
+      that never leaves your machine, then retry.
+    </p>
+  </div>
+
+  <div class="disclaimer">
+    <span class="disclaimer-mark">! !</span>
+    <span><strong>Authorized testing only.</strong> Analyze domains you own or have written permission to assess.</span>
+  </div>
+
+</main>
+
+</body>
+</html>

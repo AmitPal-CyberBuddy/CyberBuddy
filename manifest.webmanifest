@@ -1,7 +1,7 @@
 {
   "name": "CyberBuddy",
   "short_name": "CyberBuddy",
-  "description": "Browser security assessment suite — clickjacking, security headers, CSP, CORS, a CSRF PoC generator and the JWT Security Workbench with evidence-grade output.",
+  "description": "Browser security assessment suite — clickjacking, security headers, CSP, CORS, DNS posture, a CSRF PoC generator and the JWT Security Workbench with evidence-grade output.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -95,6 +95,18 @@
       "short_name": "JWT Workbench",
       "description": "Decode, verify, edit, re-sign and test JWTs locally",
       "url": "./tools/jwt/",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "DNS & Domain Security Analyzer",
+      "short_name": "DNS Analyzer",
+      "description": "Grade SPF, DMARC, DKIM, DNSSEC and CAA from public DNS",
+      "url": "./tools/dns/",
       "icons": [
         {
           "src": "icon-192.png",

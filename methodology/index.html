@@ -129,6 +129,18 @@
       <p class="std-line">OWASP WSTG-SESS-10 · RFC 7519 · CWE-347</p>
     </article>
     <article class="card reveal" style="--d: .42s;">
+      <h3>DNS &amp; Domain Security Analyzer</h3>
+      <p>
+        Reads a domain's public DNS records — SPF, DMARC, DKIM, DNSSEC, CAA,
+        MX and name servers — through a resolver (your system resolver locally,
+        or DNS-over-HTTPS on the hosted site after consent). It never connects
+        to the domain's own servers. Each finding shows the raw record value it
+        used; a missing DKIM key on common selectors is labelled as a hint, not
+        proof of absence.
+      </p>
+      <p class="std-line">RFC 7489 · RFC 7208 · RFC 6376 · RFC 4033 · CWE-290</p>
+    </article>
+    <article class="card reveal" style="--d: .48s;">
       <h3>What it does not do</h3>
       <p>
         No exploits, no authenticated sessions, no POST/PUT/DELETE sent to a
@@ -162,6 +174,32 @@
     <p style="margin: 16px 0 0;">
       Grade bands: <strong>A</strong> ≥ 90 · <strong>B</strong> ≥ 75 · <strong>C</strong> ≥ 60 · <strong>D</strong> ≥ 45 · <strong>F</strong> below that.
       Risk follows the grade (A/B low, C/D medium, F high).
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="dns">DNS scoring (0–100)</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="DNS posture weights">
+      <thead>
+        <tr><th scope="col">Check</th><th scope="col">Weight</th><th scope="col">What “ok” means</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="k">DMARC</td><td>20</td><td><code>_dmarc</code> TXT with <code>p=quarantine</code> or <code>p=reject</code>.</td></tr>
+        <tr><td class="k">SPF</td><td>15</td><td>One <code>v=spf1</code> TXT ending in <code>-all</code> (or <code>~all</code>), within the 10-lookup budget.</td></tr>
+        <tr><td class="k">DKIM</td><td>10</td><td>A <code>v=DKIM1</code> key on a common selector (a miss is never proof of absence).</td></tr>
+        <tr><td class="k">DNSSEC</td><td>10</td><td>DS published at the parent zone.</td></tr>
+        <tr><td class="k">Name servers</td><td>10</td><td>At least two authoritative name servers.</td></tr>
+        <tr><td class="k">CAA</td><td>5</td><td>A certificate-authority authorization record.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">
+      Grade bands: <strong>A</strong> ≥ 90 · <strong>B</strong> ≥ 75 · <strong>C</strong> ≥ 60 · <strong>D</strong> ≥ 45 · <strong>F</strong> below that.
+      Risk follows the grade (A/B low, C/D medium, F high). A domain that does
+      not handle email scores its SPF/DMARC/DKIM checks as informational rather
+      than deducting. An unresolvable domain (NXDOMAIN) is reported as unknown —
+      it is never graded.
     </p>
   </article>
 
@@ -236,6 +274,10 @@
       <div class="rm-title">03 · Direct, then relay</div>
       <p>The browser first tries to read the target directly (works only when the target sends permissive CORS — no third party involved). If that fails, header reads can be proxied by public relays, but <strong>only after you agree</strong>. CORS is probed from this origin only. The source chip always names the layer that ran.</p>
     </div>
+    <div class="roadmap-item reveal" style="--d: .26s;">
+      <div class="rm-title">04 · DNS via resolver</div>
+      <p>The DNS &amp; Domain Security Analyzer reads public DNS through your <strong>system resolver</strong> when the Python engine is reachable, or a <strong>consent-gated DNS-over-HTTPS</strong> lookup (<code>dns.google</code>) on the hosted site. There is no cached DNS layer, and the target's own servers are never contacted.</p>
+    </div>
   </div>
 
   <div class="section-head reveal">
@@ -269,6 +311,14 @@
       hosted fallback also sends the hostname to <code>dns.google</code> for
       A/AAAA lookup. This lets CyberBuddy identify NXDOMAIN and domains with
       no web address instead of presenting a misleading security grade.
+    </p>
+    <p>
+      <strong>The DNS analyzer reads public DNS only.</strong> It queries a
+      resolver (your system resolver locally, or <code>dns.google</code> after
+      consent on the hosted site) and never connects to the target's own
+      servers. The only disclosure on the hosted path is the domain name and
+      your IP to Google Public DNS; records returned this way are labelled
+      <span class="unverified-flag">unverified</span>.
     </p>
     <p>
       For a scan where nothing leaves your machine, run

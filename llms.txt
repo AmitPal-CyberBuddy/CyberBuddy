@@ -1,6 +1,6 @@
 # CyberBuddy
 
-> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, CORS posture checks, a local-only CSRF PoC generator, and the local-only JWT Security Workbench (decode/verify, VAPT test payloads, edit & re-sign) — with evidence-grade output.
+> Browser security assessment suite: clickjacking validation, security header grading (A–F / 0–100), CSP policy auditing, CORS posture checks, a DNS & domain security analyzer, a local-only CSRF PoC generator, and the local-only JWT Security Workbench (decode/verify, VAPT test payloads, edit & re-sign) — with evidence-grade output.
 
 - Hub: https://amitpal-cyberbuddy.github.io/CyberBuddy/
 - Tools catalog: https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/
@@ -19,6 +19,7 @@
 - Security Headers (`/tools/headers/`) — CSP, HSTS, XFO, nosniff, Referrer-Policy, Permissions-Policy, COOP/COEP/CORP, cookie flags. OWASP WSTG-CONF-07/12, CWE-693.
 - CORS Validator (`/tools/cors/`) — ACAO reflection vs allowlist, credentials, Vary: Origin. OWASP WSTG-CLNT-07, CWE-942.
 - CSP Policy Auditor (`/tools/csp/`) — enforced vs Report-Only CSP, effective script/style sources, navigation controls, mixed content, syntax, Trusted Types, and reporting. OWASP WSTG-CONF-12, CWE-79, CWE-693.
+- DNS & Domain Security Analyzer (`/tools/dns/`) — public-DNS posture: SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy, graded 0–100 with the raw record behind each finding. RFC 7489, RFC 7208, RFC 6376, RFC 4033, CWE-290.
 - CSRF PoC Generator (`/tools/csrf/`) — paste a raw Burp request, get a standalone HTML proof-of-concept (forms and fetch variants, READY/LIMITED/NOT DIRECTLY REPRESENTABLE). Fully local: nothing sent, stored, or relayed. OWASP WSTG-SESS-05, CWE-352.
 - JWT Security Workbench (`/tools/jwt/`) — decode, inspect, verify, edit and re-sign compact JWS tokens locally: strict parsing, claim timeline and observations, HMAC/RSA-PKCS#1/RSA-PSS/ECDSA verify and sign with a key you supply, a semantic original-vs-modified diff, local RSA test-key generation and explicit TEST TOKEN labels (copy/download never exports key material by accident). JWT-03 adds labelled test-variant templates (alg:none, claim tamper/re-sign, algorithm confusion with a pasted public key, embedded JWK, jku/x5u, kid) and bounded HS256/384/512 secret testing in a Web Worker with progress, cancel and explicit limits. Decoding also yields prioritized, severity-tagged VAPT testing suggestions with one-click TEST PAYLOADs (copyable raw or as a Burp `Authorization: Bearer` header) and 2–3 Burp Suite verification steps each. The token's `alg` is never trusted to choose the verifier (algorithm-confusion guard). Fully local. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
 
@@ -32,16 +33,18 @@ Short, tool-connected notes — one per tool. Each guide covers one weakness, ho
 - CSP (`/guides/csp/`) — reading a policy for what it actually blocks: fallback chains, 'unsafe-inline' versus nonces, Report-Only versus enforced, directives a <meta> tag drops, and how the CSP Policy Auditor grades them. OWASP WSTG-CONF-12, CWE-79.
 - CSRF (`/guides/csrf/`) — the three conditions that make an action forgeable, why the PoC is the finding, what READY / LIMITED / NOT DIRECTLY REPRESENTABLE mean, and the fix. OWASP WSTG-SESS-05, CWE-352.
 - JWT (`/guides/jwt/`) — header/payload/signature, decoding versus verification, time and issuer/audience claims, symmetric versus asymmetric algorithms, `alg:none`, algorithm confusion, `kid`/`jku`/`x5u`/embedded JWK, replay/lifetime, and how the Workbench verifies, signs, templates, derives prioritized VAPT test payloads, and bounded-tests locally with the key you supply. RFC 7519, RFC 7515, OWASP WSTG-SESS-10, CWE-347.
+- DNS (`/guides/dns/`) — SPF, DMARC, DKIM, DNSSEC and CAA: what each record actually protects, what a missing one really risks, and how the DNS & Domain Security Analyzer grades the whole posture from public DNS. RFC 7489, RFC 7208, RFC 6376, RFC 4033, CWE-290.
 
 ## Documentation
 
-`/documentation/` is the operator page: local quick start (`python3 server.py`, loopback bind, `--allow-private`), which of the three engines answers a scan, the four Python CLI entry points and their exit codes, evidence/export formats and provenance, the limits of the static GitHub Pages build (no response headers, so no frame-ancestors/X-Frame-Options/HSTS), and what leaves the browser. Scoring rules live at `/methodology/`, not there.
+`/documentation/` is the operator page: local quick start (`python3 server.py`, loopback bind, `--allow-private`), which of the three engines answers a scan, the five Python CLI entry points and their exit codes, evidence/export formats and provenance, the limits of the static GitHub Pages build (no response headers, so no frame-ancestors/X-Frame-Options/HSTS), and what leaves the browser. Scoring rules live at `/methodology/`, not there.
 
 ## How scans run
 
 1. Python engines (`server.py` or optional Vercel `api/`) when reachable.
 2. Same-origin published reports at `cache/<host>.json` for the demo targets listed in `urls.txt` (GitHub Actions, every 6 hours).
 3. In-browser graders, a direct CORS read, then opt-in third-party header relays. All checks are read-only GETs.
+4. The DNS & Domain Security Analyzer reads public DNS through the system resolver locally, or a consent-gated DNS-over-HTTPS lookup (Google Public DNS) on the hosted site. It never connects to the target's own servers.
 
 ## Constraints
 
@@ -49,4 +52,4 @@ Authorized testing only. Do not scan systems without permission. Results are adv
 
 ## Privacy
 
-Scan history is stored only in the user's browser (localStorage, 24h expiry); it is never uploaded and never shared between users. Published reports cover only the fixed demo targets in urls.txt, never user-submitted URLs. Third-party header relays (hackertarget.com, allorigins.win, corsproxy.io, codetabs.com) are opt-in, receive the hostname only by default, and their results are labelled unverified.
+Scan history is stored only in the user's browser (localStorage, 24h expiry); it is never uploaded and never shared between users. Published reports cover only the fixed demo targets in urls.txt, never user-submitted URLs. Third-party header relays (hackertarget.com, allorigins.win, corsproxy.io, codetabs.com) are opt-in, receive the hostname only by default, and their results are labelled unverified. The DNS analyzer's hosted fallback sends only the domain name to dns.google after consent; records returned that way are labelled unverified.
