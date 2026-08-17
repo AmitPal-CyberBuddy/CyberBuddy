@@ -3546,6 +3546,32 @@ console.log(JSON.stringify({ ok: r.ok, alg: r.token && r.token.header.alg,
             self.assertFalse(out["ok"], name + " should not parse")
             self.assertTrue(out["err"], name)
 
+    def test_engine_rejects_noncanonical_compact_jws_and_critical_headers(self):
+        """JWT parsing is strict: compact JWS uses unpadded base64url, JSON
+        objects for both header/payload, and no unimplemented crit extension."""
+        cases = {
+            "standard-base64": "eyJhbGciOiJIUzI1NiJ9+.eyJzdWIiOiJhIn0.sig",
+            "padded": "eyJhbGciOiJIUzI1NiJ9=.eyJzdWIiOiJhIn0.sig",
+            "payload-array": "eyJhbGciOiJIUzI1NiJ9.W10.sig",
+            "critical": "eyJhbGciOiJIUzI1NiIsImNyaXQiOlsiZXhwIl19.eyJzdWIiOiJhIn0.sig",
+        }
+        for name, token in cases.items():
+            out = self._run_engine(
+                "const r=CyberBuddyJwt.tryParseToken(%s); console.log(JSON.stringify({ok:r.ok,error:r.error}));"
+                % json.dumps(token))
+            self.assertFalse(out["ok"], name)
+            self.assertTrue(out["error"], name)
+
+    def test_claim_validation_rejects_malformed_registered_claims(self):
+        out = self._run_engine("""
+const r = CyberBuddyJwt.validateClaims({exp:'4102444800', nbf:20, iat:30,
+  iss:7, sub:[], aud:['api', 7], jti:9});
+console.log(JSON.stringify({valid:r.valid, codes:r.errors.map(e=>e.code), messages:r.errors.map(e=>e.message)}));
+""")
+        self.assertFalse(out["valid"])
+        for code in ("exp", "iss", "sub", "aud", "jti"):
+            self.assertIn(code, out["codes"])
+
     def test_engine_rejects_alg_none_even_with_signature(self):
         # A token that declares alg:none must not verify.
         out = self._run_engine("""
@@ -4196,8 +4222,10 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertIn('id="jwtVerify"', page)
         for kid in ("jwtHeader", "jwtPayload", "jwtTimeline", "jwtClaims",
                     "jwtObservations", "jwtSecret", "jwtPem", "jwtJwk", "jwtJwks",
-                    "jwtExpIss", "jwtExpAud", "jwtExpSub", "jwtSkew"):
+                    "jwtExpIss", "jwtExpAud", "jwtExpSub", "jwtSkew", "jwtExpectedAlg"):
             self.assertIn('id="%s"' % kid, page, kid)
+        self.assertIn("Expected algorithm", page)
+        self.assertNotIn('id="jwtPinAlg"', page)
         # The verify button is enabled (not a preview).
         self.assertNotIn('id="jwtVerify" disabled', page)
 

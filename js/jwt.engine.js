@@ -59,6 +59,13 @@
 
   function b64urlDecode(str) {
     if (typeof str !== "string") throw new TypeError("base64url: expected string");
+    // Compact JWS serializations use unpadded base64url only (RFC 7515).
+    // Do not silently accept standard-base64 characters, padding, whitespace
+    // or impossible one-character remainders: permissive decoding can make a
+    // displayed token differ from what a strict verifier receives.
+    if (!/^[A-Za-z0-9_-]*$/.test(str) || str.length % 4 === 1) {
+      throw new Error("base64url: invalid compact-JWS encoding");
+    }
     str = str.replace(/-/g, "+").replace(/_/g, "/");
     while (str.length % 4) str += "=";
     if (typeof atob === "function") {
@@ -123,8 +130,18 @@
     catch (e) { throw new Error("Header is not valid JSON"); }
     try { payload = JSON.parse(new TextDecoder().decode(payloadBytes)); }
     catch (e) { throw new Error("Payload is not valid JSON"); }
-    if (!header || typeof header !== "object") throw new Error("Header is not a JSON object");
-    if (!payload || typeof payload !== "object") throw new Error("Payload is not a JSON object");
+    if (!header || typeof header !== "object" || Array.isArray(header)) throw new Error("Header is not a JSON object");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Payload is not a JSON object");
+    // This workbench implements no JWS critical-header extensions. RFC 7515
+    // requires a verifier to reject a token when it does not understand every
+    // member named by crit; accepting it would be an unsafe partial parse.
+    if (Object.prototype.hasOwnProperty.call(header, "crit")) {
+      if (!Array.isArray(header.crit) || !header.crit.length ||
+          header.crit.some(function (name) { return typeof name !== "string"; })) {
+        throw new Error("Header crit must be a non-empty array of extension names");
+      }
+      throw new Error("Unsupported critical JWS header parameter(s): " + header.crit.join(", "));
+    }
     var alg = header.alg;
     if (!alg) throw new Error("Header has no alg");
     if (!algSpec(alg)) throw new Error("Unsupported alg: " + alg);
@@ -195,20 +212,53 @@
     opts = opts || {};
     var errors = [];
     var now = Math.floor(Date.now() / 1000);
-    var clockTolerance = Number(opts.clockTolerance) || 0;
-    var exp = normalizeTime(payload.exp);
+    // Tolerance is an analyst-provided non-negative number; never allow an
+    // invalid or negative value to make time validation more permissive.
+    var clockTolerance = Number(opts.clockTolerance);
+    clockTolerance = isFinite(clockTolerance) && clockTolerance >= 0 ? clockTolerance : 0;
+    var has = function (name) { return Object.prototype.hasOwnProperty.call(payload, name); };
+    var timeClaim = function (name) {
+      if (!has(name)) return null;
+      // NumericDate is a JSON number. A numeric string must not silently
+      // pass: a relying party may reject it or interpret it differently.
+      if (typeof payload[name] !== "number" || !isFinite(payload[name])) {
+        errors.push({ code: name, message: name + " must be a numeric NumericDate" });
+        return null;
+      }
+      return payload[name];
+    };
+    var exp = timeClaim("exp");
+    var nbf = timeClaim("nbf");
+    var iat = timeClaim("iat");
     if (exp != null && now > exp + clockTolerance) {
       errors.push({ code: "exp", message: "Token has expired" });
     }
-    var nbf = normalizeTime(payload.nbf);
     if (nbf != null && now < nbf - clockTolerance) {
       errors.push({ code: "nbf", message: "Token is not yet valid (nbf)" });
     }
+    if (exp != null && nbf != null && exp < nbf) {
+      errors.push({ code: "time-order", message: "exp is earlier than nbf" });
+    }
+    if (exp != null && iat != null && exp < iat) {
+      errors.push({ code: "time-order", message: "exp is earlier than iat" });
+    }
+    if (has("iss") && typeof payload.iss !== "string") {
+      errors.push({ code: "iss", message: "iss must be a string" });
+    }
+    if (has("sub") && typeof payload.sub !== "string") {
+      errors.push({ code: "sub", message: "sub must be a string" });
+    }
+    if (has("jti") && typeof payload.jti !== "string") {
+      errors.push({ code: "jti", message: "jti must be a string" });
+    }
+    var aud = payload.aud;
+    var audWellFormed = !has("aud") || typeof aud === "string" ||
+      (Array.isArray(aud) && aud.length > 0 && aud.every(function (v) { return typeof v === "string"; }));
+    if (!audWellFormed) errors.push({ code: "aud", message: "aud must be a string or a non-empty array of strings" });
     if (opts.iss != null && payload.iss !== opts.iss) {
       errors.push({ code: "iss", message: "Issuer mismatch" });
     }
     if (opts.aud != null) {
-      var aud = payload.aud;
       var audList = Array.isArray(aud) ? aud : (aud == null ? [] : [aud]);
       if (audList.indexOf(opts.aud) === -1) {
         errors.push({ code: "aud", message: "Audience mismatch" });

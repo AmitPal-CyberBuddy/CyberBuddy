@@ -245,9 +245,17 @@
 
           <div class="jwt-verify-actions">
             <button type="button" id="jwtVerify" class="btn btn-primary">Verify signature &amp; claims</button>
-            <label class="jwt-pin-alg"><input type="checkbox" id="jwtPinAlg" />
-              Pin algorithm to token header (<code id="jwtPinAlgLabel">—</code>)</label>
+            <label class="jwt-pin-alg" for="jwtExpectedAlg">Expected algorithm
+              <select id="jwtExpectedAlg" class="jwt-select">
+                <option value="">Auto from compatible supplied key</option>
+                <option value="HS256">HS256</option><option value="HS384">HS384</option><option value="HS512">HS512</option>
+                <option value="RS256">RS256</option><option value="RS384">RS384</option><option value="RS512">RS512</option>
+                <option value="PS256">PS256</option><option value="PS384">PS384</option><option value="PS512">PS512</option>
+                <option value="ES256">ES256</option><option value="ES384">ES384</option>
+              </select>
+            </label>
           </div>
+          <p class="form-hint">Set an expected algorithm when your issuer configuration defines one. “Auto” still rejects an incompatible key family, but an explicit value also rejects a different token header algorithm.</p>
 
           <div id="jwtVerifyResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
         </article>

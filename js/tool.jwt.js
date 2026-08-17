@@ -207,9 +207,9 @@
     updateVariantBase();
     renderVapt(parsed);
 
-    // Reflect the token alg in the optional pin label.
-    var pinLabel = $("jwtPinAlgLabel");
-    if (pinLabel) pinLabel.textContent = parsed.header.alg;
+    // Do not silently use the token's header as an expected-algorithm policy.
+    // The analyst may choose an issuer-configured expected value in the
+    // verification panel; Auto remains deliberately explicit.
 
     // Auto-run claim validation so the analyst sees time/iss/aud state
     // without having to supply a key.
@@ -274,7 +274,8 @@
       sub: $("jwtExpSub").value.trim() || undefined,
       clockTolerance: parseInt($("jwtSkew").value, 10) || 0
     };
-    if ($("jwtPinAlg").checked) opts.alg = lastParsed.header.alg;
+    var expectedAlg = $("jwtExpectedAlg").value;
+    if (expectedAlg) opts.alg = expectedAlg;
 
     var btn = $("jwtVerify");
     if (btn) { btn.disabled = true; btn.textContent = "Verifying…"; }
