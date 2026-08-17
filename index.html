@@ -192,7 +192,7 @@
       <span title="Controls how much of the URL is shared when linking out">Referrer-Policy</span><span title="Locks down browser features like camera and microphone">Permissions-Policy</span>
       <span title="The cross-origin isolation header family">COOP · COEP · CORP</span><span title="Secure, HttpOnly and SameSite attributes on cookies">Cookie flags — Secure · HttpOnly · SameSite</span>
       <span title="CORS header — which origins may read the response">Access-Control-Allow-Origin</span><span title="CORS header — allows credentialed cross-origin reads">Allow-Credentials</span>
-      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="CSRF PoC Generator — a pasted Burp request becomes a standalone HTML proof-of-concept">CSRF PoC generation</span>
+      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="SPF, DKIM and DMARC — the records that stop email spoofing">SPF · DKIM · DMARC</span><span title="DNSSEC signatures and CAA — the records that stop tampering and mis-issuance">DNSSEC · CAA</span><span title="CSRF PoC Generator — a pasted Burp request becomes a standalone HTML proof-of-concept">CSRF PoC generation</span>
       <span title="JWT Security Workbench — strict local decode and Web Crypto signature verification">JWT decode &amp; verify</span><span title="Prioritized, severity-tagged vectors with one-click TEST PAYLOADs and Burp steps">JWT VAPT test payloads</span>
       <span title="The token's alg header never picks the verifier — RSA-to-HMAC confusion cannot pass silently">Algorithm-confusion guard</span><span title="Every finding shows the raw value it used">Raw evidence on every finding</span>
       <span title="Content-Security-Policy directive that controls who may frame the page">CSP frame-ancestors</span><span title="Legacy header that blocks or allows framing">X-Frame-Options</span>
@@ -200,7 +200,7 @@
       <span title="Controls how much of the URL is shared when linking out">Referrer-Policy</span><span title="Locks down browser features like camera and microphone">Permissions-Policy</span>
       <span title="The cross-origin isolation header family">COOP · COEP · CORP</span><span title="Secure, HttpOnly and SameSite attributes on cookies">Cookie flags — Secure · HttpOnly · SameSite</span>
       <span title="CORS header — which origins may read the response">Access-Control-Allow-Origin</span><span title="CORS header — allows credentialed cross-origin reads">Allow-Credentials</span>
-      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="CSRF PoC Generator — a pasted Burp request becomes a standalone HTML proof-of-concept">CSRF PoC generation</span>
+      <span title="Cache partitioning per caller origin">Vary: Origin</span><span title="SPF, DKIM and DMARC — the records that stop email spoofing">SPF · DKIM · DMARC</span><span title="DNSSEC signatures and CAA — the records that stop tampering and mis-issuance">DNSSEC · CAA</span><span title="CSRF PoC Generator — a pasted Burp request becomes a standalone HTML proof-of-concept">CSRF PoC generation</span>
       <span title="JWT Security Workbench — strict local decode and Web Crypto signature verification">JWT decode &amp; verify</span><span title="Prioritized, severity-tagged vectors with one-click TEST PAYLOADs and Burp steps">JWT VAPT test payloads</span>
       <span title="The token's alg header never picks the verifier — RSA-to-HMAC confusion cannot pass silently">Algorithm-confusion guard</span><span title="Every finding shows the raw value it used">Raw evidence on every finding</span>
     </div>
@@ -208,16 +208,16 @@
 
   <div class="section-head reveal">
     <h2>Tools</h2>
-    <span class="count" id="toolCount">06 live</span>
+    <span class="count" id="toolCount">07 live</span>
     <a class="catalog-link" href="tools/">View the full catalog →</a>
   </div>
 
   <section id="assess-targets" aria-labelledby="assess-tools-heading">
     <div class="category-head reveal">
       <h3 id="assess-tools-heading">Assess a target</h3>
-      <span class="cat-badge cat-suite">part of Run suite</span>
-      <p>URL-based checks that read a target you point them at. These four tools
-        run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.</p>
+      <p>Target-based checks that read a target you point them at — a URL for the
+        HTTP tools, a domain for the DNS analyzer. The four HTTP tools run together
+        in the hub “Run suite”; the DNS analyzer runs standalone.</p>
     </div>
     <div class="tool-grid" id="assessGrid" aria-label="Target assessment tools">
       <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
@@ -241,6 +241,11 @@
         <h3>CSP Policy Auditor</h3>
         <p class="tool-card-desc">Audit dangerous script sources, unsafe fallbacks, missing navigation controls, duplicate directives, and reporting gaps.</p>
         <div class="tool-card-std"><span class="std-id" title="OWASP Web Security Testing Guide — Testing for Content Security Policy Weaknesses">OWASP WSTG-CONF-12</span><span class="std-id" title="CWE-79 — Cross-site Scripting">CWE-79</span><span class="std-id" title="CWE-693 — Protection Mechanism Failure">CWE-693</span></div>
+      </a>
+      <a class="tool-card card corner-card" href="tools/dns/">
+        <h3>DNS &amp; Domain Security Analyzer</h3>
+        <p class="tool-card-desc">Grade a domain's DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding.</p>
+        <div class="tool-card-std"><span class="std-id" title="RFC 7489 — DMARC">RFC 7489</span><span class="std-id" title="RFC 7208 — SPF">RFC 7208</span><span class="std-id" title="CWE-290 — Authentication Bypass by Spoofing">CWE-290</span></div>
       </a>
     </div>
   </section>
@@ -271,7 +276,7 @@
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
     <div class="stat reveal" style="--d: .05s;" role="listitem">
-      <span class="stat-num" data-count="6" data-pad="2">0</span>
+      <span class="stat-num" data-count="7" data-pad="2">0</span>
       <span class="stat-label">Live security tools</span>
     </div>
     <div class="stat reveal" style="--d: .12s;" role="listitem">
@@ -525,7 +530,7 @@
   <div class="contact-cta reveal" style="--d: .08s;">
     <div class="contact-cta-text">
       <h3>Building CyberBuddy for analysts, with analysts</h3>
-      <p><strong>Next on the bench: DNS &amp; Domain Security Analyzer.</strong> A live, consent-gated DNS posture check for GitHub Pages. After that: a fully local <strong>HAR Security Analyzer</strong> for captured web and API traffic. Ideas, feedback and contributions are welcome while they are being designed.</p>
+      <p><strong>Next on the bench: HAR Security Analyzer.</strong> A fully local analyzer for captured web and API traffic, decoded in your browser. Ideas, feedback and contributions are welcome while it is being designed.</p>
     </div>
     <div class="contact-cta-actions">
       <a class="btn btn-primary" href="mailto:amitpal.secure@gmail.com?subject=CyberBuddy%20—%20feedback%20or%20collaboration">

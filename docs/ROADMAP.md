@@ -28,10 +28,10 @@ handoff” for the state at the end of that session.
 | Item | Value |
 | --- | --- |
 | Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |
-| Live tools | 6 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (feature-complete: decode/inspect/verify + edit/generate/sign + test variants + bounded secret testing)** |
-| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 6) · Documentation (`/documentation/`) |
+| Live tools | 7 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (feature-complete: decode/inspect/verify + edit/generate/sign + test variants + bounded secret testing)**, **DNS & Domain Security Analyzer (public-DNS posture: SPF/DMARC/DKIM/DNSSEC/CAA)** |
+| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 7) · Documentation (`/documentation/`) |
 | Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02; **274** after JWT-03 (16 variant/secret/worker tests) |
-| JavaScript file total | **20** (13 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js`, 7 under `tests/browser/`) — all pass `node --check` |
+| JavaScript file total | **21** (14 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js` + `js/tool.dns.js`, 7 under `tests/browser/`) — all pass `node --check` |
 | Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
 | Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
 | Release/version state | **Pre-1.0** — no tagged release; `main` carries the live site via GitHub Pages |
@@ -406,6 +406,48 @@ PR.
   the JWT-02 PR at the maintainer's request to merge once — see REVIEW
   §28). Not merged; do not mark DONE.
 
+### DNS-01 — DNS & Domain Security Analyzer
+- **Status:** `IN REVIEW`
+- **Goal:** A seventh live tool that grades a domain's *public DNS* security
+  posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — into a
+  0–100 score + A–F grade with the raw record behind every finding.
+- **Scope:** `dns_security.py` (stdlib DNS wire-format client over UDP with a
+  TCP fallback, plus the pure scorer `grade_dns_from_records`); a browser port
+  (`gradeDnsFromRecords` + DNS-over-HTTPS collection via `dns.google` in
+  `js/app.js`); the `/api/dns?domain=` endpoint in `server.py` and the
+  `api/dns.py` Vercel function; `tools/dns/index.html` + `js/tool.dns.js`; a
+  DNS guide; registry entry (`category: "assess"`, `suite: false` — standalone,
+  not in the hub Run suite); per-tool suite badges in the catalog; and the full
+  cross-surface set (hub/catalog/404/guides cards, sitemap, manifest, llms.txt,
+  README, methodology, documentation, browser PAGES arrays).
+- **Non-goals:** No connection to the target's own servers (resolver only); no
+  DNS record *modification* or zone transfer; no subdomain enumeration; no
+  joining the hub "Run suite" (that stays the four HTTP tools); no cached
+  DNS layer in CI; no third-party relays beyond the consent-gated
+  DNS-over-HTTPS fallback.
+- **Dependencies:** IA-01 (registry), GUIDES-01/02/03 + DOCS-01 (shell +
+  guide template), JWT-03 (the established "new tool" surface).
+- **Acceptance criteria:** Python and JS graders agree on a fixed records map;
+  an NXDOMAIN domain is reported as unknown, never graded; a no-email domain
+  keeps its SPF/DMARC/DKIM checks informational; DKIM misses are phrased as
+  hints, never proof of absence; the hosted path is gated behind a
+  DNS-specific consent prompt and labelled unverified; every existing stdlib
+  and asset/link test stays green.
+- **Required tests:** `DnsEngineTests` (pure scorer + input validation),
+  `DnsParityTests` (Node JS-vs-Python parity), `DnsSiteTests` (registry,
+  engine/gate, exports, sitemap/manifest/llms/route, workflow-patch copy line),
+  plus `dns`/`guide-dns` added to the `layout`/`dropdown`/`responsive` browser
+  PAGES arrays.
+- **PR/commit:** PR #32 · branch `arena/01a00c48-cyberbuddy` · commit
+  `c898eb8` (open — not merged; do not mark DONE).
+- **Notes/traps:** The arena push token cannot edit `.github/workflows/**`, so
+  the `tools/dns` copy line lives in `docs/pages-workflow-patch.md`. DKIM
+  probing checks common selectors only. DNSSEC verdict keys on the DS record at
+  the parent zone. The tool is `suite: false` — `TOOLS = PAGES.slice(1, 5)` in
+  `tests/browser/responsive.js` must stay the four URL scan tools. The DNS
+  consent gate is separate from the header relay gate (a domain is all that is
+  ever disclosed).
+
 ### FUTURE-01 — External payload-corpus integration
 - **Status:** `DEFERRED`
 - **Goal:** (Mention only) A separately maintained payload corpus may be
@@ -421,11 +463,27 @@ PR.
 
 ## 5. Current handoff
 
+> **This session (DNS-01, branch `arena/01a00c48-cyberbuddy`):** the
+> **DNS & Domain Security Analyzer** is implemented end-to-end — `dns_security.py`
+> (stdlib DNS wire client + pure `grade_dns_from_records`), `/api/dns` in
+> `server.py` + `api/dns.py`, `tools/dns/index.html` + `js/tool.dns.js`, the
+> `gradeDnsFromRecords` browser port with a consent-gated DNS-over-HTTPS
+> fallback, a `guides/dns/` guide, and the full cross-surface set. The tool is
+> `category: "assess"` with `suite: false` — it never joins the hub Run suite,
+> which stays the four HTTP tools. Registry/category copy was generalized so
+> assess membership can be mixed (per-tool suite badges in the catalog). Python
+> tests now **355** (`python3 -m unittest test_engines.py`), all green. Open as
+> **PR #32**; not merged, do not mark DONE.
+
 - **Last verified `origin/main`:** `e10eb2e` — PR #28 merged, which brought
   the JWT-02/JWT-03 work (previously PR #25) to `main`. The JWT-00 → JWT-03
   series is complete and shipped. This session started from a clean tree.
-- **Work in review:** **POLISH-01 (consistency sweep)** — `IN REVIEW`,
-  branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not merged).
+- **Work in review:** **DNS-01 (this session)** — `IN REVIEW`, branch
+  `arena/01a00c48-cyberbuddy`, **PR #32** (open, not merged). Requires the
+  maintainer-applied `tools/dns` Pages copy line
+  (see `docs/pages-workflow-patch.md`). **POLISH-01 (consistency sweep)** —
+  `IN REVIEW`, branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not
+  merged).
   Not a numbered roadmap feature: a
   verification pass over the shipped suite plus the drift it exposed. No new
   tool, engine or scoring behaviour.

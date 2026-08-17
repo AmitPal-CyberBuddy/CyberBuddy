@@ -471,6 +471,9 @@ class MountAndBindTests(unittest.TestCase):
         # JWT-00 preview alias.
         self.assertEqual(TOOL_ALIASES["/jwt"], "/tools/jwt/")
         self.assertEqual(TOOL_ALIASES["/jwt/"], "/tools/jwt/")
+        # DNS & Domain Security Analyzer alias.
+        self.assertEqual(TOOL_ALIASES["/dns"], "/tools/dns/")
+        self.assertEqual(TOOL_ALIASES["/dns/"], "/tools/dns/")
 
     def test_default_bind_loopback_without_port_env(self):
         env = os.environ
@@ -523,13 +526,15 @@ class AppBaseJsTests(unittest.TestCase):
         self.assertIn("cacheLookupKeys", src)
 
     def test_tool_pages_exist(self):
-        for slug in ("clickjacking", "headers", "cors", "csp", "csrf", "jwt"):
+        for slug in ("clickjacking", "headers", "cors", "csp", "csrf", "jwt", "dns"):
             page = ROOT / "tools" / slug / "index.html"
             self.assertTrue(page.is_file(), page)
             text = page.read_text(encoding="utf-8")
             self.assertIn("js/app.js", text)
         # The JWT preview also loads its own (non-operational) controller.
         self.assertIn("js/tool.jwt.js", (ROOT / "tools" / "jwt" / "index.html").read_text(encoding="utf-8"))
+        # The DNS tool loads its own controller too.
+        self.assertIn("js/tool.dns.js", (ROOT / "tools" / "dns" / "index.html").read_text(encoding="utf-8"))
 
     def test_csp_controller_only_references_existing_elements(self):
         page = (ROOT / "tools" / "csp" / "index.html").read_text(encoding="utf-8")
@@ -547,7 +552,7 @@ class AppBaseJsTests(unittest.TestCase):
         text = (ROOT / "js" / "404-boot.js").read_text(encoding="utf-8")
         self.assertIn("js\\/app\\.js", text)
         self.assertIn("/tools/$1/", text)
-        self.assertIn("headers|cors|csp|csrf|jwt", text)
+        self.assertIn("headers|cors|csp|csrf|jwt|dns", text)
 
     def test_js_graders_match_python_scores(self):
         node = shutil.which("node")
@@ -886,6 +891,8 @@ class HubTickerTests(unittest.TestCase):
             "Access-Control-Allow-Origin",  # CORS
             "CSRF PoC",                     # CSRF PoC Generator
             "JWT",                          # JWT Security Workbench
+            "SPF · DKIM · DMARC",           # DNS & Domain Security Analyzer
+            "DNSSEC · CAA",                 # DNS & Domain Security Analyzer
         ):
             with self.subTest(coverage=expected):
                 self.assertIn(expected, labels)
@@ -932,6 +939,7 @@ class ServerRouteTests(unittest.TestCase):
             "/tools/csrf/": b"CSRF PoC Generator",
             # JWT-00: the development preview page resolves and is labelled.
             "/tools/jwt/": b"JWT Security Workbench",
+            "/tools/dns/": b"DNS &amp; Domain Security Analyzer",
         }
         for path, needle in expect.items():
             status, headers, body = self._req(path)
@@ -984,6 +992,7 @@ class ServerRouteTests(unittest.TestCase):
             ("/clickjacking", "/tools/clickjacking/"),
             ("/csrf", "/tools/csrf/"),
             ("/jwt", "/tools/jwt/"),
+            ("/dns", "/tools/dns/"),
         ):
             status, headers, _ = self._req(short)
             self.assertEqual(status, 301, short)
@@ -1007,6 +1016,10 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"JWT Security Workbench", body)
         self.assertIn(b'id="jwtVerify"', body)
+        # DNS tool is reachable under the /CyberBuddy mount.
+        status, _, body = self._req("/CyberBuddy/tools/dns/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"DNS &amp; Domain Security Analyzer", body)
 
     def test_static_assets(self):
         status, headers, body = self._req("/css/app.css")
@@ -1071,6 +1084,9 @@ class ServerRouteTests(unittest.TestCase):
             status, _, body = self._req(path)
             self.assertEqual(status, 400, path)
             self.assertIn("url required", json.loads(body).get("error", ""))
+        status, _, body = self._req("/api/dns")
+        self.assertEqual(status, 400)
+        self.assertIn("domain required", json.loads(body).get("error", ""))
 
     def test_unknown_path_serves_404_page(self):
         status, headers, body = self._req("/does-not-exist")
@@ -1119,7 +1135,9 @@ class HostedSiteTests(unittest.TestCase):
             ROOT / "tools" / "csp" / "index.html",
             ROOT / "tools" / "csrf" / "index.html",
             ROOT / "tools" / "jwt" / "index.html",
+            ROOT / "tools" / "dns" / "index.html",
             ROOT / "guides" / "jwt" / "index.html",
+            ROOT / "guides" / "dns" / "index.html",
         ]
         versions = set()
         for page in pages:
@@ -1148,10 +1166,9 @@ class HostedSiteTests(unittest.TestCase):
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
         soon = app[app.index("const TOOLS_SOON"):app.index("];", app.index("const TOOLS_SOON"))]
-        self.assertIn("Next on the bench: DNS &amp; Domain Security Analyzer", hub)
-        self.assertIn("HAR Security Analyzer", hub)
-        self.assertIn("DNS & Domain Security Analyzer", soon)
+        self.assertIn("Next on the bench: HAR Security Analyzer", hub)
         self.assertIn("HAR Security Analyzer", soon)
+        self.assertNotIn("DNS & Domain Security Analyzer", soon)
         self.assertNotIn("TLS / SSL Analyzer", soon)
         self.assertNotIn("Subdomain Enumeration", soon)
 
@@ -2401,9 +2418,10 @@ class ToolCatalogTests(unittest.TestCase):
         app = self._app()
         self.assertIn('category: "assess"', app)
         self.assertIn('category: "local"', app)
-        # Four scan tools assess; local utilities are the CSRF PoC Generator
-        # and the JWT Security Workbench (a development preview).
-        self.assertEqual(app.count('category: "assess"'), 4)
+        # Five target tools assess (the four HTTP tools + the standalone DNS
+        # analyzer); local utilities are the CSRF PoC Generator and the JWT
+        # Security Workbench.
+        self.assertEqual(app.count('category: "assess"'), 5)
         self.assertEqual(app.count('category: "local"'), 2)
 
     def test_categories_define_suite_membership(self):
@@ -2607,6 +2625,18 @@ class GuidesTests(unittest.TestCase):
                 "/10-Testing_JSON_Web_Tokens",
                 "https://cwe.mitre.org/data/definitions/347.html",
                 "https://portswigger.net/web-security/jwt",
+            ),
+        ),
+        "dns": (
+            "dns",
+            ("RFC 7489", "RFC 7208", "RFC 6376", "RFC 4033", "CWE-290"),
+            (
+                "https://datatracker.ietf.org/doc/html/rfc7489",
+                "https://datatracker.ietf.org/doc/html/rfc7208",
+                "https://datatracker.ietf.org/doc/html/rfc6376",
+                "https://datatracker.ietf.org/doc/html/rfc4033",
+                "https://datatracker.ietf.org/doc/html/rfc8659",
+                "https://cwe.mitre.org/data/definitions/290.html",
             ),
         ),
     }
@@ -4749,6 +4779,255 @@ class LinkLabelTests(unittest.TestCase):
                     r"^- %s: https?://\S+$" % re.escape(name),
                     "llms.txt %s bullet must keep its bare-URL label" % name,
                 )
+
+
+class DnsEngineTests(unittest.TestCase):
+    """DNS & Domain Security Analyzer — pure engine tests (no network).
+
+    The scoring contract ``grade_dns_from_records`` is exercised against
+    synthetic record maps, so the suite never depends on a live resolver."""
+
+    def _grade(self, records, statuses=None, domain="example.com"):
+        from dns_security import grade_dns_from_records
+        return grade_dns_from_records(domain, records, statuses or {})
+
+    def test_normalize_domain_strips_url_path_and_dot(self):
+        from dns_security import normalize_domain
+        self.assertEqual(normalize_domain("https://Example.COM/path?q=1"), "example.com")
+        self.assertEqual(normalize_domain("example.com."), "example.com")
+        self.assertEqual(normalize_domain("  sub.example.com  "), "sub.example.com")
+
+    def test_normalize_domain_rejects_ips_and_localhost(self):
+        from dns_security import normalize_domain
+        for bad in ("127.0.0.1", "::1", "localhost", "example", "no_tld", "a..b"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    normalize_domain(bad)
+
+    def test_nxdomain_is_reported_not_graded(self):
+        result = self._grade({}, statuses={"A": "NXDOMAIN"})
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.risk, "unknown")
+        self.assertEqual(result.score, 0)
+        self.assertEqual(result.checks[0].name, "Domain resolution")
+        self.assertEqual(result.checks[0].status, "error")
+
+    def test_strong_domain_scores_high(self):
+        result = self._grade({
+            "A": ["203.0.113.10"],
+            "NS": ["ns1.example.com.", "ns2.example.com."],
+            "DS": ["12345 8 2 ABCDEF"],
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 include:_spf.example.com -all"],
+            "DMARC": ["v=DMARC1; p=reject; rua=mailto:dmarc@example.com"],
+            "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+            "CAA": ['0 issue "letsencrypt.org"'],
+        })
+        self.assertEqual(result.grade, "A")
+        self.assertGreaterEqual(result.score, 90)
+        self.assertEqual(result.risk, "low")
+
+    def test_spf_plus_all_is_a_weak_finding(self):
+        result = self._grade({
+            "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 +all"],
+            "DMARC": ["v=DMARC1; p=reject"],
+            "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+            "CAA": ['0 issue "letsencrypt.org"'],
+        })
+        spf = next(c for c in result.checks if c.name == "SPF")
+        self.assertEqual(spf.status, "weak")
+        self.assertEqual(spf.deduction, 15)
+
+    def test_dmarc_none_is_a_weak_finding(self):
+        result = self._grade({
+            "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 -all"],
+            "DMARC": ["v=DMARC1; p=none"],
+            "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+            "CAA": ['0 issue "letsencrypt.org"'],
+        })
+        dmarc = next(c for c in result.checks if c.name == "DMARC")
+        self.assertEqual(dmarc.status, "weak")
+        self.assertEqual(dmarc.deduction, 10)
+
+    def test_null_mx_keeps_email_checks_informational(self):
+        # RFC 7505 null MX: the domain explicitly has no email, so a missing
+        # SPF/DMARC/DKIM is not a finding.
+        result = self._grade({
+            "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
+            "MX": ["0 ."], "DS": ["12345 8 2 ABCDEF"],
+        })
+        for name in ("MX", "SPF", "DMARC", "DKIM"):
+            check = next(c for c in result.checks if c.name == name)
+            self.assertIn(check.status, ("info", "ok"), (name, check.status))
+        self.assertEqual(result.grade, "A")
+
+    def test_missing_email_controls_deduct_when_mail_present(self):
+        result = self._grade({
+            "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
+            "MX": ["10 mail.example.com."],
+        })
+        by_name = {c.name: c for c in result.checks}
+        self.assertEqual(by_name["SPF"].status, "missing")
+        self.assertEqual(by_name["DMARC"].status, "missing")
+        self.assertEqual(by_name["DKIM"].status, "weak")
+        self.assertLess(result.score, 60)
+
+    def test_caa_absence_is_weak(self):
+        result = self._grade({
+            "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
+            "MX": ["10 mail.example.com."], "TXT": ["v=spf1 -all"],
+            "DMARC": ["v=DMARC1; p=reject"], "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+            "DS": ["12345 8 2 ABCDEF"],
+        })
+        caa = next(c for c in result.checks if c.name == "CAA")
+        self.assertEqual(caa.status, "weak")
+        self.assertEqual(caa.deduction, 5)
+
+    def test_single_ns_is_weak(self):
+        result = self._grade({"A": ["203.0.113.10"], "NS": ["ns1.example.com."]})
+        ns = next(c for c in result.checks if c.name == "Name servers")
+        self.assertEqual(ns.status, "weak")
+
+    def test_to_dict_serializes(self):
+        import json
+        result = self._grade({"A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."]})
+        payload = json.loads(json.dumps(result.to_dict()))
+        self.assertEqual(payload["domain"], "example.com")
+        self.assertIn("checks", payload)
+        self.assertIn("grade", payload)
+
+    def test_wire_helpers_roundtrip(self):
+        from dns_security import _encode_name, _read_name
+        raw = _encode_name("www.example.com")
+        name, end = _read_name(raw, 0)
+        self.assertEqual(name, "www.example.com")
+        self.assertEqual(end, len(raw))
+
+
+class DnsParityTests(unittest.TestCase):
+    """The JS grader must agree with the Python engine, record map for record
+    map. Exercised under Node against a fixed records/statuses shape."""
+
+    RECORDS = {
+        "A": ["203.0.113.10"],
+        "AAAA": ["2001:db8::10"],
+        "NS": ["ns1.example.com.", "ns2.example.com."],
+        "MX": ["10 mail.example.com."],
+        "TXT": ["v=spf1 include:_spf.example.com -all"],
+        "DMARC": ["v=DMARC1; p=reject; rua=mailto:dmarc@example.com"],
+        "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+        "CAA": ['0 issue "letsencrypt.org"'],
+        "DS": ["12345 8 2 ABCDEF"],
+    }
+
+    def _python_grade(self):
+        import json
+        from dns_security import grade_dns_from_records
+        result = grade_dns_from_records("example.com", self.RECORDS, {"A": "NOERROR"})
+        return json.loads(json.dumps(result.to_dict()))
+
+    def test_js_grader_matches_python(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        import json as _json
+        from dns_security import grade_dns_from_records
+        py = grade_dns_from_records("example.com", self.RECORDS, {"A": "NOERROR"})
+        records_json = _json.dumps(self.RECORDS)
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\n"
+            + "const r = gradeDnsFromRecords('example.com', " + records_json + ", { A: 'NOERROR' }, 'python');\n"
+            + "console.log(JSON.stringify({ score: r.score, grade: r.grade, risk: r.risk, checks: r.checks.map(function(c){return [c.name, c.status, c.deduction || 0];}) }));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["score"], py.score)
+        self.assertEqual(payload["grade"], py.grade)
+        self.assertEqual(payload["risk"], py.risk)
+        js_checks = {name: (status, ded) for name, status, ded in payload["checks"]}
+        for check in py.checks:
+            self.assertIn(check.name, js_checks)
+            self.assertEqual(js_checks[check.name][0], check.status, check.name)
+            self.assertEqual(js_checks[check.name][1], check.deduction, check.name)
+
+
+class DnsSiteTests(unittest.TestCase):
+    """The DNS tool is wired through the registry, menu, catalog, sitemap,
+    manifest, llms.txt and the Pages workflow patch."""
+
+    def test_dns_tool_is_registered_as_standalone_assess(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("const TOOLS_MENU")
+        end = app.index("const TOOLS_SOON", start)
+        menu = app[start:end]
+        self.assertIn('href: "/tools/dns/"', menu)
+        self.assertIn('category: "assess"', menu)
+        # Standalone: not part of the hub "Run suite".
+        self.assertIn("suite: false", menu)
+
+    def test_dns_removed_from_soon_and_har_remains(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        soon = app[app.index("const TOOLS_SOON"):app.index("];", app.index("const TOOLS_SOON"))]
+        self.assertNotIn("DNS", soon)
+        self.assertIn("HAR Security Analyzer", soon)
+
+    def test_dns_engine_and_consent_gate_present(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function gradeDnsFromRecords", app)
+        self.assertIn("async function apiDns", app)
+        self.assertIn("function renderDnsRelayGate", app)
+        self.assertIn("async function ensureDnsConsent", app)
+        self.assertIn('"dns-relay"', app)
+        self.assertIn("pushDomainParam", app)
+        self.assertIn("initDomainInput", app)
+
+    def test_dns_exports_are_wired(self):
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('return "dns"', app)
+        self.assertIn('"DNS & Domain Security Analyzer"', app)
+        self.assertIn('title: "DNS & DOMAIN SECURITY"', app)
+
+    def test_sitemap_lists_the_dns_tool_and_guide(self):
+        sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("/CyberBuddy/tools/dns/</loc>", sitemap)
+        self.assertIn("/CyberBuddy/guides/dns/</loc>", sitemap)
+
+    def test_manifest_has_a_dns_shortcut(self):
+        manifest = json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
+        urls = [s.get("url", "") for s in manifest.get("shortcuts", [])]
+        self.assertTrue(any("dns" in u for u in urls), urls)
+
+    def test_llms_txt_describes_the_dns_tool_and_guide(self):
+        text = (ROOT / "llms.txt").read_text(encoding="utf-8")
+        self.assertIn("/tools/dns/", text)
+        self.assertIn("/guides/dns/", text)
+
+    def test_dns_api_route_is_served_by_server(self):
+        src = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn('path == "/api/dns"', src)
+        self.assertIn('qs.get("domain")', src)
+        self.assertIn('"/dns": "/tools/dns/"', src)
+
+    def test_patch_doc_documents_the_dns_copy(self):
+        """The arena token cannot push .github/workflows/**, so the one-line
+        tool copy edit is carried for the maintainer, like the others."""
+        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
+        self.assertIn("tools/dns", patch)
 
 
 if __name__ == "__main__":

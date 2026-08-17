@@ -22,6 +22,7 @@ const ICONS = {
   csrf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.07 0l-2 2A5 5 0 0 0 12 20.07l1.1-1.1"/></svg>',
   // JWT Security Workbench icon (a shield/token). Decorative only.
   jwt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 2l-8 4v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z"/><path d="M7.5 12l2.5 2.5L16.5 8"/></svg>',
+  dns: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18" stroke-dasharray="2 2"/><path d="M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -260,7 +261,7 @@ const TOOL_CATEGORIES = {
   assess: {
     label: "Assess targets",
     hubLabel: "Assess a target",
-    blurb: "URL-based checks that read a target you point them at. These four tools run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.",
+    blurb: "Target-based checks that read a target you point them at — a URL for the HTTP tools, a domain for the DNS analyzer. The four HTTP tools run together in the hub “Run suite”; the DNS analyzer runs standalone.",
     suite: true
   },
   local: {
@@ -325,6 +326,23 @@ const TOOLS_MENU = [
     std: ["OWASP WSTG-CONF-12", "CWE-79", "CWE-693"]
   },
   {
+    // Assesses a *domain* via public DNS, never the target's own servers.
+    // category "assess" (it reads an external target) but suite: false —
+    // the hub "Run suite" stays the four HTTP tools; DNS runs standalone.
+    href: "/tools/dns/",
+    label: "DNS & Domain Security Analyzer",
+    status: "live",
+    icon: "dns",
+    category: "assess",
+    suite: false,
+    input: "Domain",
+    mode: "Reads public DNS (resolver only — never the target's servers)",
+    evidence: "0–100 score + A–F grade report card with raw DNS evidence",
+    desc: "Grade a domain's DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding.",
+    tags: ["SPF", "DMARC", "DKIM", "DNSSEC", "CAA"],
+    std: ["RFC 7489", "RFC 7208", "RFC 6376", "RFC 4033", "CWE-290"]
+  },
+  {
     href: "/tools/csrf/",
     label: "CSRF PoC Generator",
     status: "live",
@@ -353,7 +371,7 @@ const TOOLS_MENU = [
     std: ["RFC 7519", "RFC 7515", "OWASP WSTG-SESS-10", "CWE-347"]
   }
 ];
-const TOOLS_SOON = ["DNS & Domain Security Analyzer", "HAR Security Analyzer"];
+const TOOLS_SOON = ["HAR Security Analyzer"];
 
 function toolsMenu(base, uid) {
   const id = "toolsMenu-" + (uid || "x");
@@ -512,7 +530,12 @@ const STD_TITLES = {
   "OWASP WSTG-CLNT-07": "OWASP Web Security Testing Guide — Testing for Cross-Origin Resource Sharing",
   "CWE-942": "CWE-942 — Permissive Cross-domain Policy with Untrusted Domains",
   "OWASP WSTG-SESS-05": "OWASP Web Security Testing Guide — Testing for Cross Site Request Forgery",
-  "CWE-352": "CWE-352 — Cross-Site Request Forgery (CSRF)"
+  "CWE-352": "CWE-352 — Cross-Site Request Forgery (CSRF)",
+  "RFC 7489": "RFC 7489 — Domain-based Message Authentication, Reporting & Conformance (DMARC)",
+  "RFC 7208": "RFC 7208 — Sender Policy Framework (SPF)",
+  "RFC 6376": "RFC 6376 — DomainKeys Identified Mail (DKIM)",
+  "RFC 4033": "RFC 4033 — DNS Security Introduction and Requirements (DNSSEC)",
+  "CWE-290": "CWE-290 — Authentication Bypass by Spoofing"
 };
 
 function stdBadgeHtml(code) {
@@ -591,6 +614,13 @@ function renderToolCatalog() {
     const statusBadge = isPreview
       ? ' <span class="cat-badge cat-preview" title="Development preview — not operational">Preview</span>'
       : "";
+    // Suite membership is per tool now: the four HTTP tools join the hub
+    // "Run suite", while the DNS analyzer is a standalone target check.
+    const suiteBadge = t.category === "assess"
+      ? (t.suite === false
+        ? ' <span class="cat-badge cat-local">standalone — not in Run suite</span>'
+        : ' <span class="cat-badge cat-suite">part of Run suite</span>')
+      : "";
     const button = isPreview
       ? '<a class="btn btn-ghost btn-sm" href="' + base + t.href + '">View preview</a>'
       : '<a class="btn btn-primary btn-sm" href="' + base + t.href + '">Launch ' + esc(t.label) + "</a>";
@@ -600,6 +630,7 @@ function renderToolCatalog() {
       '<h3>' + esc(t.label) + "</h3>" +
       '<span class="cat-badge cat-' + esc(t.category) + '">' + esc(cat.label) + "</span>" +
       statusBadge +
+      suiteBadge +
       "</div>" +
       '<p class="tool-catalog-purpose">' + esc(t.desc) + "</p>" +
       '<dl class="catalog-meta">' +
@@ -622,7 +653,9 @@ function renderToolCatalog() {
       // heading over cards that fade in beneath it.
       '<div class="category-head reveal">' +
       '<h2 id="' + (category === "assess" ? "assess-heading" : "local-heading") + '">' + esc(cat.hubLabel) + "</h2>" +
-      (cat.suite ? '<span class="cat-badge cat-suite">part of Run suite</span>' : '<span class="cat-badge cat-local">not in Run suite</span>') +
+      // assess membership is mixed now, so the group carries no suite badge;
+      // each assess card states its own Run-suite membership above.
+      (!cat.suite ? '<span class="cat-badge cat-local">not in Run suite</span>' : "") +
       '<p>' + esc(cat.blurb) + "</p>" +
       "</div>" +
       '<div class="tool-catalog-grid">' + tools.map(card).join("") + "</div>" +
@@ -733,12 +766,14 @@ async function detectEngine() {
   return { online: false, reason: "live" };
 }
 
-async function apiCall(path, url) {
+async function apiCall(path, url, key) {
   // Once detection has proved this is static Pages, avoid a guaranteed HTML
   // 404 for every selected tool. This saves requests and prevents noisy logs.
   if (!API_BASE && window.__cbEngine && window.__cbEngine.mode === "live") return null;
+  const params = {};
+  params[key || "url"] = url;
   try {
-    const res = await fetch(apiUrl(path) + "?" + new URLSearchParams({ url }), apiHeadersInit());
+    const res = await fetch(apiUrl(path) + "?" + new URLSearchParams(params), apiHeadersInit());
     const ctype = (res.headers.get("content-type") || "").toLowerCase();
     if (!ctype.includes("application/json")) return null;
     let data = null;
@@ -1023,6 +1058,7 @@ function sourceLabel(data) {
   if (s === "cache") return "published report";
   if (s === "relay") return "third-party relay";
   if (s === "relay-cached") return "third-party relay (cached 10 min)";
+  if (s === "dns-relay") return "public DNS (Google)";
   if (s === "cache-lookup") return "this browser (cached 10 min)";
   if (s === "browser") return "this browser";
   if (s === "pasted") return "pasted header (local)";
@@ -1171,6 +1207,106 @@ function validUrl(raw) {
   return urlValidation(raw).valid;
 }
 
+/* ---------- Domain validation (DNS & Domain Security Analyzer) ---------
+   Mirrors the Python ``normalize_domain`` rules: bare domain or http(s) URL,
+   punycode-encodes IDN input, and rejects IPs, localhost and implausible
+   labels. Reuses the same visible error contract as the URL tools. */
+
+function cleanDomain(raw) {
+  let value = String(raw == null ? "" : raw).trim();
+  value = value.replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "").trim();
+  value = value.replace(/\.$/, "");
+  return value;
+}
+
+function normalizeDomain(raw) {
+  let value = cleanDomain(raw);
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) {
+    try { value = new URL(value).hostname; } catch (_) { return ""; }
+  } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+    return "";
+  }
+  value = value.split(/[/?#]/)[0].trim();
+  value = value.replace(/:\d+$/, "");  // strip a trailing host:port
+  if (!value) return "";
+  try {
+    // URL hostname parsing punycode-encodes IDN labels for us.
+    value = new URL("http://" + value).hostname;
+  } catch (_) { return ""; }
+  return value.toLowerCase().replace(/\.$/, "");
+}
+
+function domainValidation(raw) {
+  const cleaned = cleanDomain(raw);
+  if (!cleaned) {
+    return { valid: false, domain: "", code: "empty", message: "Enter a domain to analyze." };
+  }
+  if (/\s/.test(cleaned) && !/^https?:\/\//i.test(cleaned)) {
+    return { valid: false, domain: "", code: "search", message: "This looks like a search term. Enter a domain such as example.com." };
+  }
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(cleaned);
+  if (scheme && !/^https?:\/\//i.test(cleaned)) {
+    return { valid: false, domain: "", code: "scheme", message: "Enter a bare domain or an http(s) URL, such as example.com." };
+  }
+  const hostname = normalizeDomain(cleaned);
+  if (!hostname) {
+    return { valid: false, domain: "", code: "malformed", message: "Enter a valid domain, such as example.com." };
+  }
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+    return { valid: false, domain: "", code: "ip", message: "IP addresses cannot be analyzed as domains — enter a hostname such as example.com." };
+  }
+  if (hostname === "localhost") {
+    return { valid: false, domain: "", code: "localhost", message: "localhost is not a public domain — enter a hostname such as example.com." };
+  }
+  const labels = hostname.split(".");
+  if (labels.some((label) => !label)) {
+    return { valid: false, domain: "", code: "empty-label", message: "Hostname labels cannot be empty (for example, a..b is invalid)." };
+  }
+  if (labels.length < 2) {
+    return { valid: false, domain: "", code: "public-tld", message: "Public domains need a dot and a plausible TLD (for example, example.com)." };
+  }
+  if (hostname.length > 253 || labels.some((label) => label.length > 63 || !/^[a-z0-9_-]+$/i.test(label))) {
+    return { valid: false, domain: "", code: "hostname", message: "The domain contains an invalid label." };
+  }
+  if (labels.some((label) => label.startsWith("-") || label.endsWith("-"))) {
+    return { valid: false, domain: "", code: "hyphen", message: "Domain labels cannot start or end with a hyphen." };
+  }
+  const tld = labels[labels.length - 1];
+  if (!/^[a-z]{2,63}$/i.test(tld)) {
+    return { valid: false, domain: "", code: "public-tld", message: "Public domains need a plausible TLD, such as .com or .org." };
+  }
+  return { valid: true, domain: hostname, code: "ok", message: "" };
+}
+
+function validateDomainField(input, focusOnError) {
+  if (!input) return "";
+  const result = domainValidation(input.value);
+  if (!result.valid) {
+    showUrlError(input, result.message);
+    if (focusOnError !== false) input.focus();
+    return "";
+  }
+  input.value = result.domain;
+  clearUrlError(input);
+  return result.domain;
+}
+
+function initDomainInput(input) {
+  if (!input || input.dataset.domainValidationBound === "1") return;
+  input.dataset.domainValidationBound = "1";
+  urlErrorElement(input);
+  input.addEventListener("input", () => clearUrlError(input));
+  input.addEventListener("blur", () => {
+    if (cleanDomain(input.value)) validateDomainField(input, false);
+  });
+  input.addEventListener("paste", () => {
+    setTimeout(() => {
+      if (cleanDomain(input.value)) validateDomainField(input, false);
+    }, 0);
+  });
+}
+
 function urlErrorElement(input) {
   if (!input) return null;
   const id = input.id + "Error";
@@ -1250,6 +1386,12 @@ function gradeLetter(score) {
 function pushUrlParam(url) {
   const next = new URL(window.location.href);
   next.searchParams.set("url", url);
+  history.replaceState(null, "", next);
+}
+
+function pushDomainParam(domain) {
+  const next = new URL(window.location.href);
+  next.searchParams.set("domain", domain);
   history.replaceState(null, "", next);
 }
 
@@ -1602,6 +1744,7 @@ function evidenceCardKind(data, toolName) {
   if (name.includes("clickjack") || Array.isArray(data && data.findings)) return "clickjacking";
   if (name.includes("cors") || (data && Array.isArray(data.origins_tested))) return "cors";
   if (name.includes("csp") || (data && Object.prototype.hasOwnProperty.call(data, "policy"))) return "csp";
+  if (name.includes("dns") || (data && data.domain && data.grade)) return "dns";
   if (name.includes("header") || (data && data.grade)) return "headers";
   return "generic";
 }
@@ -1749,6 +1892,39 @@ function buildEvidenceCardSpec(data, toolName) {
         }
       ],
       rowsTitle: "DIRECTIVE FINDINGS",
+      rows: data.checks || []
+    };
+  }
+
+  if (kind === "dns") {
+    const rec = data.records || {};
+    const spf = (rec.TXT || []).find((t) => /^v=spf1/i.test(String(t))) || "";
+    const dmarc = (rec.DMARC || []).join(" ") || "";
+    const dkimCount = Object.keys(rec).filter((k) => k.indexOf("DKIM:") === 0 && (rec[k] || []).length).length;
+    const gradeHero = data.grade
+      ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100 · "
+      : "";
+    return {
+      kind: kind,
+      title: "DNS & DOMAIN SECURITY",
+      hero: gradeHero + risk.toUpperCase(),
+      risk: risk,
+      meta: [
+        ["Domain", target],
+        ["Resolver", data.resolver || sourceLabel(data)],
+        ["Source", sourceLabel(data)],
+        ["Generated", fmtStampUtc()]
+      ].concat(caveats),
+      summary: data.summary || "",
+      contextTitle: "KEY RECORDS",
+      context: [
+        { name: "SPF", status: /^v=spf1/i.test(spf) ? "ok" : "missing", detail: String(spf || "(absent)").slice(0, 140), evidence: "TXT (v=spf1)" },
+        { name: "DMARC", status: dmarc ? "ok" : "missing", detail: String(dmarc || "(absent)").slice(0, 140), evidence: "_dmarc TXT" },
+        { name: "DKIM", status: dkimCount ? "ok" : "info", detail: dkimCount ? dkimCount + " common selector(s) publish keys" : "No key on common selectors (not proof of absence)", evidence: "selector._domainkey TXT" },
+        { name: "DNSSEC", status: (rec.DS || []).length ? "ok" : "info", detail: (rec.DS || []).length ? "DS published at the parent zone" : "No DS at the parent zone", evidence: "DS" },
+        { name: "CAA", status: (rec.CAA || []).length ? "ok" : "missing", detail: (rec.CAA || []).length ? (rec.CAA || []).slice(0, 2).join(", ") : "(absent)", evidence: "CAA" }
+      ],
+      rowsTitle: "DNS FINDINGS",
       rows: data.checks || []
     };
   }
@@ -2011,6 +2187,7 @@ function initExportMenu(toolName, getData) {
 
 function markdownKind(data) {
   if (!data) return "generic";
+  if (Array.isArray(data.checks) && data.domain && data.grade) return "dns";
   if (Array.isArray(data.checks) && data.grade) return "headers";
   if (Array.isArray(data.checks) && Object.prototype.hasOwnProperty.call(data, "policy")) return "csp";
   if (Array.isArray(data.checks) && data.origins_tested) return "cors";
@@ -2036,6 +2213,7 @@ function reportToolTitle(data) {
     : kind === "csp" ? "CSP Policy Auditor"
     : kind === "cors" ? "CORS Validator"
     : kind === "clickjacking" ? "Clickjacking Validator"
+    : kind === "dns" ? "DNS & Domain Security Analyzer"
     : "CyberBuddy";
 }
 
@@ -2100,6 +2278,20 @@ function reportContextMarkdown(data, kind, lines) {
     lines.push("", "## Policy evidence", "", "### Enforced policy", "",
       "```", String(data.policy || "(not present)"), "```", "", "### Report-only policy", "",
       "```", String(data.report_only_policy || "(not present)"), "```");
+  }
+  if (kind === "dns") {
+    const rec = data.records || {};
+    const first = (key) => (rec[key] && rec[key].length ? rec[key].join(" · ") : "—");
+    lines.push("", "## DNS records", "",
+      "- **Resolver:** " + mdCell(data.resolver || sourceLabel(data)),
+      "- **A:** " + mdCell(first("A")),
+      "- **AAAA:** " + mdCell(first("AAAA")),
+      "- **NS:** " + mdCell(first("NS")),
+      "- **MX:** " + mdCell(first("MX")),
+      "- **SPF (TXT):** " + mdCell(first("TXT")),
+      "- **DMARC (_dmarc):** " + mdCell(first("DMARC")),
+      "- **CAA:** " + mdCell(first("CAA")),
+      "- **DS (DNSSEC):** " + mdCell(first("DS")));
   }
 }
 
@@ -2297,7 +2489,15 @@ const WEIGHTS = {
   "Permissions-Policy": 5,
   "Cross-Origin-Opener-Policy": 5,
   "Cross-Origin-Embedder-Policy": 5,
-  "Cross-Origin-Resource-Policy": 5
+  "Cross-Origin-Resource-Policy": 5,
+  // DNS & Domain Security Analyzer weights (score contract mirrors
+  // dns_security.py — the JS grader grades the same records/statuses shape).
+  "DMARC": 20,
+  "SPF": 15,
+  "DKIM": 10,
+  "DNSSEC": 10,
+  "Name servers": 10,
+  "CAA": 5
 };
 const XFO_MISSING_WITH_CSP = 5;
 const REFERRER_OK = {
@@ -2328,7 +2528,16 @@ const FINDING_FIX = {
   "Allow-Credentials": "Avoid Access-Control-Allow-Credentials: true unless a strict allowlist of trusted origins is enforced.",
   "Vary: Origin": "When the CORS policy varies by caller origin, send Vary: Origin so shared caches key on it.",
   "Fetch result": "Re-run the probe with the Python engine (server.py) for a two-origin reflection proof.",
-  "Frame test": "Apply an effective framing control (CSP frame-ancestors or X-Frame-Options) and re-test."
+  "Frame test": "Apply an effective framing control (CSP frame-ancestors or X-Frame-Options) and re-test.",
+  "SPF": "Publish a single SPF record ending in -all (or ~all) that authorizes only your legitimate senders.",
+  "DMARC": "Publish a DMARC record with p=quarantine or p=reject so spoofed mail is handled by receivers.",
+  "DKIM": "Publish DKIM keys and sign outbound mail; re-test after adding the selector.",
+  "DNSSEC": "Enable DNSSEC at the registrar so the zone publishes DS records at its parent.",
+  "CAA": "Publish a CAA record to restrict which certificate authorities may issue for the domain.",
+  "Name servers": "Publish at least two authoritative name servers for delegation redundancy.",
+  "Domain resolution": "Ensure the domain resolves in public DNS before measuring its security posture.",
+  "MX": "Publish MX records (or a null MX) matching how the domain handles email.",
+  "domain": "Enter a valid public domain, such as example.com."
 };
 
 function findingSeverity(c) {
@@ -3615,6 +3824,282 @@ async function probeCorsLive(url) {
   }
 }
 
+/* ---------- DNS & Domain Security Analyzer engine ----------------------
+   Faithful port of dns_security.py's scoring over the same `records` /
+   `statuses` shape. On GitHub Pages (no Python engine) records come from
+   Google Public DNS (DNS-over-HTTPS) after the relay consent gate; with
+   server.py / api/ reachable the Python engine is authoritative. */
+
+const DNS_WEIGHTS = {
+  "DMARC": 20, "SPF": 15, "DKIM": 10, "DNSSEC": 10, "Name servers": 10, "CAA": 5
+};
+const DNS_DKIM_SELECTORS = [
+  "default", "google", "selector1", "selector2", "k1", "k2",
+  "mail", "smtp", "dkim", "mandrill", "s1", "s2"
+];
+
+function dnsFinding(name, status, detail, evidence, deduction) {
+  return { name: name, status: status, detail: detail, evidence: evidence || "", deduction: deduction || 0 };
+}
+
+function dnsStatusCodeName(code) {
+  return ({ 0: "NOERROR", 2: "SERVFAIL", 3: "NXDOMAIN", 5: "REFUSED" }[code]) || ("RCODE" + code);
+}
+
+function dnsSpfRecords(records) {
+  return (records.TXT || []).filter((t) => String(t).trim().toLowerCase().startsWith("v=spf1"));
+}
+
+function dnsDmarcRecords(records) {
+  return (records.DMARC || []).filter((t) => String(t).trim().toLowerCase().startsWith("v=dmarc1"));
+}
+
+function dnsDkimRecords(records) {
+  const found = [];
+  Object.keys(records || {}).forEach((key) => {
+    if (key.indexOf("DKIM:") === 0) {
+      const values = records[key].filter((v) => String(v).toLowerCase().indexOf("v=dkim1") !== -1);
+      if (values.length) found.push([key.slice(5), values[0]]);
+    }
+  });
+  return found;
+}
+
+function dnsSpfQualifier(spf) {
+  const terms = String(spf).toLowerCase().split(/\s+/);
+  for (let i = terms.length - 1; i >= 0; i--) {
+    if (["all", "+all", "-all", "~all", "?all"].indexOf(terms[i]) !== -1) return terms[i];
+    if (/^[+~?-]all$/.test(terms[i])) return terms[i];
+  }
+  return "";
+}
+
+function dnsSpfLookupCount(spf) {
+  const terms = String(spf).toLowerCase().split(/\s+/);
+  let count = 0;
+  terms.forEach((term) => {
+    if (["all", "ip4", "ip6", "a", "mx", "ptr", "include", "exists", "redirect", "exp"].indexOf(term) !== -1) {
+      if (term !== "all") count++;
+    } else if (/^(a|mx|ptr|include|exists):/.test(term) || /^redirect=/.test(term)) {
+      count++;
+    }
+  });
+  return count;
+}
+
+function dnsMxPairs(records) {
+  return (records.MX || []).map((value) => {
+    const parts = String(value).split(/\s+/);
+    const pref = parseInt(parts[0], 10) || 0;
+    const exchange = parts.slice(1).join(" ");
+    return [pref, exchange];
+  });
+}
+
+function dnsIsNullMx(pairs) {
+  return !!pairs.length && pairs.every((p) => p[1] === "." || p[1] === "");
+}
+
+function gradeDnsFromRecords(domain, records, statuses, source) {
+  records = records || {};
+  statuses = statuses || {};
+  const checks = [];
+  const finish = (extra) => Object.assign({
+    domain: domain, url: domain, status: "ok", records: records, statuses: statuses,
+    checks: checks, score: 0, grade: "F", risk: "unknown", summary: "",
+    _source: source || "browser"
+  }, extra || {});
+
+  if ((statuses.A || "NOERROR") === "NXDOMAIN") {
+    return finish({
+      status: "error",
+      checks: [dnsFinding("Domain resolution", "error", "NXDOMAIN — the domain does not exist in public DNS.", "DNS", 0)],
+      risk: "unknown",
+      summary: "NXDOMAIN — the domain does not exist. No security posture can be measured."
+    });
+  }
+
+  const hasWeb = !!(records.A && records.A.length) || !!(records.AAAA && records.AAAA.length) || !!(records.CNAME && records.CNAME.length);
+  if (hasWeb) {
+    const ips = ((records.A || []).slice(0, 4).concat((records.AAAA || []).slice(0, 4))).join(", ");
+    checks.push(dnsFinding("Domain resolution", "ok", "The domain resolves to a web address (A/AAAA).", ips || "A/AAAA present", 0));
+  } else {
+    checks.push(dnsFinding("Domain resolution", "info", "No A/AAAA web address published — the domain may be mail-only or parked.", "DNS", 0));
+  }
+
+  const ns = records.NS || [];
+  if (!ns.length) {
+    checks.push(dnsFinding("Name servers", "missing", "No NS records returned — the domain has no published delegation.", "NS: (none)", DNS_WEIGHTS["Name servers"]));
+  } else if (ns.length < 2) {
+    checks.push(dnsFinding("Name servers", "weak", "A single authoritative name server — no redundancy if it fails.", "NS: " + ns.join(", "), 5));
+  } else {
+    checks.push(dnsFinding("Name servers", "ok", ns.length + " name servers published — delegation is redundant.", "NS: " + ns.slice(0, 6).join(", "), 0));
+  }
+
+  const ds = records.DS || [];
+  const dnskey = records.DNSKEY || [];
+  if (ds.length) {
+    checks.push(dnsFinding("DNSSEC", "ok", "DS records are published at the parent zone — the domain is DNSSEC-signed.", "DS: " + ds.slice(0, 3).join(", "), 0));
+  } else if (dnskey.length) {
+    checks.push(dnsFinding("DNSSEC", "ok", "DNSKEY is published at the apex, but no DS was returned — confirm the parent delegation.", "DNSKEY: " + dnskey.slice(0, 3).join(", "), 0));
+  } else {
+    checks.push(dnsFinding("DNSSEC", "weak", "No DS or DNSKEY records — DNSSEC is not deployed for this zone.", "DNS", DNS_WEIGHTS["DNSSEC"]));
+  }
+
+  const mxPairs = dnsMxPairs(records);
+  const nullMx = dnsIsNullMx(mxPairs);
+  const receivesEmail = !!mxPairs.length && !nullMx;
+  if (nullMx) {
+    checks.push(dnsFinding("MX", "info", "Null MX (RFC 7505) — the domain explicitly does not accept email.", "MX: 0 .", 0));
+  } else if (mxPairs.length) {
+    checks.push(dnsFinding("MX", "ok", mxPairs.length + " mail exchanger(s) published — the domain receives email.", "MX: " + (records.MX || []).slice(0, 4).join(", "), 0));
+  } else {
+    checks.push(dnsFinding("MX", "info", "No MX records — the domain does not receive email, so the email checks below are informational only.", "MX: (none)", 0));
+  }
+
+  const spf = dnsSpfRecords(records);
+  if (spf.length) {
+    if (spf.length > 1) {
+      checks.push(dnsFinding("SPF", "weak", "Multiple SPF records — RFC 7208 allows exactly one; receivers may treat this as PermError.", "SPF: " + spf.slice(0, 3).join(" | "), 5));
+    } else {
+      const text = spf[0];
+      const qualifier = dnsSpfQualifier(text);
+      const lookups = dnsSpfLookupCount(text);
+      if ((qualifier === "-all" || qualifier === "~all") && lookups === 0 && !receivesEmail) {
+        checks.push(dnsFinding("SPF", "ok", "SPF present with a null policy (" + qualifier + ") — appropriate for a domain that sends no mail.", text.slice(0, 180), 0));
+      } else if (qualifier === "+all") {
+        checks.push(dnsFinding("SPF", "weak", "SPF ends in +all — any host is authorized to send as this domain.", text.slice(0, 180), DNS_WEIGHTS["SPF"]));
+      } else if (qualifier === "?all") {
+        checks.push(dnsFinding("SPF", "weak", "SPF ends in ?all (neutral) — permissive and easily spoofed; prefer -all.", text.slice(0, 180), 5));
+      } else if (lookups > 10) {
+        checks.push(dnsFinding("SPF", "weak", "SPF exceeds the RFC 7208 limit of 10 DNS lookups (" + lookups + ") — receivers may reject it.", text.slice(0, 180), 5));
+      } else {
+        checks.push(dnsFinding("SPF", "ok", "SPF present with a safe qualifier (" + (qualifier || "none") + ").", text.slice(0, 180), 0));
+      }
+    }
+  } else if (receivesEmail) {
+    checks.push(dnsFinding("SPF", "missing", "Email is accepted (MX present) but no SPF record exists — the domain can be spoofed.", "SPF: (none)", DNS_WEIGHTS["SPF"]));
+  } else {
+    checks.push(dnsFinding("SPF", "info", "No SPF record — not required when the domain does not send or receive email.", "SPF: (none)", 0));
+  }
+
+  const dmarc = dnsDmarcRecords(records);
+  if (dmarc.length) {
+    if (dmarc.length > 1) {
+      checks.push(dnsFinding("DMARC", "weak", "Multiple DMARC records — receivers treat this as invalid; keep exactly one.", "DMARC: " + dmarc.slice(0, 2).join(" | "), 5));
+    } else {
+      const text = dmarc[0];
+      let policy = "";
+      String(text).toLowerCase().split(";").forEach((token) => {
+        token = token.trim();
+        if (token.indexOf("p=") === 0) policy = token.slice(2).trim();
+      });
+      if (policy === "none") {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC present but p=none (monitor only) — spoofed mail is delivered; move to quarantine or reject.", text.slice(0, 180), 10));
+      } else if (policy === "quarantine" || policy === "reject") {
+        checks.push(dnsFinding("DMARC", "ok", "DMARC present with an enforcement policy (p=" + policy + ").", text.slice(0, 180), 0));
+      } else {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC record present but no clear enforcement policy (p=) was found.", text.slice(0, 180), 10));
+      }
+    }
+  } else if (receivesEmail || spf.length) {
+    checks.push(dnsFinding("DMARC", "missing", "No DMARC record — spoofed email is delivered without a reported policy.", "_dmarc TXT: (none)", DNS_WEIGHTS["DMARC"]));
+  } else {
+    checks.push(dnsFinding("DMARC", "info", "No DMARC record — not required when the domain does not handle email.", "_dmarc TXT: (none)", 0));
+  }
+
+  const dkim = dnsDkimRecords(records);
+  if (dkim.length) {
+    const selectors = dkim.slice(0, 5).map((pair) => pair[0]).join(", ");
+    checks.push(dnsFinding("DKIM", "ok", "DKIM keys published on " + dkim.length + " common selector(s).", "selectors: " + selectors, 0));
+  } else if (receivesEmail || spf.length || dmarc.length) {
+    checks.push(dnsFinding("DKIM", "weak", "No DKIM key on common selectors. This is not proof of absence — a custom selector may still exist.", "common selectors: (none)", 5));
+  } else {
+    checks.push(dnsFinding("DKIM", "info", "No DKIM on common selectors — not required when the domain does not sign email.", "common selectors: (none)", 0));
+  }
+
+  const caa = records.CAA || [];
+  if (caa.length) {
+    const restrictive = caa.some((c) => String(c).indexOf('issue ";"') !== -1);
+    checks.push(dnsFinding("CAA", "ok", "CAA restricts issuance" + (restrictive ? ' (issue ";" — no CA may issue)' : "."), "CAA: " + caa.slice(0, 3).join(", "), 0));
+  } else {
+    checks.push(dnsFinding("CAA", "weak", "No CAA record — any public CA may issue certificates for this domain.", "CAA: (none)", DNS_WEIGHTS["CAA"]));
+  }
+
+  const score = Math.max(0, 100 - checks.reduce((sum, c) => sum + (c.deduction || 0), 0));
+  const grade = gradeLetter(score);
+  const missing = checks.filter((c) => c.status === "missing").map((c) => c.name);
+  let summary;
+  const extra = missing.length && grade !== "A" ? " Missing: " + missing.slice(0, 4).join(", ") + (missing.length > 4 ? "…" : "") + "." : "";
+  if (grade === "A") summary = "Strong DNS posture — email-spoofing controls are enforced and the zone is signed.";
+  else if (grade === "B") summary = "Good posture with a few gaps. Close the remaining DNS controls." + extra;
+  else if (grade === "C") summary = "Notable gaps — attackers get signal here. Prioritize the missing records." + extra;
+  else if (grade === "D") summary = "Weak DNS posture. Several anti-spoofing and integrity controls are missing." + extra;
+  else summary = "Critical DNS posture. Key email and integrity controls are absent." + extra;
+  const risk = grade === "A" || grade === "B" ? "low" : (grade === "C" || grade === "D" ? "medium" : "high");
+
+  return finish({ checks: checks, score: score, grade: grade, risk: risk, summary: summary });
+}
+
+const DNS_DOH = "https://dns.google/resolve";
+
+async function dohResolve(name, type) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(DNS_DOH + "?" + new URLSearchParams({ name: name, type: type }),
+      { cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) return { status: "error", answers: [] };
+    const data = await res.json();
+    return {
+      status: dnsStatusCodeName(Number(data.Status)),
+      answers: Array.isArray(data.Answer) ? data.Answer.map((a) => String(a.data)) : []
+    };
+  } catch (_) {
+    return { status: "error", answers: [] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function collectDnsOverHttps(domain) {
+  const records = {};
+  const statuses = {};
+  const apex = [["A", "A"], ["AAAA", "AAAA"], ["NS", "NS"], ["MX", "MX"],
+    ["TXT", "TXT"], ["CAA", "CAA"], ["DS", "DS"], ["DNSKEY", "DNSKEY"]];
+  const jobs = apex.map((pair) => dohResolve(domain, pair[1]).then((r) => {
+    statuses[pair[0]] = r.status;
+    if (r.answers.length) records[pair[0]] = r.answers;
+  }));
+  jobs.push(dohResolve("_dmarc." + domain, "TXT").then((r) => {
+    statuses.DMARC = r.status;
+    if (r.answers.length) records.DMARC = r.answers;
+  }));
+  DNS_DKIM_SELECTORS.forEach((sel) => {
+    jobs.push(dohResolve(sel + "._domainkey." + domain, "TXT").then((r) => {
+      statuses["DKIM:" + sel] = r.status;
+      if (r.answers.length) records["DKIM:" + sel] = r.answers;
+    }));
+  });
+  await Promise.all(jobs);
+  return { records: records, statuses: statuses };
+}
+
+async function gradeDnsLive(domain) {
+  const collected = await collectDnsOverHttps(domain);
+  return gradeDnsFromRecords(domain, collected.records, collected.statuses, "dns-relay");
+}
+
+async function apiDns(domain) {
+  const local = await apiCall("/api/dns", domain, "domain");
+  if (local && local.error && !local.checks) return local;
+  if (local && Array.isArray(local.checks) && local.grade) {
+    local._source = "python";
+    return local;
+  }
+  return gradeDnsLive(domain);
+}
+
 /* ---------- Hub suite --------------------------------------------------- */
 
 function initSuite() {
@@ -3959,6 +4444,7 @@ const SOURCE_EXPLAIN = {
   python: "The Python engine answered — server-side scan with complete evidence.",
   cache: "Pre-scanned demo target served from the CI-built cache — not a fresh scan.",
   relay: "Header values proxied by a third-party relay — not independently verified.",
+  "dns-relay": "DNS records fetched from Google Public DNS (dns.google) — not independently verified. Run server.py for a resolver-local scan.",
   browser: "Graded in this browser from a direct read of the target.",
   "cache-lookup": "Reused this browser's 10-minute header cache from an earlier scan.",
   "relay-cached": "Relayed header values reused from this browser's 10-minute cache — still not independently verified.",
@@ -4118,11 +4604,89 @@ async function ensureRelayConsent(url) {
   return mode;
 }
 
+/* DNS-over-HTTPS consent gate. The DNS tool never touches the target's own
+   servers — its only disclosure is the domain name, sent to Google Public
+   DNS (dns.google) when the Python engine is offline. A two-option gate
+   makes that single disclosure explicit (there is no "full URL" choice:
+   only the domain is ever sent). */
+function renderDnsRelayGate(wrap) {
+  wrap.classList.remove("hidden");
+  const option = (mode, label, rec, what, sends, gets) =>
+    '<button type="button" class="relay-option" data-consent="' + mode + '">' +
+    '<span class="relay-option-head"><span class="relay-option-label">' + label + "</span>" +
+    (rec ? '<span class="relay-option-rec">Recommended</span>' : "") + "</span>" +
+    '<span class="relay-option-what">' + what + "</span>" +
+    '<span class="relay-option-meta"><span><strong>Sends:</strong> ' + sends + "</span>" +
+    '<span><strong>You get:</strong> ' + gets + "</span></span></button>";
+
+  wrap.innerHTML =
+    '<div class="relay-consent" role="alertdialog" aria-labelledby="relayGateTitle" aria-describedby="relayGateBody" tabindex="-1">' +
+    '<div class="relay-consent-head">' +
+    '<span class="relay-consent-badge">Action needed</span>' +
+    '<h3 id="relayGateTitle">Choose how to resolve this domain</h3>' +
+    "</div>" +
+    '<div id="relayGateBody">' +
+    '<p class="relay-consent-lead"><strong>The scan is paused until you pick an option below.</strong> ' +
+    "This hosted page has no local engine, so it reads public DNS records through " +
+    "<code>dns.google</code> (Google Public DNS). The domain's own servers are never " +
+    "contacted — only its public DNS records are queried.</p>" +
+    "<p>Google receives the domain name you enter and your IP address. For a fully " +
+    "private scan, stop and run <code>python3 server.py</code> locally instead — the " +
+    "Python engine uses your system resolver.</p>" +
+    "</div>" +
+    '<div class="relay-consent-actions" role="group" aria-label="DNS resolution options">' +
+    option("host", "Allow \u2014 resolve via public DNS", true,
+      "Sends <em>only</em> the domain to Google Public DNS to read its public records (SPF, DMARC, DKIM, DNSSEC, CAA and name servers).",
+      "<code>example.com</code> to dns.google", "A full 0\u2013100 DNS grade, flagged <em>unverified</em>") +
+    option("deny", "No \u2014 do not use public DNS", false,
+      "Nothing is sent to any third party. DNS grading is skipped on this hosted page.",
+      "Nothing", "No DNS grade here \u2014 run server.py locally") +
+    "</div>" +
+    '<p class="relay-consent-foot">Your choice applies to this browser tab only and is forgotten when you close it. ' +
+    'Records fetched this way are always labelled <span class="unverified-flag">unverified</span>.</p>' +
+    "</div>";
+
+  const panel = wrap.querySelector(".relay-consent");
+  try {
+    const header = document.querySelector(".site-header");
+    const offset = (header && getComputedStyle(header).position === "sticky")
+      ? header.getBoundingClientRect().height + 12 : 12;
+    const top = panel.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top: Math.max(0, top), behavior: prefersReduced() ? "auto" : "smooth" });
+  } catch (_) { panel.scrollIntoView(); }
+  try { panel.focus({ preventScroll: true }); } catch (_) { /* older browsers */ }
+
+  return new Promise((resolve) => {
+    const choose = (mode) => {
+      setRelayConsent(mode);
+      wrap.classList.add("hidden");
+      wrap.innerHTML = "";
+      resolve(mode);
+    };
+    wrap.querySelectorAll("[data-consent]").forEach((btn) => {
+      btn.addEventListener("click", () => choose(btn.getAttribute("data-consent")));
+    });
+    panel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); choose("deny"); }
+    });
+  });
+}
+
+async function ensureDnsConsent(domain) {
+  try { await window.__cbEngineReady; } catch (_) { /* fall through */ }
+  if (window.__cbEngine && window.__cbEngine.mode === "python") return "skip";
+  if (relayConsent()) return relayConsent();
+  const wrap = document.getElementById("relayGate");
+  if (!wrap) return "skip";
+  return renderDnsRelayGate(wrap);
+}
+
 function isUnverified(data) {
   const s = data && data._source;
   // `relay-cached` is a relayed read served again from the 10-minute local
   // cache — same provenance, so it keeps the same unverified flag.
-  return s === "relay" || s === "relay-cached";
+  // `dns-relay` is DNS-over-HTTPS via Google Public DNS — also third-party.
+  return s === "relay" || s === "relay-cached" || s === "dns-relay";
 }
 
 function unverifiedFlag(data) {

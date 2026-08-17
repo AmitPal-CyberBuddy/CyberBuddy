@@ -19,6 +19,7 @@ GET /api/scan?url=…         clickjacking / framing header scan
 GET /api/headers?url=…      security headers scan (CSP, HSTS, COOP/COEP, …)
 GET /api/cors?url=…         two-origin CORS reflection probe
 GET /api/csp?url=…          dedicated Content-Security-Policy audit
+GET /api/dns?domain=…       DNS & domain security scan (SPF/DMARC/DKIM/DNSSEC/CAA)
 GET /api/health             {"ok": true}  (alias: /health)
 GET /poc?url=…              standalone clickjacking PoC page
 
@@ -42,6 +43,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit, urlunspli
 from clickjacking_validator import normalize_url, redact_userinfo, scan_url, validate_target
 from cors_validator import scan_cors
 from csp_checker import scan_csp
+from dns_security import scan_dns
 from security_headers import scan_headers
 
 HOST = "127.0.0.1"
@@ -74,6 +76,9 @@ TOOL_ALIASES = {
     # JWT Security Workbench (local-only decode, verify, sign and test).
     "/jwt": "/tools/jwt/",
     "/jwt/": "/tools/jwt/",
+    # DNS & Domain Security Analyzer (public DNS posture check).
+    "/dns": "/tools/dns/",
+    "/dns/": "/tools/dns/",
 }
 
 # Chunk size for streaming file I/O (64KB)
@@ -345,6 +350,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
             return
 
+        if path == "/api/dns":
+            if not self._api_allowed():
+                self._json(403, {"error": "cross-origin API access denied"})
+                return
+            domain = (qs.get("domain") or [""])[0].strip()
+            if not domain:
+                self._json(400, {"error": "domain required"})
+                return
+            self._json(200, scan_dns(domain).to_dict())
+            return
+
         if path in ("/api/scan", "/api/headers", "/api/cors", "/api/csp"):
             if not self._api_allowed():
                 self._json(403, {"error": "cross-origin API access denied"})
@@ -464,7 +480,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"CSP:          http://127.0.0.1:{PORT}/tools/csp/")
     print(f"CSRF:         http://127.0.0.1:{PORT}/tools/csrf/")
     print(f"JWT Workbench:http://127.0.0.1:{PORT}/tools/jwt/")
-    print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/health")
+    print(f"DNS:          http://127.0.0.1:{PORT}/tools/dns/")
+    print("API:          /api/scan  /api/headers  /api/cors  /api/csp  /api/dns  /api/health")
     if not loopback:
         print("WARNING: bound on a non-loopback address. Private-IP scans are "
               + ("ENABLED (--allow-private)." if ALLOW_PRIVATE else "disabled."))

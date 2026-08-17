@@ -794,3 +794,46 @@ and the secret-test worker honest:
 - **Internal phase IDs stay in the repo.** JWT-0x identifiers belong in
   `docs/`, commit messages and code comments — never in rendered page copy.
   A visitor has no way to resolve "JWT-03".
+
+---
+
+## DNS-01 traps (DNS & Domain Security Analyzer)
+
+- **Two scoring contracts, one shape.** `dns_security.grade_dns_from_records`
+  (Python) and `gradeDnsFromRecords` (js/app.js) must agree on the same
+  `records` / `statuses` shape. `records` maps logical keys (`"A"`, `"MX"`,
+  `"TXT"`, `"DMARC"`, `"DKIM:<selector>"`, `"CAA"`, `"DS"`, `"DNSKEY"`) to
+  string lists; `statuses` maps the same keys to a status name (`NOERROR` /
+  `NXDOMAIN` / `timeout`). `DnsParityTests` pins them check-for-check — change
+  one without the other and the suite fails.
+- **DNS rdata names are compression pointers into the full packet.** `MX`,
+  `NS`, `CNAME` and `SOA` rdata can point back into the message. Read names
+  from `packet` at their true offsets, never from an rdata slice — a slice
+  breaks every compressed name. `_read_name` returns `(name, end_offset)`.
+- **DNSSEC verdict keys on DS, not DNSKEY.** Querying the apex for `DS`
+  returns the parent zone's delegation record — that is the chain-of-trust
+  signal. `DNSKEY` at the apex alone is evidence, not a signed zone.
+- **Null MX (RFC 7505) is "no email", not a missing MX.** `MX 0 .` means the
+  domain explicitly declines mail. `_is_null_mx`/`dnsIsNullMx` treat it that
+  way so SPF/DMARC/DKIM become informational instead of deductions.
+- **DKIM misses are hints, never proof.** The engine probes a fixed selector
+  list; an unknown selector may still exist. The copy and the tests both pin
+  the "not proof of absence" wording.
+- **The tool never contacts the target.** Every lookup goes to a resolver
+  (system resolvers via `/etc/resolv.conf`, else public). `scan_dns` accepts
+  `allow_private` only for API symmetry — there is no private-IP SSRF surface.
+- **Two consent gates, one session key.** The DNS gate (`renderDnsRelayGate`)
+  is separate from the header relay gate because the only disclosure is the
+  domain name. Both store the shared `cb-relay-consent` key, so the DNS gate
+  only offers Allow/Deny — there is no "full URL" choice.
+- **`apiCall` takes a query-key parameter.** `apiCall(path, value, key)`
+  builds `?key=value`; `/api/dns` passes `"domain"`. Keep `apiCall`'s
+  engine-down early return — it is what avoids a guaranteed HTML 404 on Pages.
+- **DNS is `suite: false`.** The hub Run suite stays the four HTTP tools;
+  `TOOLS = PAGES.slice(1, 5)` in `tests/browser/responsive.js` must keep
+  resolving to exactly those four, so the `dns` page is appended at the end of
+  `PAGES` alongside the JWT entries.
+- **DoH evidence differs from wire evidence.** The browser port renders DNSKEY
+  as Google returns it (base64) while Python prints a key summary. Scoring
+  only tests *presence*, so the parity test compares checks/score/grade — not
+  the DNSKEY string format.

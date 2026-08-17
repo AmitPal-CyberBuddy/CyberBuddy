@@ -108,7 +108,7 @@
     browser and never scan a target.
   </p>
   <p class="std-line reveal" style="--d: .1s;">
-    <span class="count" id="toolCount">06 live</span> · authorized testing only · all scans are read-only GETs
+    <span class="count" id="toolCount">07 live</span> · authorized testing only · all scans are read-only GETs
   </p>
 
   <div id="toolCatalog">
@@ -118,9 +118,9 @@
     <section class="catalog-group" id="assess-targets" aria-labelledby="assess-heading">
       <div class="category-head reveal">
         <h2 id="assess-heading">Assess a target</h2>
-        <span class="cat-badge cat-suite">part of Run suite</span>
-        <p>URL-based checks that read a target you point them at. These four tools
-          run together in the hub “Run suite” and produce LIVE/CACHED evidence reports.</p>
+        <p>Target-based checks that read a target you point them at — a URL for the
+          HTTP tools, a domain for the DNS analyzer. The four HTTP tools run together
+          in the hub “Run suite”; the DNS analyzer runs standalone.</p>
       </div>
       <div class="tool-catalog-grid">
 
@@ -170,6 +170,18 @@
             <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CONF-12</span><span class="std-id">CWE-79</span><span class="std-id">CWE-693</span></dd>
           </dl>
           <a class="btn btn-primary btn-sm" href="csp/">Launch CSP Policy Auditor</a>
+        </article>
+
+        <article class="card tool-catalog-card reveal" style="--d: 0.29s">
+          <div class="tool-catalog-head"><h3>DNS &amp; Domain Security Analyzer</h3><span class="cat-badge cat-assess">Assess targets</span> <span class="cat-badge cat-local">standalone — not in Run suite</span></div>
+          <p class="tool-catalog-purpose">Grade a domain's DNS posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — with the raw record behind every finding.</p>
+          <dl class="catalog-meta">
+            <dt>Input</dt><dd>Domain</dd>
+            <dt>Mode</dt><dd>Reads public DNS (resolver only — never the target's servers)</dd>
+            <dt>Evidence</dt><dd>0–100 score + A–F grade report card with raw DNS evidence</dd>
+            <dt>Standards</dt><dd class="catalog-std"><span class="std-id">RFC 7489</span><span class="std-id">RFC 7208</span><span class="std-id">RFC 6376</span><span class="std-id">RFC 4033</span><span class="std-id">CWE-290</span></dd>
+          </dl>
+          <a class="btn btn-primary btn-sm" href="dns/">Launch DNS &amp; Domain Security Analyzer</a>
         </article>
 
       </div>

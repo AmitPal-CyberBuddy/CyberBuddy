@@ -30,6 +30,24 @@ Without this, `/tools/jwt/` 404s on the hosted site even though the
 header Tools menu, hub card and catalog link to it. Local `server.py` is
 unaffected (it serves anything under `tools/` generically).
 
+## DNS-01 edit (apply if not already present)
+
+In the *Assemble static site* step, add `tools/dns` to the explicit tool
+copy line (the same mechanism as the JWT preview before it):
+
+```yaml
+# before
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt _site/tools/
+# after
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt tools/dns _site/tools/
+```
+
+Without this, `/tools/dns/` 404s on the hosted site even though the header
+Tools menu, hub card, catalog, manifest shortcut and sitemap all link to it.
+Local `server.py` is unaffected (it serves anything under `tools/`
+generically). The `guides/` tree is already copied whole, so the new
+`guides/dns/` guide needs no separate line.
+
 ## The required edits
 
 Two lines in `.github/workflows/pages.yml`, both in the *Assemble static site*
