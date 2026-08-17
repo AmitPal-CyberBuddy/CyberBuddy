@@ -376,7 +376,24 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/csp":
                 self._json(200, scan_csp(url, **kwargs).to_dict())
             else:
-                self._json(200, scan_cors(url, **kwargs).to_dict())
+                # CORS method-aware: allow analyst to choose additional coverage for an authorized endpoint.
+                # Never invent a PASS for methods not tested.
+                methods = None
+                preflight_methods = None
+                preflight_headers = None
+                if qs.get("methods"):
+                    raw = (qs.get("methods") or [""])[0]
+                    if raw:
+                        methods = [m.strip() for m in raw.split(",") if m.strip()]
+                if qs.get("preflight"):
+                    raw = (qs.get("preflight") or [""])[0]
+                    if raw:
+                        preflight_methods = [m.strip() for m in raw.split(",") if m.strip()]
+                if qs.get("preflight_headers"):
+                    raw = (qs.get("preflight_headers") or [""])[0]
+                    if raw:
+                        preflight_headers = [h.strip() for h in raw.split(",") if h.strip()]
+                self._json(200, scan_cors(url, methods=methods, preflight_methods=preflight_methods, preflight_headers=preflight_headers, **kwargs).to_dict())
             return
 
         if path == "/poc":

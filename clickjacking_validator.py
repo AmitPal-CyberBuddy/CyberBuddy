@@ -193,6 +193,7 @@ def fetch_headers(
     insecure: bool,
     allow_private: bool = True,
     extra_headers: dict[str, str] | None = None,
+    method: str = "GET",
 ) -> tuple[int, str, dict[str, str]]:
     """Fetch HTTP headers using the session pool for connection reuse."""
     validate_target(url, allow_private=allow_private)
@@ -202,7 +203,7 @@ def fetch_headers(
     }
     if extra_headers:
         headers.update(extra_headers)
-    req = urllib.request.Request(url, method="GET", headers=headers)
+    req = urllib.request.Request(url, method=method.upper(), headers=headers)
     
     # Use session pool for opener reuse
     pool = get_session_pool()

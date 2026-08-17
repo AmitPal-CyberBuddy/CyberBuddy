@@ -497,7 +497,14 @@ PR.
 
 ## 5. Current handoff
 
-> **This session (CORS-accuracy, branch `arena/01a00ef9-cyberbuddy`):** fixed
+> **This session (CORS-method-aware, branch `arena/01a00f6e-cyberbuddy`):** completed **CORS method-aware coverage + final accuracy review**.
+> - **CORS:** GET baseline remains read-only; added analyst-selected **HEAD**, direct **OPTIONS**, and **preflight simulation** (`OPTIONS + Origin + Access-Control-Request-Method: POST` + optional `Access-Control-Request-Headers`) — no POST is ever sent automatically. Python engine evaluates `Origin: null` for every selected method, retains ATTACKER_A/B/null evidence per method, and rolls up the highest primary risk (reflected+creds=High, reflection or wildcard+creds=Medium, else Low; Vary never drives headline). Unsupported methods (405/501) are reported as *not assessed*, not safe. A global “CORS PASS” is never shown when only GET was examined — wording is “No risky CORS behavior observed for GET” plus a coverage matrix. Browser JS is explicit about its limits (cannot forge Origin, cannot set ACRM/ACRH or inspect automatic preflight; may attempt GET/HEAD/direct OPTIONS; must state server.py is required for two-origin/null/preflight proof) with identical scoring semantics for equivalent inputs.
+> - **UI/controller:** method picker (HEAD, OPTIONS, preflight POST + headers) with authorized-testing warning; report shows selected/tested/unassessed lists, per-method risk and a coverage matrix; exports (Markdown/JSON/CSV/HTML/evidence PNG) include methods and per-method evidence; `server.py` and `api/cors.py` accept `?methods=&preflight=&preflight_headers=`; `js/app.js` `apiCors`/`probeCorsLive` handle method-aware probing and browser limits.
+> - **Docs:** methodology adds CORS risk ladder per method + rollup + Vary + unassessed + browser limits; CORS guide adds GET-vs-POST/preflight, method selection, per-method null, coverage matrix and browser limits while staying under 1200 words; README CORS row notes method-aware coverage; `DEV-NOTES.md` adds method-aware traps; `ACCURACY-CROSSCHECK.md` records controlled `curl -D` verification (GET/HEAD/OPTIONS/preflight + null) and the focused A-F accuracy review.
+> - **Testing:** 375 tests (11 new `CorsMethodAwareTests`); `python3 -m unittest test_engines.py` green; `node --check` clean; assembled `_site` + `tools/audit_site.py` green; controlled `tests/cors_fixture.py` verified with `curl -D` for all methods and null. Browser suites need Chromium and remain a release gate — no Chromium in sandbox (apt/puppeteer unreachable); stdlib assertions cover changed contracts.
+> - **Accuracy review (A-F):** Verified Security Headers (method/redirect/duplicate/HSTS/response-specific), Clickjacking (relay assessment + XFO/CSP precedence), CSP (enforcement vs Report-Only, multiple policies, duplicate directives, default-src fallback), DNS (resolver/DS vs DNSKEY/null MX/DKIM hints), CSRF (READY/LIMITED wording), JWT (decode ≠ verify, test artifacts). No scoring drift beyond CORS method-aware; report fixes in `ACCURACY-CROSSCHECK.md`. **IN REVIEW:** this branch; do not merge from this session.
+
+> **Previous session (CORS-accuracy, branch `arena/01a00ef9-cyberbuddy`):** fixed
 > the hosted CORS fallback false assurance: a concrete ACAO echo with
 > credentials now reports MEDIUM with an explicit single-origin limitation;
 > Python now also probes `Origin: null` (HIGH with credentials, MEDIUM without).
@@ -508,115 +515,6 @@ PR.
 > assessment while retaining provenance. Updated CORS guide, methodology, parity
 > tests and durable traps. Browser suites need Chromium and remain a release
 > gate. **IN REVIEW:** PR #35; do not merge it from this session.
-
-
-> **This session (RESP-01, branch `arena/01a00e47-cyberbuddy`):** a
-> multi-device, standards-first responsive rework — a fluid type/spacing
-> scale (`clamp()` + custom-property tokens in `css/app.css`), `auto-fit`/
-> `minmax()` card grids, a documented breakpoint ladder, a large-monitor tier
-> that widens `.container` via `--container-max` (1160 → 1560px at 2560px),
-> and `prefers-contrast: more` support. No tools, engines, scoring or
-> behaviour changed. Python tests now **361** (6 new `FluidResponsiveSystemTests`);
-> `tests/browser/responsive.js` gained a §7 (wide-monitor column, auto-fit
-> columns, prefers-contrast). Real-browser suites were **not executed** — the
-> sandbox has no Chromium and cannot install one (apt mirrors and the
-> puppeteer download host are unreachable); run `responsive`/`layout`/
-> `dropdown`/`overlays` by hand before merge. No workflow edit was needed.
-> Open as a PR; not merged.
-
-> **Previous session (DNS-01, branch `arena/01a00c48-cyberbuddy`):** the
-> **DNS & Domain Security Analyzer** is implemented end-to-end — `dns_security.py`
-> (stdlib DNS wire client + pure `grade_dns_from_records`), `/api/dns` in
-> `server.py` + `api/dns.py`, `tools/dns/index.html` + `js/tool.dns.js`, the
-> `gradeDnsFromRecords` browser port with a consent-gated DNS-over-HTTPS
-> fallback, a `guides/dns/` guide, and the full cross-surface set. The tool is
-> `category: "assess"` with `suite: false` — it never joins the hub Run suite,
-> which stays the four HTTP tools. Registry/category copy was generalized so
-> assess membership can be mixed (per-tool suite badges in the catalog). Python
-> tests now **355** (`python3 -m unittest test_engines.py`), all green. Open as
-> **PR #32**; not merged, do not mark DONE.
-
-- **Last verified `origin/main`:** `e10eb2e` — PR #28 merged, which brought
-  the JWT-02/JWT-03 work (previously PR #25) to `main`. The JWT-00 → JWT-03
-  series is complete and shipped. This session started from a clean tree.
-- **Work in review:** **DNS-01 (this session)** — `IN REVIEW`, branch
-  `arena/01a00c48-cyberbuddy`, **PR #32** (open, not merged). Requires the
-  maintainer-applied `tools/dns` Pages copy line
-  (see `docs/pages-workflow-patch.md`). **POLISH-01 (consistency sweep)** —
-  `IN REVIEW`, branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not
-  merged).
-  Not a numbered roadmap feature: a
-  verification pass over the shipped suite plus the drift it exposed. No new
-  tool, engine or scoring behaviour.
-- **Verified correct, unchanged:** JWT integration on `methodology/`,
-  `index.html` (scope, standards card, `06 live`) and `tools/index.html` ·
-  CORS PASS verdict in the live UI · `postureHtml` per-name badges + CSS ·
-  findings layout · footer social labels · posture strip on all four scan
-  tools · clickjacking copy · `.github/workflows/pages.yml` · `sitemap.xml`
-  (17 locs) · manifest JWT shortcut · first-person voice across shipped
-  pages (zero third-person narrator hits).
-- **Fixed this session:**
-  - **Methodology is a page, not an anchor.** Header nav now links
-    `/methodology/` labelled "Methodology". The same stale `/#methodology`
-    target was also corrected in `llms.txt`, `manifest.webmanifest`,
-    `404.html`, `js/404.js` and `.well-known/security.txt` (the last was a
-    published `Policy:` URL — worth grepping for on any URL change).
-  - **Anchor IDs on `methodology/index.html`:** `#tools`, `#scoring`,
-    `#csp-risk`, `#clickjacking-risk`, `#jwt`, `#authorized` (joining the
-    existing `#hosted-scans`/`#privacy`), so footer and cross-page deep
-    links resolve. `tools/audit_site.py` validates fragments, so a deep
-    link to a missing id now fails the build.
-  - **Footer "Learn" column** no longer ships two rows pointing at the same
-    content: Guides / Methodology / Scoring & weights (`#scoring`) / Privacy.
-  - **CORS PASS reaches the exports.** New `reportRiskLabel(data)` in
-    `js/app.js` is the single place that turns a raw risk into a display
-    label; CORS + `low` reads `PASS`. Applied to the Markdown, standalone
-    HTML, CSV and evidence-card hero paths. The JSON envelope deliberately
-    still carries the raw `risk` for automation.
-  - **Internal ticket IDs removed from visitor-facing surfaces.** The
-    "Implementation phases" panel on `/tools/jwt/` is now "What the
-    Workbench does" (capability cards); panel chips read
-    "Local · Web Crypto / templates / Web Worker" instead of
-    "JWT-02 · Live". Stale JWT-0x comments in `js/app.js`, `css/app.css`
-    and the roadmap phrasing in `guides/jwt/index.html` were corrected too.
-  - **Dead CSS deleted:** `.hub-preview-tag` and
-    `.jwt-preview-panel .jwt-preview-banner` had no markup referencing them.
-  - **`documentation/index.html`** gained a JWT capability table under
-    `#engines` ("Tools with no engine behind them") covering decode/inspect,
-    verify, edit/sign, test variants and bounded Worker secret testing. It
-    sits under an existing `h2` on purpose, so the DEV-NOTES four-part
-    checklist for new top-level sections does not apply.
-  - **Cache-buster** bumped `?v=20260814h` → `?v=20260816a`, 59 references
-    across 17 HTML files, all consistent.
-- **Test-suite change:** `test_edit_panel_is_functional` and
-  `test_variants_panel_is_functional` asserted the literal badge strings
-  `JWT-02 &middot; Live` / `JWT-03 &middot; Live`. They now assert the
-  `jwt-phase jwt-phase-live` marker class instead — the intent is "this
-  panel is live, not a preview stub", which must not break when
-  visitor-facing copy is reworded.
-- **Last completed checks:** **291/291** stdlib tests OK
-  (`python3 -m unittest test_engines.py`) · `node --check` clean ·
-  manifest JSON valid · `tools/audit_site.py` green against a full local
-  Pages assembly (an audit run against a missing `_site` passes vacuously —
-  always assemble first) · live `server.py --host 0.0.0.0 --port 8080
-  --allow-private` smoke test: `/`, `/methodology/`, `/documentation/`,
-  `/tools/jwt/`, `/tools/cors/`, `/.well-known/security.txt`, `/llms.txt`,
-  `/manifest.webmanifest` all 200, `/api/health` → `{"ok": true}`, empty
-  stderr.
-- **Real-browser suites:** not executed (no Chromium in the sandbox). The
-  header nav label and the rebuilt `/tools/jwt/` capability panel are the
-  two visual changes; run `layout`/`dropdown`/`responsive` by hand before
-  merge.
-- **Next approved roadmap ID:** none set — the JWT series is complete.
-  ABOUT-01 and DX-01 remain `TODO` for the maintainer to approve; the §6
-  protocol's "exactly one NEXT" is intentionally not applied until then.
-  FUTURE-01 stays `DEFERRED`.
-- **Files/traps the next session must read:** `docs/DEV-NOTES.md`
-  ("Cross-surface URL changes" + the JWT traps) · `reportRiskLabel` in
-  `js/app.js` if any tool ever needs a display label that differs from its
-  raw risk.
-- **Known blockers:** none in code. No workflow edit was needed this
-  session.
 
 ## 6. Future-session protocol
 

@@ -88,8 +88,7 @@
     <article class="card reveal" style="--d: .18s;">
       <h3>CORS Validator</h3>
       <p>
-        The Python engine probes two fake origins and <code>Origin: null</code> to prove reflection, allowlist behavior and null-origin bypasses. When no CORS headers are returned, cross-origin reads are blocked
-        by default (Pass). On GitHub Pages, the browser performs a single-origin probe; a concrete echoed origin plus credentials is flagged because arbitrary reflection cannot be ruled out.
+        <strong>GET is the baseline read-only probe.</strong> The Python engine sends two fake Origins (<code>evil.cyberbuddy.test</code>, <code>probe.cyberbuddy.test</code>) plus <code>Origin: null</code> to prove reflection vs allowlist and the null-origin bypass — <strong>for every selected method</strong>. Additional coverage is <strong>analyst-selected for an authorized endpoint</strong>: <code>HEAD</code> (direct), <code>OPTIONS</code> (direct), and a <strong>preflight simulation</strong> (<code>OPTIONS + Origin + Access-Control-Request-Method: POST</code> and optional <code>Access-Control-Request-Headers</code>) without sending a POST body. Unsupported methods (HTTP 405/501) are reported as <em>not assessed</em>, never as safe. A global “CORS PASS” is never shown when only GET was examined — the report shows a coverage matrix and the highest primary risk across all <em>successfully assessed</em> methods.
       </p>
       <p class="std-line">OWASP WSTG-CLNT-07 · CWE-942</p>
     </article>
@@ -143,7 +142,7 @@
       <h3>What it does not do</h3>
       <p>
         No exploits, no authenticated sessions, no POST/PUT/DELETE sent to a
-        target. The CSRF and JWT tools run strictly in your browser and never
+        target — the CORS Validator never automatically sends POST (including empty-body POSTs); preflight is simulated with OPTIONS only. The CSRF and JWT tools run strictly in your browser and never
         transmit tokens, requests, or key material to any server or third party.
         Results are advisory. A green grade is not a guarantee of safety and a
         red grade is not a CVE.
@@ -200,6 +199,25 @@
       than deducting. An unresolvable domain (NXDOMAIN) is reported as unknown —
       it is never graded.
     </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2 id="cors-risk">CORS risk</h2>
+  </div>
+  <article class="card reveal">
+    <table class="method-table" aria-label="CORS risk">
+      <thead>
+        <tr><th scope="col">Condition (observed per method)</th><th scope="col">Risk</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Reflected <code>Origin</code> + <code>Access-Control-Allow-Credentials: true</code> (including <code>null</code> + credentials)</td><td>High</td></tr>
+        <tr><td>Reflection alone, or wildcard <code>*</code> + credentials (including <code>null</code> without credentials)</td><td>Medium</td></tr>
+        <tr><td>No reflection, no wildcard misuse (fixed allowlist or no CORS headers)</td><td>Low — “No risky CORS behavior observed for GET” when only GET was tested; complete coverage matrix shown</td></tr>
+        <tr><td>Missing <code>Vary: Origin</code> on an origin-specific response</td><td>Separate finding, never headline risk</td></tr>
+        <tr><td>Method returns HTTP 405/501</td><td>Not assessed — not safe, not a PASS; re-test if the endpoint should support it</td></tr>
+      </tbody>
+    </table>
+    <p style="margin: 16px 0 0;">Risk is evaluated <strong>per tested response/method</strong> (GET, HEAD, OPTIONS, preflight POST, etc.) and the report rolls up the <strong>highest observed primary risk</strong>. <code>Origin: null</code> is probed for every selected method that can accept an Origin header. The analyst must be authorized for the target endpoint, which may not support every method. <strong>GET-only coverage never implies every method is safe.</strong> Browser probes on GitHub Pages are single-origin (cannot forge Origin, cannot set <code>Access-Control-Request-Method/Headers</code> or inspect automatic preflight); they identify actual methods attempted and state that <code>python3 server.py</code> is required for two-origin/null/preflight proof. Identical scoring semantics are preserved for equivalent observed inputs; capability limits are documented, not faked.</p>
   </article>
 
   <div class="section-head reveal">
@@ -263,7 +281,7 @@
   <div class="roadmap">
     <div class="roadmap-item reveal" style="--d: .05s;">
       <div class="rm-title">01 · Python engine</div>
-      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin and null-origin CORS probes.</p>
+      <p>When <code>server.py</code> or a hosted <code>api/</code> is reachable, every check uses the same stdlib engines as the CLI — including two-origin and null-origin CORS probes <strong>for every selected method</strong> (GET baseline + analyst-selected HEAD, OPTIONS, and preflight POST with optional headers). POST is never sent automatically.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .12s;">
       <div class="rm-title">02 · Published report</div>
@@ -271,7 +289,7 @@
     </div>
     <div class="roadmap-item reveal" style="--d: .19s;">
       <div class="rm-title">03 · Direct, then relay</div>
-      <p>The browser first tries to read the target directly (works only when the target sends permissive CORS — no third party involved). If that fails, header reads can be proxied by public relays, but <strong>only after you agree</strong>. CORS is probed from this origin only. The source chip always names the layer that ran.</p>
+      <p>The browser first tries to read the target directly (works only when the target sends permissive CORS — no third party involved). If that fails, header reads can be proxied by public relays, but <strong>only after you agree</strong>. CORS is probed from this origin only <strong>for the methods you select</strong> (GET baseline + HEAD/OPTIONS where browser CORS permits); preflight cannot be manually set or inspected in browser JS, and the report states that <code>python3 server.py</code> is required for two-origin/null/preflight proof. The source chip always names the layer that ran and the coverage matrix lists tested vs unassessed methods.</p>
     </div>
     <div class="roadmap-item reveal" style="--d: .26s;">
       <div class="rm-title">04 · DNS via resolver</div>
