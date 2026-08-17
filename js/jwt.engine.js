@@ -834,7 +834,10 @@
     var out = [];
     function add(s) { out.push(s); }
 
-    if (/^RS(256|384|512)$/.test(alg)) {
+    // RSA-PSS keys are RSA public keys too. A verifier that improperly lets
+    // an attacker switch PS* (or RS*) to HMAC can suffer the same public-key
+    // as secret confusion; do not hide that test vector for PS-signed tokens.
+    if (/^(RS|PS)(256|384|512)$/.test(alg)) {
       add({
         id: "alg-confusion",
         severity: "critical",

@@ -4513,6 +4513,22 @@ class JwtVaptTests(unittest.TestCase):
         self.assertIn("RS-to-HMAC", out["confLabel"])
         self.assertFalse(out["hasSecretTest"])
 
+    def test_ps_token_also_offers_rsa_to_hmac_confusion_vector(self):
+        """PS* uses an RSA public key; header-driven fallback to HMAC is the
+        same class of verifier mistake as RS* → HS* confusion."""
+        out = self._run_engine("""
+(async () => {
+  const pair = await CyberBuddyJwt.generateRsaTestPair('PS256');
+  const s = await CyberBuddyJwt.signToken({alg:'PS256',typ:'JWT'}, {sub:'a'}, pair.privateKey, {alg:'PS256'});
+  const recs = CyberBuddyJwt.vaptRecommendations(CyberBuddyJwt.parseToken(s.token));
+  const c = recs.find(r => r.id === 'alg-confusion');
+  console.log(JSON.stringify({has:!!c, severity:c && c.severity, title:c && c.title}));
+})();
+""")
+        self.assertTrue(out["has"], out)
+        self.assertEqual(out["severity"], "critical")
+        self.assertIn("PS256", out["title"])
+
     def test_alg_none_suggested_for_every_signed_token(self):
         for payload in ({"sub": "a"}, {"x": 1}):
             recs = self._recs(self._hs_token(payload))
