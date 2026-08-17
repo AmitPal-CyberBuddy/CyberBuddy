@@ -504,7 +504,7 @@ PR.
 > Added icons to header Tools menu items, removed misleading URL-only share
 > controls, and added a combined suite JSON download. Updated CORS guide,
 > methodology, parity tests and durable traps. Browser suites need Chromium and
-> remain a release gate; open as a PR, do not merge.
+> remain a release gate. **IN REVIEW:** PR #35; do not merge it from this session.
 
 
 > **This session (RESP-01, branch `arena/01a00e47-cyberbuddy`):** a
