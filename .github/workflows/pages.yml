@@ -50,9 +50,10 @@ jobs:
           cp js/*.js _site/js/
 
           # Publish every live tool, including the CSP Policy Auditor, the
-          # CSRF PoC Generator, and the JWT Security Workbench, plus the tools
-          # catalog that indexes them all.
-          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt _site/tools/
+          # CSRF PoC Generator, the JWT Security Workbench, and the
+          # DNS & Domain Security Analyzer, plus the tools catalog that
+          # indexes them all.
+          cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt tools/dns _site/tools/
           cp tools/index.html _site/tools/
 
           # Full methodology and operator documentation pages. Both have
