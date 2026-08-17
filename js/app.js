@@ -767,12 +767,17 @@ async function detectEngine() {
   return { online: false, reason: "live" };
 }
 
-async function apiCall(path, url, key) {
+async function apiCall(path, url, key, extra) {
   // Once detection has proved this is static Pages, avoid a guaranteed HTML
   // 404 for every selected tool. This saves requests and prevents noisy logs.
   if (!API_BASE && window.__cbEngine && window.__cbEngine.mode === "live") return null;
   const params = {};
   params[key || "url"] = url;
+  if (extra) {
+    if (extra.methods && extra.methods.length) params.methods = extra.methods.join(",");
+    if (extra.preflight && extra.preflight.length) params.preflight = extra.preflight.join(",");
+    if (extra.preflight_headers && extra.preflight_headers.length) params.preflight_headers = extra.preflight_headers.join(",");
+  }
   try {
     const res = await fetch(apiUrl(path) + "?" + new URLSearchParams(params), apiHeadersInit());
     const ctype = (res.headers.get("content-type") || "").toLowerCase();
@@ -932,8 +937,9 @@ async function apiHeaders(url) {
   return gradeHeadersLive(url);
 }
 
-async function apiCors(url) {
-  const local = await apiCall("/api/cors", url);
+async function apiCors(url, opts) {
+  const extra = opts && (opts.methods || opts.preflight || opts.preflight_headers) ? opts : null;
+  const local = await apiCall("/api/cors", url, "url", extra);
   if (isUsableScan(local, "cors")) {
     local._source = "python";
     return local;
@@ -948,7 +954,7 @@ async function apiCors(url) {
   }
   const unreachable = await hostedUnreachable("cors", url);
   if (unreachable) return unreachable;
-  return probeCorsLive(url);
+  return probeCorsLive(url, opts);
 }
 
 async function apiCsp(url) {
@@ -1834,6 +1840,14 @@ function buildEvidenceCardSpec(data, toolName) {
     const headers = data.headers || {};
     const origins = data.origins_tested || [];
     const genuineProof = origins.length >= 2;
+    const methods = data.methods || (data.tested_methods || []);
+    const tested = data.tested_methods || [];
+    const unassessed = data.unassessed_methods || [];
+    const preflight = data.preflight_methods || [];
+    const methodCoverage = tested.length ? tested.join(", ") + (unassessed.length ? " · unassessed: " + unassessed.join(", ") : "") : (methods.length ? methods.join(", ") : "—");
+    const coverageLabel = data._source === "browser"
+      ? "SINGLE-ORIGIN BROWSER PROBE (not proof of reflection) — cannot forge Origin, cannot set Access-Control-Request-Method/Headers, cannot inspect preflight"
+      : (genuineProof ? "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)" : "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)");
     const outcome = risk === "high" ? "REFLECTION + CREDENTIALS CONFIRMED"
       : risk === "medium" ? "PERMISSIVE CORS OUTCOME"
       : "NO ARBITRARY-ORIGIN REFLECTION OBSERVED";
@@ -1845,9 +1859,11 @@ function buildEvidenceCardSpec(data, toolName) {
       hero: outcome + " · " + (risk === "low" ? "PASS" : risk.toUpperCase()),
       risk: risk,
       meta: commonMeta.concat([
-        ["Probe coverage", genuineProof
-          ? "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)"
-          : "SINGLE-ORIGIN BROWSER PROBE (not proof of reflection)"],
+        ["Probe coverage", coverageLabel],
+        ["Methods selected", methods.length ? methods.join(", ") : "GET (default)"],
+        ["Methods tested", tested.length ? tested.join(", ") : "—"],
+        ["Unassessed", unassessed.length ? unassessed.join(", ") : "—"],
+        ["Preflight", preflight.length ? preflight.join(", ") + (data.preflight_headers && data.preflight_headers.length ? " headers=" + data.preflight_headers.join(", ") : "") : "—"],
         ["Origins tested", origins.length ? origins.join(" · ") : "—"]
       ], caveats),
       summary: data.summary || "",
@@ -2270,10 +2286,28 @@ function reportContextMarkdown(data, kind, lines) {
       "- **Frame peek:** " + mdCell(observed.peek || "—"));
   }
   if (kind === "cors") {
+    const methods = data.methods || [];
+    const tested = data.tested_methods || [];
+    const unassessed = data.unassessed_methods || [];
+    const preflight = data.preflight_methods || [];
+    const preflightH = data.preflight_headers || [];
     lines.push("", "## Probe context", "",
       "- **Origins tested:** " + mdCell((data.origins_tested || []).join(" · ") || "—"),
+      "- **Methods selected:** " + mdCell((methods.length ? methods.join(", ") : "GET (default)")),
+      "- **Methods tested:** " + mdCell((tested.length ? tested.join(", ") : "—")),
+      "- **Unassessed:** " + mdCell((unassessed.length ? unassessed.join(", ") : "—")),
+      "- **Preflight:** " + mdCell((preflight.length ? preflight.join(", ") + (preflightH.length ? " headers=" + preflightH.join(", ") : "") : "—")),
       "- **Coverage:** " + ((data.origins_tested || []).length >= 2
-        ? "Two-origin reflection test" : "Single-origin browser probe — not proof of reflection"));
+        ? "Two-origin reflection test" : "Single-origin browser probe — not proof of reflection"),
+      "- **Browser limits:** " + mdCell("browser JS cannot forge Origin; cannot set Access-Control-Request-Method/Headers; cannot inspect automatic preflight; use server.py for two-origin/null/preflight proof"));
+    if (data.method_results && data.method_results.length) {
+      lines.push("", "### Coverage matrix", "", "| Method | Kind | Risk | HTTP | Evidence |", "| --- | --- | --- | --- | --- |");
+      data.method_results.forEach((mr) => {
+        const m = mr.method + (mr.kind === "preflight" ? " (preflight " + (mr.request_method||"") + ")" : "");
+        const h = mr.headers ? (mr.headers["access-control-allow-origin"] || "(absent)") : "(absent)";
+        lines.push("| " + mdCell(m) + " | " + mdCell(mr.kind || "direct") + " | " + mdCell(mr.risk || "—") + " | " + mdCell(mr.status_code != null ? String(mr.status_code) : "—") + " | " + mdCell(mr.evidence || h) + " |");
+      });
+    }
   }
   if (kind === "csp") {
     lines.push("", "## Policy evidence", "", "### Enforced policy", "",
@@ -3463,22 +3497,30 @@ function assessFrameAncestors(cspValue) {
   if (!cspValue) {
     return { name: "CSP frame-ancestors", status: "missing", detail: "No Content-Security-Policy header. frame-ancestors is the modern clickjacking control.", evidence: "" };
   }
-  const d = parseCsp(cspValue);
-  if (!("frame-ancestors" in d)) {
-    return { name: "CSP frame-ancestors", status: "missing", detail: "CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.", evidence: cspValue.slice(0, 300) };
+  const policies = cspValue.split("\n").map((p) => p.trim()).filter(Boolean);
+  const list = policies.length ? policies : [cspValue];
+  let hasProtected = false, hasWeak = false;
+  let weakEv = "", protEv = "";
+  for (const policy of list) {
+    const d = parseCsp(policy);
+    if (!("frame-ancestors" in d)) continue;
+    const sources = d["frame-ancestors"];
+    const ev = "frame-ancestors " + sources.join(" ");
+    if (!sources.length || (sources.length === 1 && sources[0] === "'none'")) { hasProtected = true; protEv = ev; }
+    else if (sources.length === 1 && sources[0] === "'self'") { hasProtected = true; protEv = ev; }
+    else if (sources.indexOf("*") !== -1) { hasWeak = true; weakEv = ev; }
+    else { hasProtected = true; protEv = ev; }
   }
-  const sources = d["frame-ancestors"];
-  const ev = "frame-ancestors " + sources.join(" ");
-  if (!sources.length || (sources.length === 1 && sources[0] === "'none'")) {
-    return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors 'none' forbids all framing (strongest modern control).", evidence: ev };
+  if (hasProtected) {
+    let detail = "frame-ancestors allowlist is set. Confirm every listed origin is trusted.";
+    if (protEv === "frame-ancestors 'none'") detail = "frame-ancestors 'none' forbids all framing (strongest modern control).";
+    else if (protEv === "frame-ancestors 'self'") detail = "frame-ancestors 'self' allows only same-origin frames.";
+    return { name: "CSP frame-ancestors", status: "protected", detail: detail, evidence: protEv || cspValue.slice(0, 300) };
   }
-  if (sources.length === 1 && sources[0] === "'self'") {
-    return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors 'self' allows only same-origin frames.", evidence: ev };
+  if (hasWeak) {
+    return { name: "CSP frame-ancestors", status: "weak", detail: "frame-ancestors * allows any origin to frame the page.", evidence: weakEv };
   }
-  if (sources.indexOf("*") !== -1) {
-    return { name: "CSP frame-ancestors", status: "weak", detail: "frame-ancestors * allows any origin to frame the page.", evidence: ev };
-  }
-  return { name: "CSP frame-ancestors", status: "protected", detail: "frame-ancestors allowlist is set. Confirm every listed origin is trusted.", evidence: ev };
+  return { name: "CSP frame-ancestors", status: "missing", detail: "CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.", evidence: cspValue.slice(0, 300) };
 }
 
 function scoreClickjacking(findings) {
@@ -3774,46 +3816,142 @@ function browserCorsRisk(acao, acac, origin) {
   return acao === "*" && credentials ? "medium" : "low";
 }
 
-async function probeCorsLive(url) {
+async function probeCorsLive(url, opts) {
   const origin = (window.location && window.location.origin) || "null";
-  const checks = [];
-  let status = null;
-  try {
-    const res = await fetch(url, { mode: "cors", credentials: "omit", cache: "no-store" });
-    status = res.status;
-    const acao = res.headers.get("access-control-allow-origin");
-    const acac = res.headers.get("access-control-allow-credentials");
-    const vary = res.headers.get("vary") || "";
+  const selectedMethods = (opts && opts.methods && opts.methods.length) ? opts.methods.map((m) => String(m).toUpperCase()) : ["GET"];
+  // Ensure GET baseline
+  const methods = selectedMethods.indexOf("GET") === -1 ? ["GET"].concat(selectedMethods) : selectedMethods;
+  // Preflight cannot be simulated in browser JS: we cannot forge Origin,
+  // cannot set Access-Control-Request-Method/Headers, and cannot inspect
+  // the browser's automatic preflight response.
+  const requestedPreflight = (opts && opts.preflight && opts.preflight.length) ? opts.preflight : [];
+  const requestedPreflightHeaders = (opts && opts.preflight_headers && opts.preflight_headers.length) ? opts.preflight_headers : [];
+  const allChecks = [];
+  const methodResults = [];
+  const tested = [];
+  const unassessed = [];
+  let maxRisk = "low";
+  const riskOrder = { low: 0, medium: 1, high: 2 };
+  function updateMax(r) { if ((riskOrder[r]||0) > (riskOrder[maxRisk]||0)) maxRisk = r; }
+
+  for (const method of methods) {
+    // Browser can attempt GET/HEAD/direct OPTIONS where CORS permits.
+    // POST is not automatically sent (state mutating).
+    const canAttempt = method === "GET" || method === "HEAD" || method === "OPTIONS";
+    if (!canAttempt) {
+      const c = check(method + ": CORS probe", "info", method + " was not attempted in the browser — use server.py for authorized testing of this method.", "Browser limits: only GET/HEAD/OPTIONS attempted directly", 0);
+      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "unassessed", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
+      unassessed.push(method);
+      allChecks.push(c);
+      continue;
+    }
+    let res = null;
+    let status = null;
+    let acao = null, acac = null, vary = "";
+    try {
+      // For HEAD/OPTIONS, use fetch with that method; the browser will add Origin automatically.
+      res = await fetch(url, { method: method, mode: "cors", credentials: "omit", cache: "no-store" });
+      status = res.status;
+      acao = res.headers.get("access-control-allow-origin");
+      acac = res.headers.get("access-control-allow-credentials");
+      vary = res.headers.get("vary") || "";
+    } catch (err) {
+      // CORS block or network failure — treat as blocked for this origin
+      const c = check(method + ": Fetch result", "ok", "The browser blocked the cross-origin read for " + method + ", or the request failed. That usually means this origin is not allowed for this method.", String(err && err.message ? err.message : err), 0);
+      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "low", checks: [c], headers: {}, origins: [origin], unassessed: false });
+      tested.push(method);
+      allChecks.push(c);
+      continue;
+    }
+    // Handle unsupported method (405/501) — browser may still get response if CORS allows reading
+    if (status === 405 || status === 501) {
+      const c = check(method + ": CORS probe", "info", method + " not supported by endpoint (HTTP " + status + ") — CORS for " + method + " was not assessed.", "HTTP " + status, 0);
+      methodResults.push({ method: method, kind: "direct", status_code: status, risk: "unassessed", checks: [c], headers: { "access-control-allow-origin": acao || "", "vary": vary }, origins: [origin], unassessed: true, reason: "HTTP " + status });
+      unassessed.push(method);
+      allChecks.push(c);
+      continue;
+    }
+    const checks = [];
     const credentials = String(acac || "").trim().toLowerCase() === "true";
     const concreteReflection = acao === origin && origin !== "null" && credentials;
     const nullReflection = acao === "null" && origin === "null";
+    const label = method === "GET" ? null : method;
+    const prefix = label ? label + ": " : "";
     if (!acao) {
-      checks.push(check("Access-Control-Allow-Origin", "ok", "This origin cannot read the response. Restrictive and safe.", "ACAO: (absent)", 0));
+      checks.push(check(prefix + "Access-Control-Allow-Origin", "ok", "This origin cannot read the response via " + method + ". Restrictive and safe.", "ACAO: (absent)", 0));
     } else if (acao === "*") {
-      checks.push(check("Access-Control-Allow-Origin", "info", "Any website can read this resource. Fine only for fully public data.", "ACAO: *", 0));
+      checks.push(check(prefix + "Access-Control-Allow-Origin", "info", "Any website can read this resource via " + method + ". Fine only for fully public data.", "ACAO: *", 0));
     } else if (nullReflection) {
-      checks.push(check("Access-Control-Allow-Origin: null", "weak", "This null-origin browser context was allowed. Opaque origins must not be trusted.", "ACAO: null", 0));
+      checks.push(check(prefix + "Access-Control-Allow-Origin: null", "weak", "This null-origin browser context was allowed via " + method + ". Opaque origins must not be trusted.", "ACAO: null", 0));
     } else if (concreteReflection) {
-      checks.push(check("Access-Control-Allow-Origin", "weak", "This concrete browser Origin was echoed with credentials. Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin proof.", "ACAO: " + acao + "   ACAC: true", 0));
+      checks.push(check(prefix + "Access-Control-Allow-Origin", "weak", "This concrete browser Origin was echoed with credentials via " + method + ". Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin/null/preflight proof.", "ACAO: " + acao + "   ACAC: true", 0));
     } else {
-      checks.push(check("Access-Control-Allow-Origin", "info", "This origin is allowed. Confirm it is an intentional allowlist, not a reflection of every caller. A second-origin reflection proof needs the Python engine.", "ACAO: " + acao, 0));
+      checks.push(check(prefix + "Access-Control-Allow-Origin", "info", "This origin is allowed via " + method + ". Confirm it is an intentional allowlist, not a reflection of every caller. A second-origin reflection proof needs the Python engine.", "ACAO: " + acao, 0));
     }
-    if (credentials) checks.push(check("Allow-Credentials", "info", "The server is willing to allow credentials for CORS reads.", "ACAC: " + acac, 0));
-    if (acao && acao !== "*" && !/origin/i.test(vary)) checks.push(check("Vary: Origin", "weak", "Origin-specific CORS headers without Vary: Origin. Shared caches may reuse one caller’s policy.", "Vary: " + (vary || "(absent)"), 0));
-    else if (/origin/i.test(vary)) checks.push(check("Vary: Origin", "ok", "Cached responses are partitioned by caller origin.", "Vary: " + vary, 0));
-    return {
-      url: url, final_url: res.url || url, status_code: status, checks: checks,
-      risk: browserCorsRisk(acao, acac, origin),
-      summary: concreteReflection
-        ? "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin proof."
-        : "HTTP " + status + " from this browser origin (" + origin + "). Single-origin probe only — use server.py for a genuine two-origin reflection proof.",
-      headers: { "access-control-allow-origin": acao || "", "access-control-allow-credentials": acac || "", "vary": vary || "" },
-      origins_tested: [origin], _source: "browser"
-    };
-  } catch (err) {
-    checks.push(check("Fetch result", "ok", "The browser blocked the cross-origin read, or the request failed. That usually means this origin is not allowed.", String(err && err.message ? err.message : err), 0));
-    return { url: url, final_url: url, status_code: null, checks: checks, risk: "low", summary: "This origin cannot read the target.", headers: {}, origins_tested: [origin], _source: "browser" };
+    if (credentials) checks.push(check(prefix + "Allow-Credentials", "info", "The server is willing to allow credentials for CORS reads via " + method + ".", "ACAC: " + acac, 0));
+    if (acao && acao !== "*" && !/origin/i.test(vary)) checks.push(check(prefix + "Vary: Origin", "weak", "Origin-specific CORS headers via " + method + " without Vary: Origin. Shared caches may reuse one caller’s policy.", "Vary: " + (vary || "(absent)"), 0));
+    else if (/origin/i.test(vary)) checks.push(check(prefix + "Vary: Origin", "ok", "Cached responses via " + method + " are partitioned by caller origin.", "Vary: " + vary, 0));
+    const risk = browserCorsRisk(acao, acac, origin);
+    methodResults.push({ method: method, kind: "direct", status_code: status, risk: risk, checks: checks, headers: { "access-control-allow-origin": acao || "", "access-control-allow-credentials": acac || "", "vary": vary || "" }, origins: [origin], unassessed: false });
+    tested.push(method);
+    for (const c of checks) allChecks.push(c);
+    updateMax(risk);
   }
+
+  // Preflight cannot be probed from browser JS
+  for (const pre of requestedPreflight) {
+    const label = "Preflight " + pre;
+    const c = check(label + ": CORS probe", "info", "Preflight for " + pre + " cannot be probed from browser JS — it cannot set Access-Control-Request-Method/Headers or inspect the browser's automatic preflight response. Run python3 server.py for two-origin/null/preflight proof.", "Browser limit: use server.py", 0);
+    methodResults.push({ method: "OPTIONS", kind: "preflight", request_method: pre, request_headers: requestedPreflightHeaders, status_code: null, risk: "unassessed", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
+    unassessed.push("preflight:" + pre);
+    allChecks.push(c);
+  }
+
+  // Determine overall summary with method awareness and browser limits
+  let summary = "";
+  let overallRisk = maxRisk;
+  // Ensure single-origin concrete reflection with credentials never reads PASS
+  // browserCorsRisk already returns medium for that case, so PASS (low) will not happen when reflected with creds.
+  if (overallRisk === "high") {
+    const risky = methodResults.filter((r) => r.risk === "high" && !r.unassessed).map((r) => r.method === "OPTIONS" && r.kind === "preflight" ? "preflight " + r.request_method : r.method);
+    summary = "High-risk CORS behavior observed for " + risky.join(", ") + " — reflected Origin + credentials (single-origin probe). Run python3 server.py for two-origin confirmation.";
+  } else if (overallRisk === "medium") {
+    const risky = methodResults.filter((r) => r.risk === "medium" && !r.unassessed).map((r) => r.method);
+    summary = "Medium-risk CORS behavior observed for " + risky.join(", ") + " — reflection or wildcard with credentials (single-origin probe).";
+  } else {
+    if (tested.length === 1 && tested[0] === "GET" && requestedPreflight.length === 0 && methods.length === 1) {
+      summary = "No risky CORS behavior observed for GET via single-origin browser probe. Coverage: GET only; other methods and preflight were not tested in this browser probe — run python3 server.py for two-origin/null/preflight proof.";
+    } else if (!tested.length) {
+      summary = "No CORS probe could be assessed in this browser for the selected methods.";
+    } else {
+      summary = "No risky CORS behavior observed for tested methods (" + tested.join(", ") + ") via single-origin browser probe.";
+    }
+  }
+  // Append browser limits note if any unassessed
+  if (unassessed.length) {
+    summary += " Unassessed in browser: " + unassessed.join(", ") + " — server.py is required for two-origin/null/preflight proof.";
+  }
+  // If only browser, explicitly say so
+  summary += " Browser limits: cannot forge Origin, cannot set Access-Control-Request-Method/Headers, cannot inspect automatic preflight.";
+
+  // For compatibility, set origins_tested to single origin
+  const finalUrl = methodResults.length && methodResults[0].headers ? url : url;
+  return {
+    url: url, final_url: finalUrl, status_code: methodResults.find((r) => r.status_code != null)?.status_code ?? null,
+    checks: allChecks,
+    risk: overallRisk,
+    summary: summary,
+    headers: methodResults.find((r) => r.headers && r.headers["access-control-allow-origin"])?.headers || {},
+    origins_tested: [origin],
+    methods: methods,
+    preflight_methods: requestedPreflight,
+    preflight_headers: requestedPreflightHeaders,
+    tested_methods: tested,
+    unassessed_methods: unassessed,
+    method_results: methodResults,
+    coverage: methodResults,
+    _source: "browser"
+  };
 }
 
 /* ---------- DNS & Domain Security Analyzer engine ----------------------

@@ -188,6 +188,52 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(risk, "high")
 
 
+class MultipleCspFrameAncestorsTests(unittest.TestCase):
+    def test_multiple_csp_with_restrictive_wins(self):
+        # Multiple CSP headers combine restrictively — a restrictive policy in any header still blocks framing
+        csp = "frame-ancestors 'none'\nframe-ancestors *"
+        result = assess_frame_ancestors(csp)
+        self.assertEqual(result.status, "protected")
+        # Reverse order also protected
+        csp2 = "frame-ancestors *\nframe-ancestors 'none'"
+        result2 = assess_frame_ancestors(csp2)
+        self.assertEqual(result2.status, "protected")
+        # Both permissive -> weak
+        csp3 = "frame-ancestors *\nframe-ancestors *"
+        result3 = assess_frame_ancestors(csp3)
+        self.assertEqual(result3.status, "weak")
+        # One missing + one permissive -> weak (no restrictive)
+        csp4 = "default-src 'self'\nframe-ancestors *"
+        result4 = assess_frame_ancestors(csp4)
+        self.assertEqual(result4.status, "weak")
+        # Both missing -> missing
+        csp5 = "default-src 'self'\nscript-src 'self'"
+        result5 = assess_frame_ancestors(csp5)
+        self.assertEqual(result5.status, "missing")
+        # JS parity check
+        import shutil, tempfile, subprocess, json, os
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\nconsole.log(JSON.stringify({a: assessFrameAncestors('frame-ancestors \\'none\\'' + String.fromCharCode(10) + 'frame-ancestors *').status, b: assessFrameAncestors('frame-ancestors *').status}));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script); p = fh.name
+        try:
+            proc = subprocess.run([node, p], capture_output=True, text=True, timeout=15)
+        finally:
+            os.unlink(p)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(out["a"], "protected")
+        self.assertEqual(out["b"], "weak")
+
 class OutcomeRollupTests(unittest.TestCase):
     def _cors_result(self, first_headers, second_headers, null_headers=None):
         responses = [
@@ -271,6 +317,200 @@ class OutcomeRollupTests(unittest.TestCase):
         self.assertEqual(result.score, 75)
         self.assertEqual(result.grade, "B")
         self.assertEqual(result.risk, "low")
+
+
+class CorsMethodAwareTests(unittest.TestCase):
+    """Method-aware CORS: GET baseline, HEAD/OPTIONS, preflight, per-method null, unassessed, rollup, Vary isolation, and export coverage."""
+
+    def _mock_cors(self, method_map, preflight_map=None):
+        def _side_effect(url, timeout=15, insecure=False, allow_private=True, extra_headers=None, method="GET"):
+            extra_headers = extra_headers or {}
+            origin = extra_headers.get("Origin", "")
+            acrm = extra_headers.get("Access-Control-Request-Method", "")
+            if method == "OPTIONS" and acrm:
+                key = acrm.upper()
+                if preflight_map and key in preflight_map:
+                    hdr_a, hdr_b, hdr_null = preflight_map[key]
+                    if origin == ATTACKER_A:
+                        return (200, "https://api.example.test/data", hdr_a)
+                    elif origin == ATTACKER_B:
+                        return (200, "https://api.example.test/data", hdr_b)
+                    elif origin == NULL_ORIGIN:
+                        return (200, "https://api.example.test/data", hdr_null)
+                return (200, "https://api.example.test/data", {})
+            else:
+                m = method.upper()
+                if m in method_map:
+                    hdr_a, hdr_b, hdr_null = method_map[m]
+                    if origin == ATTACKER_A:
+                        return (200, "https://api.example.test/data", hdr_a)
+                    elif origin == ATTACKER_B:
+                        return (200, "https://api.example.test/data", hdr_b)
+                    elif origin == NULL_ORIGIN:
+                        return (200, "https://api.example.test/data", hdr_null)
+                return (200, "https://api.example.test/data", {})
+        return _side_effect
+
+    def test_get_absent_but_preflight_reflects_is_high(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {})}
+        pre_map = {"POST": ({"access-control-allow-origin": ATTACKER_A, "access-control-allow-credentials": "true", "vary": "Origin"},
+                            {"access-control-allow-origin": ATTACKER_B, "access-control-allow-credentials": "true", "vary": "Origin"},
+                            {"access-control-allow-origin": NULL_ORIGIN, "vary": "Origin"})}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(get_map, pre_map)):
+            result = scan_cors("https://api.example.test/data", methods=["GET"], preflight_methods=["POST"])
+        self.assertEqual(result.risk, "high")
+        self.assertIn("preflight", result.summary.lower())
+        self.assertIn("preflight:POST", result.tested_methods)
+        found_null = any("null" in (c.name.lower()) for c in result.checks)
+        self.assertTrue(found_null)
+
+    def test_get_safe_but_head_vulnerable(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {})}
+        head_map = {"HEAD": ({"access-control-allow-origin": ATTACKER_A, "vary": "Origin"},
+                             {"access-control-allow-origin": ATTACKER_B, "vary": "Origin"},
+                             {})}
+        combined = {**get_map, **head_map}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(combined)):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"])
+        self.assertEqual(result.risk, "medium")
+        self.assertIn("HEAD", result.summary)
+        self.assertIn("HEAD", result.tested_methods)
+
+    def test_get_safe_but_options_vulnerable_with_credentials(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {})}
+        opt_map = {"OPTIONS": ({"access-control-allow-origin": ATTACKER_A, "access-control-allow-credentials": "true", "vary": "Origin"},
+                                {"access-control-allow-origin": ATTACKER_B, "access-control-allow-credentials": "true", "vary": "Origin"},
+                                {})}
+        combined = {**get_map, **opt_map}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(combined)):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "OPTIONS"])
+        self.assertEqual(result.risk, "high")
+
+    def test_per_method_null_reflection(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {"access-control-allow-origin": NULL_ORIGIN, "vary": "Origin"})}
+        head_map = {"HEAD": ({}, {}, {"access-control-allow-origin": NULL_ORIGIN, "access-control-allow-credentials": "true", "vary": "Origin"})}
+        combined = {**get_map, **head_map}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(combined)):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"])
+        self.assertEqual(result.risk, "high")
+        null_checks = [c for c in result.checks if "null" in c.name.lower()]
+        self.assertGreaterEqual(len(null_checks), 2)
+
+    def test_unsupported_head_is_unassessed_not_safe(self):
+        from unittest.mock import patch
+        def side(url, timeout=15, insecure=False, allow_private=True, extra_headers=None, method="GET"):
+            if method == "HEAD":
+                return (405, "https://api.example.test/data", {})
+            return (200, "https://api.example.test/data", {})
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=side):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"])
+        self.assertIn("HEAD", result.unassessed_methods)
+        self.assertNotIn("HEAD", result.tested_methods)
+        self.assertEqual(result.risk, "low")
+        self.assertIn("unassessed", result.summary.lower())
+
+    def test_unsupported_options_is_unassessed(self):
+        from unittest.mock import patch
+        def side(url, timeout=15, insecure=False, allow_private=True, extra_headers=None, method="GET"):
+            if method == "OPTIONS" and not extra_headers.get("Access-Control-Request-Method"):
+                return (501, "https://api.example.test/data", {})
+            return (200, "https://api.example.test/data", {})
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=side):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "OPTIONS"])
+        self.assertIn("OPTIONS", result.unassessed_methods)
+        self.assertEqual(result.risk, "low")
+
+    def test_one_risky_selected_method_rolls_up(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {})}
+        head_map = {"HEAD": ({"access-control-allow-origin": ATTACKER_A, "access-control-allow-credentials": "true"},
+                             {"access-control-allow-origin": ATTACKER_B, "access-control-allow-credentials": "true"},
+                             {})}
+        opt_map = {"OPTIONS": ({}, {}, {})}
+        combined = {**get_map, **head_map, **opt_map}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(combined)):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD", "OPTIONS"])
+        self.assertEqual(result.risk, "high")
+        self.assertIn("HEAD", result.summary)
+
+    def test_vary_never_drives_headline_risk(self):
+        from unittest.mock import patch
+        fixed = {"access-control-allow-origin": "https://trusted.example", "access-control-allow-credentials": "true"}
+        get_map = {"GET": (fixed, fixed, {})}
+        head_map = {"HEAD": (fixed, fixed, {})}
+        combined = {**get_map, **head_map}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(combined)):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"])
+        vary_checks = [c for c in result.checks if "Vary" in c.name]
+        self.assertTrue(any(c.status == "weak" for c in vary_checks))
+        self.assertEqual(result.risk, "low")
+
+    def test_browser_single_origin_concrete_reflection_never_pass(self):
+        import shutil, tempfile, subprocess, json, os, pathlib
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        harness = """
+const origin = "https://cyberbuddy.example";
+console.log(JSON.stringify({
+  low: browserCorsRisk("https://trusted.example", "true", origin),
+  medium: browserCorsRisk("https://cyberbuddy.example", "true", origin),
+  wildcardLow: browserCorsRisk("*", "", origin),
+  wildcardMedium: browserCorsRisk("*", "true", origin)
+}));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://cyberbuddy.example', pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + pathlib.Path("js/app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script); p = fh.name
+        try:
+            proc = subprocess.run([node, p], capture_output=True, text=True, timeout=15)
+        finally:
+            os.unlink(p)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result["low"], "low")
+        self.assertEqual(result["medium"], "medium")
+        self.assertNotEqual(result["medium"], "low")
+        self.assertEqual(result["wildcardMedium"], "medium")
+        self.assertEqual(result["wildcardLow"], "low")
+
+    def test_exports_include_selected_and_tested_methods(self):
+        from unittest.mock import patch
+        get_map = {"GET": ({}, {}, {})}
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=self._mock_cors(get_map, {"POST": ({}, {}, {})})):
+            result2 = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"], preflight_methods=["POST"], preflight_headers=["Content-Type"])
+            d = result2.to_dict()
+            self.assertIn("methods", d)
+            self.assertIn("preflight_methods", d)
+            self.assertIn("preflight_headers", d)
+            self.assertIn("tested_methods", d)
+            self.assertIn("method_results", d)
+            self.assertIn("coverage", d)
+            self.assertEqual(d["preflight_headers"], ["Content-Type"])
+            self.assertIn("GET", d["methods"])
+            self.assertIn("HEAD", d["methods"])
+        self.assertIn("preflight:POST", d["tested_methods"])
+
+    def test_no_global_pass_when_only_get(self):
+        from unittest.mock import patch
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=lambda *a, **k: (200, "https://api.example.test/data", {})):
+            result = scan_cors("https://api.example.test/data", methods=["GET"])
+        self.assertEqual(result.risk, "low")
+        self.assertIn("No risky CORS behavior observed for GET", result.summary)
+        self.assertNotIn("all tested methods", result.summary.lower())
+        self.assertIn("GET only", result.summary)
+
 
 
 class CspTests(unittest.TestCase):

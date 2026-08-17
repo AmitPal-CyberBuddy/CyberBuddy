@@ -93,15 +93,29 @@
       <span id="exportMenu"></span>
     </div>
   </div>
+
+  <div class="cors-method-picker card reveal" style="--d: .16s;">
+    <h3 class="card-title">Method-aware coverage — authorized testing only</h3>
+    <p class="form-hint"><strong>GET is the baseline read-only probe.</strong> Select additional methods to test an endpoint you are authorized to assess. The endpoint must be authorized and may not support every method — an unsupported method (HTTP 405/501) is reported as <em>not assessed</em>, never as safe. <strong>POST is never automatically sent</strong> — preflight is simulated with <code>OPTIONS + Origin + Access-Control-Request-Method</code> only.</p>
+    <fieldset class="method-picker-grid">
+      <label><input type="checkbox" id="corsHead" /> HEAD probe — direct <code>HEAD + Origin</code> (unsupported HEAD is reported as not assessed)</label>
+      <label><input type="checkbox" id="corsOptions" /> Direct <code>OPTIONS</code> probe — <code>OPTIONS + Origin</code></label>
+      <label><input type="checkbox" id="corsPreflightPost" /> CORS preflight simulation — <code>OPTIONS + Origin + Access-Control-Request-Method: POST</code> (and optional headers below)</label>
+      <label for="corsPreflightHeaders" class="method-preflight-headers-label">Preflight <code>Access-Control-Request-Headers</code> — comma-separated, only when preflight is selected (e.g., <code>Content-Type, X-Custom-Header</code>)</label>
+      <input type="text" id="corsPreflightHeaders" placeholder="Content-Type, X-Custom-Header" autocomplete="off" spellcheck="false" disabled />
+    </fieldset>
+    <p class="form-hint">Only use a stronger “all tested methods” claim when the selected methods were successfully assessed. A global “CORS PASS” is never shown when only GET was examined — see the coverage matrix in the report.</p>
+  </div>
   <div id="evidenceToggle"></div>
   <div id="relayGate" class="hidden"></div>
 
   <details class="pages-note how-note">
     <summary>ℹ How this probe works</summary>
     <div class="pages-note-body">
-      <p>This page fetches the target as a cross-origin caller — exactly what a hostile website would do to read your data. The browser enforces CORS, so the probe measures the real policy from outside.</p>
+      <p>This page fetches the target as a cross-origin caller — exactly what a hostile website would do to read your data. The browser enforces CORS, so the probe measures the real policy from outside. <strong>GET is the baseline read-only probe.</strong> A GET result must not imply every method on that API endpoint is safe — an app GET endpoint can be clean while <code>api.example.com</code> only exposes permissive CORS for POST/preflight.</p>
       <div class="pages-flow"><span>This page (caller origin)</span><span class="pf-arrow">→ GET →</span><span>Target server</span><span class="pf-arrow">→ ACAO decision →</span><span>Allow / block</span></div>
-      <p>On the hosted site this is a single-origin probe. An echoed concrete origin with credentials is flagged because arbitrary reflection cannot be ruled out; run <code>python3 server.py</code> for two-origin proof. The Python engine also probes <code>Origin: null</code> for the opaque-origin bypass.</p>
+      <p>On the hosted site this is a <strong>single-origin probe for the methods you select</strong> (GET, HEAD, direct OPTIONS where browser CORS permits). An echoed concrete origin with credentials is flagged as Medium because arbitrary reflection cannot be ruled out; run <code>python3 server.py</code> for two-origin proof. The Python engine also probes <code>Origin: null</code> for the opaque-origin bypass <strong>for every selected method</strong> and can simulate a CORS preflight with <code>OPTIONS + Origin + Access-Control-Request-Method: POST</code> (and optional <code>Access-Control-Request-Headers</code>) — without sending a POST body. Browser JS <strong>cannot</strong> forge Origin, cannot manually set Access-Control-Request-Method/Headers, and cannot inspect the browser's automatic preflight response; it reports what it actually attempted and says server.py is required for two-origin/null/preflight proof.</p>
+      <p><strong>Authorized testing only.</strong> The target endpoint must be one you own or have permission to test; it may not support every method (a 405/501 is reported as <em>not assessed</em>, not safe). Do not invent a PASS for methods not actually tested.</p>
     </div>
   </details>
 
@@ -167,6 +181,8 @@
           <tbody></tbody>
         </table>
       </article>
+
+      <div id="corsCoverage" class="card inset-card hidden"></div>
 
       <div id="reportProvenance" class="report-provenance"></div>
     </article>

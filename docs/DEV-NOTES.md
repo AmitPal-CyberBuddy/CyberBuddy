@@ -886,11 +886,12 @@ and the secret-test worker honest:
 
 ## CORS fallback honesty (CORS-accuracy)
 
-- The Python CORS engine must send **three** probes: `ATTACKER_A`,
+- The Python CORS engine must send **three** probes per selected method: `ATTACKER_A`,
   `ATTACKER_B`, and `Origin: null`. A reflected `null` origin is HIGH with
   credentials and MEDIUM without; do not mistake it for a fixed ACAO value.
   Keep the null-origin test in the same mocked response sequence as the two
-  attacker origins.
+  attacker origins. The new method-aware engine does this for **every selected
+  probe method** (GET, HEAD, OPTIONS, preflight POST, …).
 - Browser JavaScript cannot forge `Origin`, so Pages cannot prove arbitrary or
   null-origin reflection. If its own concrete origin is echoed with
   `Access-Control-Allow-Credentials: true`, report MEDIUM and explicitly say
@@ -900,6 +901,55 @@ and the secret-test worker honest:
   exports and the suite JSON download are the shareable artifacts. Keep any
   shortcut/help or browser test from promising a copied site link.
 
+## CORS method-aware coverage (GET baseline + HEAD/OPTIONS/preflight)
+
+- **Never auto-POST.** POST (even empty-body) can mutate state, so the engine
+  never sends it automatically. GET is the baseline read-only probe; HEAD,
+  direct OPTIONS, and preflight simulation (`OPTIONS + Origin + Access-Control-Request-Method: POST`
+  and optional `Access-Control-Request-Headers`) are analyst-selected for an
+  **authorized** endpoint. The UI explains the target must be authorized and
+  may not support every method; unsupported methods (HTTP 405/501) are reported
+  as *not assessed*, never as safe.
+- **One method can be clean while another is not.** A GET-only probe misses a
+  POST/preflight policy (`api.example.com` may be permissive only for POST).
+  Probe each selected method independently and roll up the **highest observed
+  primary risk** (`reflected Origin + credentials = High; reflection alone OR
+  wildcard + credentials = Medium; otherwise Low`). `Vary: Origin` is a
+  separate finding and never drives the headline risk.
+- **Per-method null.** `Origin: null` is probed for **every selected method**
+  that can accept an Origin header (GET, HEAD, OPTIONS, preflight). Retain
+  ATTACKER_A / ATTACKER_B / null evidence per method in `method_results` /
+  `coverage` and in every export (Markdown/JSON/CSV/HTML/evidence PNG).
+- **No global PASS from GET alone.** When only GET was examined, the summary
+  reads “No risky CORS behavior observed for GET” plus a coverage matrix
+  (`tested_methods`, `unassessed_methods`, `method_results`). Only when all
+  selected methods were successfully assessed may a stronger “all tested
+  methods” claim be used. Never invent a PASS for methods not actually tested.
+- **Browser limits are explicit.** Browser JS cannot forge Origin, cannot
+  manually set Access-Control-Request-Method/Headers, and cannot inspect the
+  browser's automatic preflight response; it may attempt GET/HEAD/direct
+  OPTIONS where browser CORS permits, identifies actual method(s) attempted,
+  and says `server.py` is required for two-origin/null/preflight proof. Do
+  not fake parity where platform capabilities differ; keep identical scoring
+  semantics for equivalent observed inputs and document limits honestly.
+- **Implementation shape.** Python: `scan_cors(url, methods=["GET",...], preflight_methods=["POST"], preflight_headers=[...])`
+  with `fetch_headers(..., method=...)` and status 405/501 → `unassessed`.
+  The result carries `methods`, `preflight_methods`, `preflight_headers`,
+  `tested_methods`, `unassessed_methods`, `method_results` / `coverage` (per-probe
+  dicts with `method`, `kind`, `risk`, `status_code`, `headers`, `evidence`).
+  JS: `apiCors(url, opts)` and `probeCorsLive(url, opts)` mirror the same
+  ladder, per-method null, and rollup, but map a single-origin concrete
+  reflection with credentials to MEDIUM (not PASS) and mark preflight as
+  unassessed with the browser-limit note. Exports and evidence cards show
+  `Methods selected/tested/unassessed` and the coverage matrix.
+- **Tests and fixture.** `CorsMethodAwareTests` covers: GET absent but
+  preflight reflects (high), GET safe but HEAD/OPTIONS vulnerable, per-method
+  null, unsupported HEAD/OPTIONS → unassessed not safe, one risky rollup,
+  Vary isolation, browser single-origin never PASS, exports include methods,
+  and “no global PASS when only GET”. A controlled `tests/cors_fixture.py`
+  serves per-method responses and is verified with `curl -D` for
+  GET/HEAD/OPTIONS/preflight and `Origin: null`.
+
 ## Accuracy cross-check record
 
 `docs/ACCURACY-CROSSCHECK.md` is the reproducible controlled-fixture and
@@ -908,3 +958,10 @@ public-target claim: local wire fixtures prove collection/engine behavior,
 while browser ports remain pinned by parity fixtures. A relay-derived
 clickjacking report is an **assessment**, not framing proof; preserve the
 relay-data provenance rather than hiding it.
+The CORS-accuracy re-check now includes the method-aware fixture (`tests/cors_fixture.py`)
+verified with `curl -D` for GET/HEAD/OPTIONS/preflight and `Origin: null`, and the
+all-tool accuracy review (Security Headers method/redirect/duplicate/HSTS phrasing,
+Clickjacking XFO/CSP precedence, CSP enforcement/report/reporting, DNS resolver/DS/DKIM/null-MX,
+CSRF mechanics wording, JWT decode vs verify) — each discrepancy is fixed in
+Python + JS where a twin exists, with guide/methodology wording, a regression
+test, and a record in `ACCURACY-CROSSCHECK.md`.
