@@ -407,7 +407,7 @@ PR.
   §28). Not merged; do not mark DONE.
 
 ### DNS-01 — DNS & Domain Security Analyzer
-- **Status:** `IN PROGRESS`
+- **Status:** `IN REVIEW`
 - **Goal:** A seventh live tool that grades a domain's *public DNS* security
   posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — into a
   0–100 score + A–F grade with the raw record behind every finding.
@@ -438,7 +438,8 @@ PR.
   engine/gate, exports, sitemap/manifest/llms/route, workflow-patch copy line),
   plus `dns`/`guide-dns` added to the `layout`/`dropdown`/`responsive` browser
   PAGES arrays.
-- **PR/commit:** — (this session, branch `arena/01a00c48-cyberbuddy`)
+- **PR/commit:** PR #32 · branch `arena/01a00c48-cyberbuddy` · commit
+  `c898eb8` (open — not merged; do not mark DONE).
 - **Notes/traps:** The arena push token cannot edit `.github/workflows/**`, so
   the `tools/dns` copy line lives in `docs/pages-workflow-patch.md`. DKIM
   probing checks common selectors only. DNSSEC verdict keys on the DS record at
@@ -471,14 +472,18 @@ PR.
 > `category: "assess"` with `suite: false` — it never joins the hub Run suite,
 > which stays the four HTTP tools. Registry/category copy was generalized so
 > assess membership can be mixed (per-tool suite badges in the catalog). Python
-> tests now **355** (`python3 -m unittest test_engines.py`), all green. Not
-> merged; do not mark DONE.
+> tests now **355** (`python3 -m unittest test_engines.py`), all green. Open as
+> **PR #32**; not merged, do not mark DONE.
 
 - **Last verified `origin/main`:** `e10eb2e` — PR #28 merged, which brought
   the JWT-02/JWT-03 work (previously PR #25) to `main`. The JWT-00 → JWT-03
   series is complete and shipped. This session started from a clean tree.
-- **Work in review:** **POLISH-01 (consistency sweep)** — `IN REVIEW`,
-  branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not merged).
+- **Work in review:** **DNS-01 (this session)** — `IN REVIEW`, branch
+  `arena/01a00c48-cyberbuddy`, **PR #32** (open, not merged). Requires the
+  maintainer-applied `tools/dns` Pages copy line
+  (see `docs/pages-workflow-patch.md`). **POLISH-01 (consistency sweep)** —
+  `IN REVIEW`, branch `arena/01a00768-cyberbuddy`, **PR #29** (open, not
+  merged).
   Not a numbered roadmap feature: a
   verification pass over the shipped suite plus the drift it exposed. No new
   tool, engine or scoring behaviour.
