@@ -1959,6 +1959,97 @@ class ResponsiveLayoutTests(unittest.TestCase):
                 self.assertEqual(bare, 0)
 
 
+class FluidResponsiveSystemTests(unittest.TestCase):
+    """RESP-01: the multi-device, standards-first layout system.
+
+    The responsive rework replaced the ad-hoc breakpoints with a small,
+    documented device ladder plus a fluid type/spacing scale (`clamp()` +
+    custom-property tokens) and `auto-fit`/`minmax()` card grids, and added a
+    large-monitor tier so a 2560px panel uses its width instead of leaving
+    huge gutters. Media queries cannot read custom properties (a CSS
+    limitation), so the *breakpoint values* are literals re-stated against the
+    documented ladder while every *layout dimension* they drive is a token.
+    These stdlib tests gate the rules in CI — the browser suites verify the
+    rendered result (see tests/browser/responsive.js).
+    """
+
+    def setUp(self) -> None:
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        # Comments discuss the system (and name :has()); assert on real CSS.
+        self.rules = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+
+    def _rule(self, selector: str) -> str:
+        start = self.css.index(selector)
+        return self.css[start:self.css.index("}", start)]
+
+    def test_fluid_type_scale_is_tokenized_with_clamp(self):
+        """Type must scale continuously (clamp) via tokens, not hardcoded px."""
+        root = self._rule(":root {")
+        for token in ("--fs-h1", "--fs-h2", "--fs-h3", "--fs-lead"):
+            with self.subTest(token=token):
+                self.assertIn(token, root, token)
+                self.assertIn("clamp(", root[0:root.index(token) + 120], token)
+        # The heading/lead rules consume the tokens, not literal sizes.
+        self.assertIn("font-size: var(--fs-h1)", self._rule("h1 {"))
+        self.assertIn("font-size: var(--fs-h2)", self._rule("h2 {"))
+        self.assertIn("font-size: var(--fs-lead)", self._rule(".lead {"))
+
+    def test_container_width_is_tokenized(self):
+        """The column width reads --container-max, so wide tiers only have to
+        re-define the token — never touch .container itself."""
+        self.assertIn("var(--container-max)", self._rule(".container {"))
+
+    def test_large_monitors_widen_the_column_via_the_token(self):
+        """A 2560px monitor must widen the readable column, not sit at 1160px
+        with giant gutters. Each tier re-defines --container-max upward."""
+        # The default column caps at 1160px…
+        self.assertIn("--container-max: 1160px", self._rule(":root {"))
+        # …and the wide tiers push it out in order.
+        tiers = [
+            ("1440px", "1320px"),
+            ("1920px", "1480px"),
+            ("2560px", "1560px"),
+        ]
+        for width, expected in tiers:
+            with self.subTest(tier=width):
+                block = self.rules[
+                    self.rules.index("@media (min-width: %s)" % width):
+                    self.rules.index("}", self.rules.index("@media (min-width: %s)" % width))
+                ]
+                self.assertIn("--container-max: %s" % expected, block)
+
+    def test_card_grids_are_autofit_minmax(self):
+        """Card grids must reflow to fill their container (1-up phone, N-up
+        monitor) instead of being pinned to a fixed column count."""
+        for selector, needle in (
+            (".tool-grid {", "repeat(auto-fit, minmax(min(100%"),
+            (".suite-grid {", "repeat(auto-fit, minmax(min(100%"),
+            (".blog-grid {", "repeat(auto-fit, minmax(min(100%"),
+            (".tool-catalog-grid {", "repeat(auto-fit, minmax(min(100%"),
+        ):
+            with self.subTest(selector=selector):
+                self.assertIn(needle, self._rule(selector))
+
+    def test_prefers_contrast_is_supported(self):
+        """Visitors who need more contrast get stronger borders and more
+        opaque surfaces in both themes, via the tokens only."""
+        start = self.css.index("@media (prefers-contrast: more)")
+        block = self.css[start:]
+        self.assertIn("--line", block)
+        self.assertIn("--surface", block)
+        # Both themes are handled.
+        self.assertIn('html[data-theme="light"]', block)
+        self.assertIn(":focus-visible", block)
+
+    def test_no_container_query_or_has_dependency_for_layout(self):
+        """The reflow relies on auto-fit/minmax, not on container queries
+        (whose inline-size containment would clip the score gauges / radar
+        that intentionally paint outside their card) or on :has()."""
+        self.assertNotIn(":has(", self.rules)
+        self.assertNotIn("@container", self.rules)
+        self.assertNotIn("container-type", self.rules)
+
+
 class ThemeContrastTests(unittest.TestCase):
     """WCAG AA (4.5:1) for every text/background token pairing in BOTH
     themes, computed from the real css/app.css variables with translucent

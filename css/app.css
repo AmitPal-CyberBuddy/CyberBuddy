@@ -58,6 +58,32 @@
   --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px -18px rgba(0, 0, 0, 0.7);
   --shadow-md: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 40px -22px rgba(0, 0, 0, 0.8);
   --shadow-lg: 0 24px 60px -28px rgba(0, 0, 0, 0.85);
+
+  /* ---- Responsive scale (design tokens) --------------------------------
+     A fluid type/spacing scale so the UI re-thinks density continuously
+     rather than snapping at each breakpoint. Breakpoint *values* cannot be
+     read inside @media queries (a CSS limitation — custom properties are not
+     valid in media conditions), so the device ladder is documented here as
+     the single source of truth and re-stated as literal px in the media
+     blocks below; every *layout dimension* they drive is a token. */
+  --bp-phone: 560px;      /* phones, incl. the 360px floor               */
+  --bp-tablet: 768px;     /* tablet portrait; header chrome collapses    */
+  --bp-laptop: 1060px;    /* tablet landscape / small laptop             */
+  --bp-wide: 1440px;      /* large laptop — widen the readable column    */
+  --bp-xwide: 1920px;     /* desktop / 26" — multi-up grids, wider still */
+  --bp-monitor: 2560px;   /* 32" monitor — cap line length, not the grid */
+
+  --container-max: 1160px;      /* default column; redefined at wide tiers */
+  --container-gutter: clamp(20px, 3vw, 40px);
+
+  --fs-h1: clamp(2.2rem, 1.35rem + 3.2vw, 4rem);
+  --fs-h2: clamp(1.18rem, 1.05rem + 0.55vw, 1.4rem);
+  --fs-h3: clamp(0.96rem, 0.9rem + 0.25vw, 1.06rem);
+  --fs-lead: clamp(0.98rem, 0.9rem + 0.5vw, 1.12rem);
+
+  --space-section: clamp(40px, 2.5rem + 2vw, 88px);  /* vertical rhythm  */
+  --card-pad: clamp(18px, 1rem + 1.2vw, 26px);        /* card density    */
+  --grid-gap: clamp(12px, 0.8rem + 1vw, 18px);        /* grid gutters    */
 }
 
 /* Light theme — same design system, flipped canvas (toggle in the header) */
@@ -151,9 +177,9 @@ body::before {
 }
 
 h1, h2, h3, h4 { line-height: 1.18; margin: 0 0 0.5em; color: var(--ink); letter-spacing: -0.03em; }
-h1 { font-size: clamp(2.2rem, 5.4vw, 4rem); font-weight: 600; }
-h2 { font-size: 1.28rem; font-weight: 600; }
-h3 { font-size: 1rem; font-weight: 600; }
+h1 { font-size: var(--fs-h1); font-weight: 600; }
+h2 { font-size: var(--fs-h2); font-weight: 600; }
+h3 { font-size: var(--fs-h3); font-weight: 600; }
 p { margin: 0 0 1em; }
 a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; color: var(--brand-deep); }
@@ -181,7 +207,7 @@ pre {
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
 ::selection { background: rgba(62, 224, 194, 0.3); color: var(--ink); }
 
-.container { width: min(1160px, 100% - 40px); margin-inline: auto; position: relative; z-index: 1; }
+.container { width: min(var(--container-max), 100% - var(--container-gutter)); margin-inline: auto; position: relative; z-index: 1; }
 /* `.container` and `.site-footer` were both `z-index: 1`, so the footer —
    later in source order — painted OVER anything escaping main, including
    the open Export panel (measured: elementFromPoint on the last export item
@@ -433,16 +459,16 @@ main.container { z-index: 2; }
   font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;
   letter-spacing: 0.18em; text-transform: uppercase; color: var(--brand); margin: 0 0 14px;
 }
-.lead { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+.lead { color: var(--muted); font-size: var(--fs-lead); max-width: 62ch; }
 
-.hero { padding: 92px 0 48px; }
+.hero { padding: var(--space-section) 0 48px; }
 .hero-title {
   background: linear-gradient(120deg, var(--hero-grad-a) 0%, var(--brand) 42%, var(--accent-2) 92%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .hero-title .line { display: block; }
 
-.section-head { display: flex; align-items: baseline; gap: 14px; margin: 56px 0 20px; }
+.section-head { display: flex; align-items: baseline; gap: 14px; margin: var(--space-section) 0 20px; }
 #methodology { scroll-margin-top: 88px; }
 /* Scan-result regions: tools scroll here after a run; keep their tops clear
    of the sticky header even when evidence mode is off. */
@@ -480,7 +506,7 @@ main.container { z-index: 2; }
 
 /* Tools catalog (/tools/) — one spec-sheet card per tool. */
 .tool-catalog-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--grid-gap);
 }
 .tool-catalog-card {
   padding: 20px; display: flex; flex-direction: column; gap: 14px;
@@ -597,7 +623,7 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 /* Cards */
 .card {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow-sm);
+  border-radius: var(--radius); padding: var(--card-pad); box-shadow: var(--shadow-sm);
   backdrop-filter: blur(10px);
 }
 .card .note { color: var(--muted); font-size: 0.86rem; }
@@ -609,7 +635,11 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
 }
 
 /* Tool cards */
-.tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+/* auto-fit/minmax: cards reflow to fill the container at every device class
+   (1-up phone, 2-up tablet, 3-up laptop, 4-up on a large monitor) instead of
+   being pinned to a fixed 2-column desktop layout. `min(100%, …)` keeps a
+   single card from ever overflowing a narrow column. */
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--grid-gap); }
 .tool-card {
   display: flex; flex-direction: column; gap: 12px; padding: 24px;
   text-decoration: none; color: var(--ink);
@@ -1225,7 +1255,7 @@ body.evidence .verdict-banner { padding: 13px 15px; margin-bottom: 14px; }
   .suite-picker-all { grid-column: 1 / -1; justify-self: start; }
 }
 .suite-results { margin-top: 18px; }
-.suite-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.suite-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: var(--grid-gap); }
 @media (max-width: 920px) { .suite-grid { grid-template-columns: 1fr; } }
 .suite-card { display: flex; flex-direction: column; gap: 10px; min-height: 220px; }
 .suite-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1607,7 +1637,7 @@ html[data-theme="light"] .gauge-track { stroke: #e4eaf2; }
   .footer-col { gap: 5px; }
 }
 
-.roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 16px; }
+.roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: var(--grid-gap); margin-top: 16px; }
 .roadmap-item {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 18px; box-shadow: var(--shadow-sm);
@@ -1890,7 +1920,7 @@ html.js .tool-card.reveal.in .tool-card-icon svg * {
 .blog-feature-cta .btn { white-space: nowrap; }
 .blog-handle { font-family: var(--font-mono); font-size: 0.7rem; color: var(--faint); text-align: center; }
 
-.blog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.blog-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: var(--grid-gap); margin-top: 16px; }
 @media (max-width: 920px) { .blog-grid { grid-template-columns: 1fr; } }
 .blog-post {
   display: flex; flex-direction: column; gap: 10px;
@@ -2160,7 +2190,7 @@ html.js .reveal.in,
 }
 
 @media (max-width: 760px) {
-  .container { width: min(1160px, 100% - 28px); }
+  .container { width: min(var(--container-max), 100% - 28px); }
   .tool-grid { grid-template-columns: 1fr; }
   .header-inner { gap: 8px 12px; padding-block: 9px; }
   .main-nav a { font-size: 0.84rem; padding: 7px 9px; }
@@ -2841,3 +2871,48 @@ html.js .reveal.in,
 .jwt-progress-wrap { margin: 14px 0; }
 .jwt-progress { width: 100%; height: 12px; accent-color: var(--brand); }
 .jwt-progress-wrap .jwt-field-note { margin: 6px 0 0; }
+
+/* ==========================================================================
+   Large monitors — use the extra width deliberately
+   The default column caps at --container-max (1160px) so a 2560px monitor
+   used to leave huge empty gutters either side. Each tier widens the
+   readable column by re-defining the --container-max token (the only thing
+   a media query has to do — every consumer reads the token), and the
+   auto-fit card grids above gain columns for free. Prose stays capped by
+   its own max-width so lines never run the width of a 32" panel.
+   ========================================================================== */
+@media (min-width: 1440px) {
+  :root { --container-max: 1320px; }
+}
+@media (min-width: 1920px) {
+  :root { --container-max: 1480px; }
+}
+@media (min-width: 2560px) {
+  /* A 32" monitor: keep going a little, then let line-length caps (62–72ch)
+     do the work rather than stretching body copy edge to edge. */
+  :root { --container-max: 1560px; }
+}
+
+/* ==========================================================================
+   High-contrast preference
+   prefers-contrast: more strengthens borders and mutes translucent surfaces
+   so text stays legible for visitors who need it, in both themes. Only the
+   tokens change — no per-component rules, so it cannot drift out of sync
+   with the rest of the design system.
+   ========================================================================== */
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgba(255, 255, 255, 0.24);
+    --line-strong: rgba(255, 255, 255, 0.38);
+    --surface: rgba(8, 11, 16, 0.96);
+    --surface-2: rgba(16, 21, 30, 0.98);
+    --surface-3: rgba(28, 36, 50, 1);
+  }
+  html[data-theme="light"] {
+    --line: rgba(16, 24, 40, 0.32);
+    --line-strong: rgba(16, 24, 40, 0.5);
+    --surface: rgba(255, 255, 255, 0.98);
+    --surface-2: #ffffff;
+  }
+  :focus-visible { outline-width: 3px; }
+}

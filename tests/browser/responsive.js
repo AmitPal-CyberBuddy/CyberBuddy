@@ -335,6 +335,58 @@ async function scan(page, path, url) {
     await page.close();
   }
 
+  /* ---- 7. Responsive system: fluid tokens, wide-monitor columns, contrast */
+  {
+    // The column must widen on a large monitor (--container-max tiers), not
+    // sit at the default 1160px cap with huge empty gutters either side.
+    const laptop = await newPage(browser, { w: 1366, h: 768 });
+    await laptop.goto(BASE + "/", { waitUntil: "networkidle2" });
+    const wLaptop = await laptop.evaluate(() =>
+      Math.round(document.querySelector(".container").getBoundingClientRect().width));
+    const monitor = await newPage(browser, { w: 2560, h: 1440 });
+    await monitor.goto(BASE + "/", { waitUntil: "networkidle2" });
+    const wMonitor = await monitor.evaluate(() =>
+      Math.round(document.querySelector(".container").getBoundingClientRect().width));
+    r.check(wMonitor > wLaptop + 150, `wide-monitor column laptop=${wLaptop} monitor=${wMonitor}`);
+    await laptop.close();
+    await monitor.close();
+
+    // auto-fit/minmax card grids must gain columns on a wide screen while
+    // staying inside the viewport and without document overflow.
+    const grid = await newPage(browser, { w: 2560, h: 1440 });
+    await grid.goto(BASE + "/", { waitUntil: "networkidle2" });
+    await settleReveals(grid);
+    const g = await grid.evaluate(() => {
+      const assess = document.getElementById("assessGrid");
+      const cols = getComputedStyle(assess).gridTemplateColumns.split(" ").filter(Boolean).length;
+      const cards = [...assess.querySelectorAll(".tool-card")].map((c) => {
+        const b = c.getBoundingClientRect();
+        return b.left >= -1 && b.right <= innerWidth + 1;
+      });
+      return {
+        cols,
+        inViewport: cards.every(Boolean),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    r.check(g.cols >= 3 && g.inViewport && g.overflow === 0, `autofit columns ${JSON.stringify(g)}`);
+    await grid.close();
+
+    // prefers-contrast: more must re-define the border/surface tokens.
+    const contrast = await newPage(browser, { w: 1366, h: 768 });
+    await contrast.emulateMediaFeatures([{ name: "prefers-contrast", value: "more" }]);
+    await contrast.goto(BASE + "/", { waitUntil: "networkidle2" });
+    const c = await contrast.evaluate(() => {
+      const s = getComputedStyle(document.documentElement);
+      return {
+        line: s.getPropertyValue("--line").trim(),
+        surface: s.getPropertyValue("--surface").trim()
+      };
+    });
+    r.check(!!c.line && !!c.surface, `prefers-contrast tokens ${JSON.stringify(c)}`);
+    await contrast.close();
+  }
+
   r.done();
   await browser.close();
 })();
