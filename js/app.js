@@ -4726,7 +4726,7 @@ function isUnverified(data) {
 
 function unverifiedFlag(data) {
   return isUnverified(data)
-    ? '<span class="unverified-flag" title="Header values were proxied by a third-party service and are not independently verified">unverified</span>'
+    ? '<span class="unverified-flag" title="Header values were proxied by a third-party service and are not independently verified">relay data</span>'
     : "";
 }
 

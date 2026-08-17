@@ -77,6 +77,7 @@ async function checkMenu(page, label, r) {
       return {
         label: i.textContent.trim().replace(/(live|soon)$/, ""),
         isLink: i.tagName === "A",
+        hasIcon: !!i.querySelector(".nav-menu-icon svg"),
         insideViewport: b.left >= -1 && b.top >= -1 && b.right <= innerWidth + 1 && b.bottom <= innerHeight + 1,
         // The item (or a child of it) must be the topmost element at its
         // centre — anything else means an overlay is eating the click.
@@ -115,6 +116,7 @@ async function checkMenu(page, label, r) {
   if (m.overflow > 0) bad.push("horizontal overflow " + m.overflow);
   m.items.forEach((i) => {
     if (!i.insideViewport) bad.push("outside viewport: " + i.label);
+    if (i.isLink && !/All tools/.test(i.label) && !i.hasIcon) bad.push("missing icon: " + i.label);
     if (i.hit !== "SELF") bad.push("click intercepted on '" + i.label + "' by " + i.hit);
   });
   return r.check(

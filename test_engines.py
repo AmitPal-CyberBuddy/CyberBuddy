@@ -2617,6 +2617,15 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("apiCsp", body)
         self.assertNotIn("csrf", body.lower())
 
+    def test_clickjacking_relay_result_is_an_assessment_not_a_proof(self):
+        page = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
+        app = self._app()
+        self.assertIn("Clickjacking assessment", page)
+        self.assertNotIn("Clickjacking proof", page)
+        self.assertIn("relay data", app)
+        # Provenance remains visible; a relay is not first-hand evidence.
+        self.assertIn("isUnverified(data)", app)
+
     def test_suite_exports_and_menu_icons_are_report_artifacts(self):
         app = self._app()
         self.assertIn("suiteExportEnvelope", app)
@@ -2624,6 +2633,9 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("suiteCsv", app)
         self.assertIn("suiteStandaloneHtml", app)
         self.assertIn("ICONS[t.icon]", app)
+        dropdown = (ROOT / "tests" / "browser" / "dropdown.js").read_text(encoding="utf-8")
+        self.assertIn("hasIcon", dropdown)
+        self.assertIn("missing icon", dropdown)
         self.assertNotIn("initShareButton", app)
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("Download suite report", hub)

@@ -899,3 +899,12 @@ and the secret-test worker honest:
 - Share URLs are not reports. Per-tool and suite share controls were removed;
   exports and the suite JSON download are the shareable artifacts. Keep any
   shortcut/help or browser test from promising a copied site link.
+
+## Accuracy cross-check record
+
+`docs/ACCURACY-CROSSCHECK.md` is the reproducible controlled-fixture and
+manual-curl record for the all-tool sweep. Keep the checks distinct from a
+public-target claim: local wire fixtures prove collection/engine behavior,
+while browser ports remain pinned by parity fixtures. A relay-derived
+clickjacking report is an **assessment**, not framing proof; preserve the
+relay-data provenance rather than hiding it.

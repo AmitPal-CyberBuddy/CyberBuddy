@@ -502,9 +502,12 @@ PR.
 > credentials now reports MEDIUM with an explicit single-origin limitation;
 > Python now also probes `Origin: null` (HIGH with credentials, MEDIUM without).
 > Added icons to header Tools menu items, removed misleading URL-only share
-> controls, and added a combined suite JSON download. Updated CORS guide,
-> methodology, parity tests and durable traps. Browser suites need Chromium and
-> remain a release gate. **IN REVIEW:** PR #35; do not merge it from this session.
+> controls, and added combined suite downloads. The all-tool controlled-fixture
+> / curl cross-check is recorded in `docs/ACCURACY-CROSSCHECK.md`; it found no
+> scoring drift, but renamed a relay-derived clickjacking “proof” to an
+> assessment while retaining provenance. Updated CORS guide, methodology, parity
+> tests and durable traps. Browser suites need Chromium and remain a release
+> gate. **IN REVIEW:** PR #35; do not merge it from this session.
 
 
 > **This session (RESP-01, branch `arena/01a00e47-cyberbuddy`):** a
