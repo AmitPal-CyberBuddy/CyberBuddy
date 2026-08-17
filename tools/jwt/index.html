@@ -541,7 +541,7 @@
         </article>
         <article class="card inset-card jwt-variant">
           <h3 class="card-title">JKU / X5U</h3>
-          <p>Points the header at an analyst-controlled URL (you host the key set). No request is made by the tool.</p>
+          <p><code>jku</code> must serve a matching JWKS; <code>x5u</code> must serve a matching X.509 certificate. Supply the matching signing key and analyst-controlled HTTP(S) URL — the tool does not fetch or host either resource.</p>
           <div class="jwt-btn-row">
             <select id="jwtVarJkuX5u" aria-label="Header field">
               <option value="jku">jku</option>

@@ -764,7 +764,20 @@
         task = signToken(header, payload, opts.key, { alg: opts.alg });
       } else if (type === "jku" || type === "x5u") {
         if (!opts.url) return Promise.resolve({ error: "Supply the URL the template should carry." });
-        header[type] = opts.url;
+        // jku/x5u are URI-valued JOSE header parameters. Reject malformed
+        // values early so an output described as a URL-based test payload is
+        // actually a syntactically meaningful HTTP(S) URL.
+        var parsedUrl;
+        try { parsedUrl = new URL(String(opts.url)); }
+        catch (e) { return Promise.resolve({ error: "The " + type + " value must be an absolute HTTP(S) URL." }); }
+        if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+          return Promise.resolve({ error: "The " + type + " value must use http or https." });
+        }
+        header[type] = parsedUrl.href;
+        // A JKU resolver commonly selects a key by kid. When a generated
+        // public JWK has a matching kid, carry it into the header so the
+        // published JWKS can actually select the test key.
+        if (opts.kid != null && opts.kid !== "") header.kid = String(opts.kid);
         task = signToken(header, payload, opts.key, { alg: opts.alg });
       } else if (type === "kid") {
         if (opts.kid == null || opts.kid === "") return Promise.resolve({ error: "Supply the kid value." });
@@ -940,8 +953,8 @@
       refineLabel: "Refine in Test Variants",
       needsUrl: true,
       howTo: [
-        "The payload is self-signed with a local throwaway RSA pair and points jku/x5u at your URL — host the shown public JWK there (JWKS form: {\"keys\":[ … ]}).",
-        "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — and an inbound hit on your endpoint proves the server fetched an untrusted key URL. 401/403 with no inbound hit means URL fetching is pinned or blocked.",
+          "For jku, host the shown public JWK as a JWKS ({\"keys\":[ … ]}) and keep its kid equal to the token header. For x5u, host an X.509 certificate whose public key matches the signing key; a JWK is not an x5u response. The tool does not create or host certificates.",
+          "Send it in Burp Repeater. Vulnerable signal: HTTP 200 — and an inbound hit on your endpoint proves the server fetched an untrusted key URL. 401/403 with no inbound hit means URL fetching is pinned or blocked.",
         "Never point this at a host you do not control; CyberBuddy itself makes no request to the URL."
       ]
     });
@@ -1052,7 +1065,7 @@
       if (kind === "embedded-jwk") {
         return buildVariant(base, kind, { publicJwk: opts.publicJwk, alg: signAlg, key: opts.key });
       }
-      return buildVariant(base, kind, { url: opts.url, alg: signAlg, key: opts.key });
+      return buildVariant(base, kind, { url: opts.url, alg: signAlg, key: opts.key, kid: opts.kid });
     }
     if (kind === "kid") {
       try {

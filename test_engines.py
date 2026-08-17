@@ -4686,19 +4686,35 @@ const crypto2 = require('crypto');
   const pair = await CyberBuddyJwt.generateRsaTestPair('RS256');
   const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
   const jku = await CyberBuddyJwt.buildVaptPayload(parsed, 'jku',
-    {url:'https://attacker.example/jwks.json', alg:'RS256', key: pair.privateKey});
+    {url:'https://attacker.example/jwks.json', alg:'RS256', key: pair.privateKey, kid:'test-jwks-key'});
   const x5u = await CyberBuddyJwt.buildVaptPayload(parsed, 'x5u',
-    {url:'https://attacker.example/c.pem', alg:'RS256', key: pair.privateKey});
+    {url:'https://attacker.example/c.pem', alg:'RS256', key: pair.privateKey, kid:'test-cert-key'});
   const dec = (t) => JSON.parse(new TextDecoder().decode(CyberBuddyJwt.b64urlDecode(t.split('.')[0])));
   const check = await CyberBuddyJwt.verifyToken(jku.token, pub, {alg:'RS256'});
   console.log(JSON.stringify({jku: dec(jku.token).jku, x5u: dec(x5u.token).x5u,
+    jkuKid: dec(jku.token).kid, x5uKid: dec(x5u.token).kid,
     alg: dec(jku.token).alg, verifies: check.valid}));
 })();
 """ % json.dumps(token))
         self.assertEqual(out["jku"], "https://attacker.example/jwks.json")
         self.assertEqual(out["x5u"], "https://attacker.example/c.pem")
+        self.assertEqual(out["jkuKid"], "test-jwks-key")
+        self.assertEqual(out["x5uKid"], "test-cert-key")
         self.assertEqual(out["alg"], "RS256")
         self.assertTrue(out["verifies"])
+
+    def test_url_header_payloads_require_absolute_http_urls(self):
+        token = self._hs_token({"sub": "alice"})
+        out = self._run_engine("""
+(async () => {
+  const parsed = CyberBuddyJwt.parseToken(%s);
+  const bad = await CyberBuddyJwt.buildVaptPayload(parsed, 'jku', {url:'javascript:alert(1)', alg:'RS256', key:{}});
+  const relative = await CyberBuddyJwt.buildVariant(parsed, 'x5u', {url:'/cert.pem', alg:'HS256', key:'secret'});
+  console.log(JSON.stringify({bad:bad.error, relative:relative.error}));
+})();
+""" % json.dumps(token))
+        self.assertIn("http or https", out["bad"])
+        self.assertIn("absolute HTTP(S) URL", out["relative"])
 
     def test_payload_requires_base_token_and_known_kind(self):
         out = self._run_engine("""
