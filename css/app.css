@@ -2919,3 +2919,51 @@ html.js .reveal.in,
   }
   :focus-visible { outline-width: 3px; }
 }
+
+/* CORS method-aware coverage: one control per row at every viewport. */
+.cors-method-picker { padding: 16px; }
+.cors-method-picker .method-picker-grid {
+  display: grid;
+  gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 14px 0 8px;
+}
+.cors-method-picker .method-picker-grid label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  min-width: 0;
+}
+.cors-method-picker .method-picker-grid input[type="checkbox"] {
+  margin-top: 4px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.cors-method-picker .method-picker-grid input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.cors-method-picker .method-picker-grid input[type="text"]:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.cors-method-picker .method-picker-grid code {
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
