@@ -28,7 +28,7 @@ const PAGES = [
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
-  ["jwt-preview", "/tools/jwt/"],
+  ["jwt", "/tools/jwt/"],
   ["guides", "/guides/"],
   ["guide-clickjacking", "/guides/clickjacking/"],
   ["guide-headers", "/guides/headers/"],
@@ -171,10 +171,10 @@ async function checkMenu(page, label, r) {
     const hrefs = await page.evaluate(() =>
       [...document.querySelectorAll(".header-inner .nav-menu-panel a")]
         .map((a) => new URL(a.getAttribute("href"), location.href).pathname));
-    // 5 live tool links + 1 JWT preview link + the "All tools" catalog
-    // link, all under the mount.
+    // Seven live tool links plus the "All tools" catalog link, all under
+    // the project mount.
     r.check(
-      hrefs.length === 7 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
+      hrefs.length === 8 && hrefs.every((h) => h.startsWith("/CyberBuddy/tools/")),
       `project-mount links ${vn} ${JSON.stringify(hrefs)}`
     );
     await checkMenu(page, `project-mount ${vn}`, r);
@@ -184,7 +184,10 @@ async function checkMenu(page, label, r) {
   /* ---- 4. Every live link actually navigates, from a result page -------- */
   {
     const page = await newPage(browser, { w: 1366, h: 768 });
-    for (const target of ["/tools/clickjacking/", "/tools/headers/", "/tools/cors/", "/tools/csp/", "/tools/csrf/"]) {
+    for (const target of [
+      "/tools/clickjacking/", "/tools/headers/", "/tools/cors/", "/tools/csp/",
+      "/tools/dns/", "/tools/csrf/", "/tools/jwt/"
+    ]) {
       await scanHeaders(page);
       await scrollTo(page, "top");
       await page.evaluate(async (t) => {
@@ -207,18 +210,18 @@ async function checkMenu(page, label, r) {
       r.check(got === target, `navigate to ${target} -> ${got}`);
     }
 
-    /* Upcoming tools must be visibly disabled and NOT behave as links; CSRF
-       is now live so it must appear as a real link, never as a disabled item. */
+    /* Upcoming tools must be visibly disabled and must not behave as links.
+       All seven shipped tools, including CSRF, JWT and DNS, are live links. */
     const disabled = await page.evaluate(() =>
       [...document.querySelectorAll(".header-inner .nav-menu-item.disabled")].map((e) => ({
         tag: e.tagName, href: e.getAttribute("href"),
-        ariaDisabled: e.getAttribute("aria-disabled"), text: e.textContent.trim().slice(0, 24)
+        ariaDisabled: e.getAttribute("aria-disabled"), text: e.textContent.trim().slice(0, 30)
       })));
     r.check(
-      disabled.length >= 2 &&
+      disabled.length >= 1 &&
       disabled.every((d) => d.tag !== "A" && !d.href && d.ariaDisabled === "true") &&
-      !disabled.some((d) => /CSRF PoC Generator/.test(d.text)) &&
-      disabled.some((d) => /TLS \/ SSL Analyzer/.test(d.text)),
+      !disabled.some((d) => /CSRF|JWT|DNS/.test(d.text)) &&
+      disabled.some((d) => /HAR \/ Traffic Inspector/.test(d.text)),
       `upcoming tools stay disabled ${JSON.stringify(disabled)}`
     );
 

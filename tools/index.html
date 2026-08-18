@@ -47,19 +47,19 @@
       },
       "mainEntity": {
         "@type": "ItemList",
-        "numberOfItems": 6,
+        "numberOfItems": 7,
         "itemListElement": [
           {
             "@type": "ListItem",
             "position": 1,
-            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/headers/",
-            "name": "Security Headers Analyzer"
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/",
+            "name": "Clickjacking Validator"
           },
           {
             "@type": "ListItem",
             "position": 2,
-            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/",
-            "name": "CSP Policy Auditor"
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/headers/",
+            "name": "Security Headers"
           },
           {
             "@type": "ListItem",
@@ -70,20 +70,26 @@
           {
             "@type": "ListItem",
             "position": 4,
-            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/clickjacking/",
-            "name": "Clickjacking Validator"
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csp/",
+            "name": "CSP Policy Auditor"
           },
           {
             "@type": "ListItem",
             "position": 5,
-            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/",
-            "name": "JWT Security Workbench"
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/dns/",
+            "name": "DNS & Domain Security Analyzer"
           },
           {
             "@type": "ListItem",
             "position": 6,
             "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/csrf/",
             "name": "CSRF PoC Generator"
+          },
+          {
+            "@type": "ListItem",
+            "position": 7,
+            "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/jwt/",
+            "name": "JWT Security Workbench"
           }
         ]
       }
@@ -98,17 +104,29 @@
   <script src="../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/tools/" data-init="renderToolCatalog">
+<noscript>
+  <aside class="noscript-banner" aria-label="JavaScript status">
+    <p><strong>JavaScript is disabled.</strong> Reading pages and links still work, but interactive scanners, local security utilities, theme controls, and exports require JavaScript.</p>
+    <nav class="noscript-nav" aria-label="No-JavaScript navigation">
+      <a href="../">Home</a>
+      <a href="../tools/">Tools</a>
+      <a href="../guides/">Guides</a>
+      <a href="../methodology/">Methodology</a>
+      <a href="../documentation/">Documentation</a>
+    </nav>
+  </aside>
+</noscript>
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool directory</p>
   <h1 class="reveal">Every tool, one directory</h1>
   <p class="lead reveal" style="--d: .08s;">
-    The full CyberBuddy catalog. Target assessments read a URL you point them
-    at and join the hub “Run suite”; local utilities run entirely in your
-    browser and never scan a target.
+    The full CyberBuddy catalog. HTTP assessments read a URL you provide, the
+    DNS analyzer reads a domain's public records, and local utilities run
+    entirely in your browser without scanning a target.
   </p>
   <p class="std-line reveal" style="--d: .1s;">
-    <span class="count" id="toolCount">07 live</span> · authorized testing only · all scans are read-only GETs
+    <span class="count" id="toolCount">07 live</span> · authorized testing only · non-destructive network checks
   </p>
 
   <div id="toolCatalog">
@@ -153,7 +171,7 @@
           <p class="tool-catalog-purpose">See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.</p>
           <dl class="catalog-meta">
             <dt>Input</dt><dd>URL</dd>
-            <dt>Mode</dt><dd>Contacts the target (read-only GET)</dd>
+            <dt>Mode</dt><dd>Contacts the target (GET baseline + selected HEAD/OPTIONS/preflight)</dd>
             <dt>Evidence</dt><dd>Origin reflection + credentials report card</dd>
             <dt>Standards</dt><dd class="catalog-std"><span class="std-id">OWASP WSTG-CLNT-07</span><span class="std-id">CWE-942</span></dd>
           </dl>

@@ -82,7 +82,7 @@
         "<h3>Header read declined</h3>" +
         "<p>Third-party relays were declined, so this hosted page cannot read " +
         "the target's CSP response header. Run <code>python3 server.py</code> " +
-        "locally for a same-origin scan that never leaves your machine.</p>";
+        "locally for a direct scan with no third-party header relay.</p>";
       $("staticNotice").classList.remove("hidden");
       $("results").classList.add("hidden");
       return;

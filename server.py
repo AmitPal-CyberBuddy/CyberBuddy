@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import ipaddress
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,7 +44,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit, urlunspli
 from clickjacking_validator import normalize_url, redact_userinfo, scan_url, validate_target
 from cors_validator import scan_cors
 from csp_checker import scan_csp
-from dns_security import scan_dns
+from dns_security import scan_dns, validate_domain
 from security_headers import scan_headers
 
 HOST = "127.0.0.1"
@@ -178,6 +179,15 @@ def default_bind() -> tuple[str, int]:
     return host, port
 
 
+def is_loopback_bind(host: str) -> bool:
+    """Recognize localhost and every address in the IPv4/IPv6 loopback ranges."""
+    configured = host.rstrip(".").lower()
+    try:
+        return ipaddress.ip_address(configured.split("%", 1)[0]).is_loopback
+    except ValueError:
+        return configured == "localhost"
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "CyberBuddy"
     sys_version = ""
@@ -261,27 +271,41 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload, indent=2).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _request_hostname(self) -> str:
+        """Return the normalized HTTP Host hostname, or an empty string."""
+        raw = (self.headers.get("Host") or "").split(",", 1)[0].strip()
+        try:
+            return (urlsplit("//" + raw).hostname or "").rstrip(".").lower()
+        except ValueError:
+            return ""
+
+    def _host_allowed(self) -> bool:
+        """Reject DNS-rebinding Host values when this is a loopback server."""
+        if not is_loopback_bind(HOST):
+            # Public/reverse-proxied deployments do not know their external
+            # hostname at process start; private-IP scans are off by default.
+            return True
+        hostname = self._request_hostname()
+        if hostname == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return False
+
     def _our_origin(self) -> set[str]:
-        hosts: set[str] = set()
-        for key in ("Host", "X-Forwarded-Host"):
-            raw = (self.headers.get(key) or "").strip()
-            if raw:
-                hosts.add(raw.split(",")[0].strip())
-        if not hosts:
-            hosts.add(f"{HOST}:{PORT}")
-        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
-        out: set[str] = set()
-        for host in hosts:
-            out.add(f"http://{host}")
-            out.add(f"https://{host}")
-            if proto in {"http", "https"}:
-                out.add(f"{proto}://{host}")
-        return out
+        # Host is the authority the browser actually addressed. Do not trust
+        # forwarded-host headers unless a deployment has an explicit trusted-
+        # proxy boundary; clients can otherwise forge an origin match.
+        raw = (self.headers.get("Host") or "").strip()
+        host = raw.split(",", 1)[0].strip() or f"{HOST}:{PORT}"
+        return {f"http://{host}", f"https://{host}"}
 
     def _redirect(self, dest: str) -> None:
         self.send_response(301)
         self.send_header("Location", dest)
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self._security_headers()
         self.end_headers()
 
     def _not_found(self) -> None:
@@ -292,12 +316,22 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def _api_allowed(self) -> bool:
-        """Stop drive-by GETs from other sites (img/fetch CSRF).
+        """Stop drive-by scans, including no-referrer and DNS-rebinding GETs.
 
-        Browser fetch from this app sends Origin (and X-Requested-With).
-        curl (no Origin, no Referer) is allowed. A third-party page's
-        Origin/Referer will not match our Host.
+        The UI sends ``X-Requested-With: CyberBuddy`` and every caller must
+        provide that explicit opt-in header. This prevents an attacker page
+        from triggering scans with an image, form, no-CORS request, or an
+        attacker-controlled Host/Origin pair after DNS rebinding.
         """
+        if not self._host_allowed():
+            return False
+        # Require a non-simple request even when Origin/Referer appears
+        # same-origin. An attacker-controlled name can otherwise DNS-rebind to
+        # a non-loopback/LAN bind and make its own Origin equal the forged Host.
+        # Browser cross-origin callers cannot add this header without a CORS
+        # preflight, while every CyberBuddy controller already sends it.
+        if (self.headers.get("X-Requested-With") or "").strip() != "CyberBuddy":
+            return False
         ours = self._our_origin()
         origin = (self.headers.get("Origin") or "").strip()
         if origin:
@@ -306,10 +340,6 @@ class Handler(BaseHTTPRequestHandler):
         if referer:
             parsed = urlparse(referer)
             return f"{parsed.scheme}://{parsed.netloc}" in ours
-        xrw = (self.headers.get("X-Requested-With") or "").strip()
-        if xrw == "CyberBuddy":
-            return True
-        # No Origin/Referer — curl / address-bar. Allow.
         return True
 
     def _static(self, rel: str) -> None:
@@ -352,18 +382,23 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/dns":
             if not self._api_allowed():
-                self._json(403, {"error": "cross-origin API access denied"})
+                self._json(403, {"error": "API access denied; use the same-origin UI or X-Requested-With: CyberBuddy"})
                 return
             domain = (qs.get("domain") or [""])[0].strip()
             if not domain:
                 self._json(400, {"error": "domain required"})
+                return
+            try:
+                domain = validate_domain(domain)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
                 return
             self._json(200, scan_dns(domain).to_dict())
             return
 
         if path in ("/api/scan", "/api/headers", "/api/cors", "/api/csp"):
             if not self._api_allowed():
-                self._json(403, {"error": "cross-origin API access denied"})
+                self._json(403, {"error": "API access denied; use the same-origin UI or X-Requested-With: CyberBuddy"})
                 return
             if not url:
                 self._json(400, {"error": "url required"})
@@ -483,7 +518,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
     HOST = args.host
     PORT = args.port
-    loopback = HOST in {"127.0.0.1", "localhost", "::1"}
+    loopback = is_loopback_bind(HOST)
     ALLOW_PRIVATE = loopback or args.allow_private
 
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)

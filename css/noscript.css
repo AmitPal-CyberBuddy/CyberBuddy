@@ -1,2 +1,22 @@
-/* Without JS the reveal animation never runs — show the content. */
-.reveal { opacity: 1 !important; }
+/* Without JS the reveal animation never runs — keep reference content usable. */
+.reveal { opacity: 1 !important; transform: none !important; }
+
+.noscript-banner {
+  max-width: var(--container-max, 1160px);
+  margin: 16px auto 0;
+  padding: 12px clamp(16px, 3vw, 28px);
+  border: 1px solid var(--warning, #e8b84a);
+  border-radius: 10px;
+  background: var(--surface, #111720);
+  color: var(--ink, #e9eef5);
+  font: 0.9rem/1.55 system-ui, sans-serif;
+}
+.noscript-banner p { margin: 0; }
+.noscript-nav { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 7px; }
+.noscript-nav a { color: var(--brand, #3ee0c2); }
+
+/* Controls whose handlers are installed by JavaScript must not look active. */
+body[data-init] main button { cursor: not-allowed; opacity: 0.65; pointer-events: none; }
+
+/* The custom 404 theme switch is script-only; its links remain usable. */
+#themeToggle { display: none !important; }

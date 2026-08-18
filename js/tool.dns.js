@@ -89,8 +89,8 @@
       $("staticNotice").innerHTML =
         "<h3>DNS analysis declined</h3>" +
         "<p>Public DNS lookups were declined, so this hosted page cannot read " +
-        "the domain's records. Run <code>python3 server.py</code> locally for a " +
-        "resolver-local scan that never leaves your machine, then retry.</p>";
+        "the domain's records. Run <code>python3 server.py</code> locally to use " +
+        "your configured resolver instead of Google Public DNS, then retry.</p>";
       $("staticNotice").classList.remove("hidden");
       $("results").classList.add("hidden");
       return;

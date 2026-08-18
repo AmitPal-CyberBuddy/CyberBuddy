@@ -388,7 +388,7 @@
     });
   }
 
-  // --- Key-type sub-tabs (Verify panel + Edit panel; one per tablist) --
+  // --- Key-type sub-tabs (Verify, Edit and Variant panels) ------------
   function initKeyTabs() {
     var lists = Array.prototype.slice.call(document.querySelectorAll(".jwt-key-tabs"));
     lists.forEach(function (list) {
@@ -396,20 +396,38 @@
       var panelsWrap = list.nextElementSibling;
       var panels = panelsWrap && panelsWrap.classList.contains("jwt-key-panels")
         ? Array.prototype.slice.call(panelsWrap.children) : [];
-      tabs.forEach(function (tab) {
-        tab.addEventListener("click", function () {
-          tabs.forEach(function (t) {
-            var on = t === tab;
-            t.classList.toggle("is-active", on);
-            t.setAttribute("aria-selected", on ? "true" : "false");
-          });
-          panels.forEach(function (p) {
-            var on = p.id === tab.getAttribute("aria-controls");
-            p.classList.toggle("hidden", !on);
-            if (on) p.removeAttribute("hidden"); else p.setAttribute("hidden", "");
-          });
+      if (!tabs.length) return;
+
+      function activate(tab, moveFocus) {
+        tabs.forEach(function (t) {
+          var on = t === tab;
+          t.classList.toggle("is-active", on);
+          t.setAttribute("aria-selected", on ? "true" : "false");
+          t.setAttribute("tabindex", on ? "0" : "-1");
+        });
+        panels.forEach(function (p) {
+          var on = p.id === tab.getAttribute("aria-controls");
+          p.classList.toggle("hidden", !on);
+          if (on) p.removeAttribute("hidden"); else p.setAttribute("hidden", "");
+        });
+        if (moveFocus) tab.focus();
+      }
+
+      tabs.forEach(function (tab, index) {
+        tab.addEventListener("click", function () { activate(tab, false); });
+        tab.addEventListener("keydown", function (e) {
+          var next = null;
+          if (e.key === "ArrowRight" || e.key === "ArrowDown") next = tabs[(index + 1) % tabs.length];
+          else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = tabs[(index - 1 + tabs.length) % tabs.length];
+          else if (e.key === "Home") next = tabs[0];
+          else if (e.key === "End") next = tabs[tabs.length - 1];
+          if (next) {
+            e.preventDefault();
+            activate(next, true);
+          }
         });
       });
+      activate(tabs.find(function (tab) { return tab.getAttribute("aria-selected") === "true"; }) || tabs[0], false);
     });
   }
 

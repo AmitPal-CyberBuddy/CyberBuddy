@@ -7,7 +7,7 @@
  *   - no page overflows horizontally in either theme at six viewport sizes;
  *   - no `.reveal` section stays invisible;
  *   - no visible control is clipped outside the viewport;
- *   - all four tools render a real report with balanced panels;
+ *   - all four URL-based scanners render a real report with balanced panels;
  *   - evidence mode toggles both ways without breaking layout;
  *   - print media keeps the report single-column with evidence expanded.
  *
@@ -27,7 +27,7 @@ const PAGES = [
   ["cors", "/tools/cors/"],
   ["csp", "/tools/csp/"],
   ["csrf", "/tools/csrf/"],
-  ["jwt-preview", "/tools/jwt/"],
+  ["jwt", "/tools/jwt/"],
   ["methodology", "/methodology/"],
   ["guides", "/guides/"],
   ["guide-clickjacking", "/guides/clickjacking/"],
@@ -250,7 +250,7 @@ async function runScan(page, path) {
     await page.close();
   }
 
-  /* ---- 6. Real reports for all four tools ------------------------------- */
+  /* ---- 6. Real reports for all four URL-based scanners ------------------ */
   for (const [tn, path] of TOOLS) {
     for (const [vn, w, h] of [["desktop", 1920, 1080], ["phone", 390, 844]]) {
       for (const theme of ["dark", "light"]) {

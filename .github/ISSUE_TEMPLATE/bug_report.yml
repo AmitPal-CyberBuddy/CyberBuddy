@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible CyberBuddy defect
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not include credentials, tokens, private target URLs, or customer data. Report vulnerabilities privately using SECURITY.md.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Deployment mode
+      options:
+        - GitHub Pages
+        - Local server.py
+        - Python CLI
+        - Optional serverless API
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser and version, operating system, and Python version when relevant.
+      placeholder: Firefox 141 on Linux; Python 3.12
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Use public fixtures or synthetic, redacted input only.
+      placeholder: |
+        1. Open …
+        2. Enter …
+        3. Select …
+        4. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Add screenshots, console output, or a minimal synthetic fixture. Remove secrets and private target details.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Authorization and privacy
+      options:
+        - label: I used a target I own, a synthetic fixture, or a system I have written permission to test.
+          required: true
+        - label: I removed credentials, tokens, private URLs, and customer data from this report.
+          required: true
+        - label: This is not a vulnerability in CyberBuddy itself (those are reported privately through SECURITY.md).
+          required: true

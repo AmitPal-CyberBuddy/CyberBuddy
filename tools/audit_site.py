@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -70,12 +71,24 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default="_site", type=Path)
     args = parser.parse_args()
-    failures = audit(args.root)
+    root = args.root.resolve()
+    if not root.is_dir():
+        print(f"Site audit failed: directory does not exist: {root}", file=sys.stderr)
+        return 2
+    pages = list(root.rglob("*.html"))
+    if not pages:
+        print(f"Site audit failed: no HTML pages found in {root}", file=sys.stderr)
+        return 2
+    if not (root / "index.html").is_file():
+        print(f"Site audit failed: root index.html is missing from {root}", file=sys.stderr)
+        return 2
+
+    failures = audit(root)
     if failures:
         print("Broken local links:")
         print("\n".join(f"  {item}" for item in failures))
         return 1
-    print(f"Local link audit passed for {args.root}")
+    print(f"Local link audit passed for {root} ({len(pages)} HTML pages)")
     return 0
 
 

@@ -306,7 +306,7 @@ const TOOLS_MENU = [
     icon: "cors",
     category: "assess",
     input: "URL",
-    mode: "Contacts the target (read-only GET)",
+    mode: "Contacts the target (GET baseline + selected HEAD/OPTIONS/preflight)",
     evidence: "Origin reflection + credentials report card",
     desc: "See how the target treats this page as a cross-origin caller — origin access, credentials, and Vary: Origin.",
     tags: ["ACAO", "credentials", "Vary: Origin"],
@@ -471,7 +471,8 @@ function renderFooter() {
     "and is never uploaded. On GitHub Pages the graders run in your browser; demo targets are " +
     "served from a published CI-built report, and header reads for other targets are proxied by " +
     "public relays only with your explicit consent. Run server.py locally for a same-origin " +
-    "engine that never leaves your machine. Apache-2.0 licensed. © 2026 CyberBuddy." +
+    "engine with no CyberBuddy relay or storage; the engine still contacts the target you chose. " +
+    "Apache-2.0 licensed. © 2026 CyberBuddy." +
     "</p>" +
     "</div></footer>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -1221,21 +1222,32 @@ function validUrl(raw) {
 
 function cleanDomain(raw) {
   let value = String(raw == null ? "" : raw).trim();
-  value = value.replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "").trim();
+  const pairs = { '"': '"', "'": "'", '“': '”', '‘': '’' };
+  if (value.length >= 2 && pairs[value[0]] === value.at(-1)) {
+    value = value.slice(1, -1).trim();
+  }
   value = value.replace(/\.$/, "");
   return value;
+}
+
+function bareDomainPort(value) {
+  const match = /^([^:/?#]+):(\d+)(?=[/?#]|$)/.exec(value);
+  if (!match) return null;
+  return { host: match[1], port: Number(match[2]) };
 }
 
 function normalizeDomain(raw) {
   let value = cleanDomain(raw);
   if (!value) return "";
+  const barePort = bareDomainPort(value);
+  if (barePort && barePort.port > 65535) return "";
   if (/^https?:\/\//i.test(value)) {
     try { value = new URL(value).hostname; } catch (_) { return ""; }
-  } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+  } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) && !barePort) {
     return "";
   }
   value = value.split(/[/?#]/)[0].trim();
-  value = value.replace(/:\d+$/, "");  // strip a trailing host:port
+  value = value.replace(/:\d+$/, "");  // strip a valid trailing host:port
   if (!value) return "";
   try {
     // URL hostname parsing punycode-encodes IDN labels for us.
@@ -1253,8 +1265,21 @@ function domainValidation(raw) {
     return { valid: false, domain: "", code: "search", message: "This looks like a search term. Enter a domain such as example.com." };
   }
   const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(cleaned);
-  if (scheme && !/^https?:\/\//i.test(cleaned)) {
+  const barePort = bareDomainPort(cleaned);
+  if (barePort && barePort.port > 65535) {
+    return { valid: false, domain: "", code: "malformed", message: "Enter a valid domain and port (0-65535)." };
+  }
+  if (scheme && !/^https?:\/\//i.test(cleaned) && !barePort) {
     return { valid: false, domain: "", code: "scheme", message: "Enter a bare domain or an http(s) URL, such as example.com." };
+  }
+  if (/^https?:\/\//i.test(cleaned)) {
+    try {
+      const parsed = new URL(cleaned);
+      const authority = cleaned.slice(cleaned.indexOf("//") + 2).split(/[/?#]/, 1)[0];
+      if (parsed.username || parsed.password || authority.includes("@")) {
+        return { valid: false, domain: "", code: "credentials", message: "Remove username/password credentials before analyzing the domain." };
+      }
+    } catch (_) { /* normalizeDomain returns the malformed-input result below */ }
   }
   const hostname = normalizeDomain(cleaned);
   if (!hostname) {
@@ -1273,14 +1298,14 @@ function domainValidation(raw) {
   if (labels.length < 2) {
     return { valid: false, domain: "", code: "public-tld", message: "Public domains need a dot and a plausible TLD (for example, example.com)." };
   }
-  if (hostname.length > 253 || labels.some((label) => label.length > 63 || !/^[a-z0-9_-]+$/i.test(label))) {
+  if (hostname.length > 253 || labels.some((label) => label.length > 63 || !/^[a-z0-9-]+$/i.test(label))) {
     return { valid: false, domain: "", code: "hostname", message: "The domain contains an invalid label." };
   }
   if (labels.some((label) => label.startsWith("-") || label.endsWith("-"))) {
     return { valid: false, domain: "", code: "hyphen", message: "Domain labels cannot start or end with a hyphen." };
   }
   const tld = labels[labels.length - 1];
-  if (!/^[a-z]{2,63}$/i.test(tld)) {
+  if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})$/i.test(tld)) {
     return { valid: false, domain: "", code: "public-tld", message: "Public domains need a plausible TLD, such as .com or .org." };
   }
   return { valid: true, domain: hostname, code: "ok", message: "" };
@@ -1918,6 +1943,7 @@ function buildEvidenceCardSpec(data, toolName) {
     const spf = (rec.TXT || []).find((t) => /^v=spf1/i.test(String(t))) || "";
     const dmarc = (rec.DMARC || []).join(" ") || "";
     const dkimCount = Object.keys(rec).filter((k) => k.indexOf("DKIM:") === 0 && (rec[k] || []).length).length;
+    const dnssec = (data.checks || []).find((check) => check.name === "DNSSEC");
     const gradeHero = data.grade
       ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100 · "
       : "";
@@ -1938,8 +1964,8 @@ function buildEvidenceCardSpec(data, toolName) {
         { name: "SPF", status: /^v=spf1/i.test(spf) ? "ok" : "missing", detail: String(spf || "(absent)").slice(0, 140), evidence: "TXT (v=spf1)" },
         { name: "DMARC", status: dmarc ? "ok" : "missing", detail: String(dmarc || "(absent)").slice(0, 140), evidence: "_dmarc TXT" },
         { name: "DKIM", status: dkimCount ? "ok" : "info", detail: dkimCount ? dkimCount + " common selector(s) publish keys" : "No key on common selectors (not proof of absence)", evidence: "selector._domainkey TXT" },
-        { name: "DNSSEC", status: (rec.DS || []).length ? "ok" : "info", detail: (rec.DS || []).length ? "DS published at the parent zone" : "No DS at the parent zone", evidence: "DS" },
-        { name: "CAA", status: (rec.CAA || []).length ? "ok" : "missing", detail: (rec.CAA || []).length ? (rec.CAA || []).slice(0, 2).join(", ") : "(absent)", evidence: "CAA" }
+        { name: "DNSSEC", status: dnssec ? dnssec.status : "info", detail: dnssec ? dnssec.detail : "DNSSEC evidence unavailable", evidence: dnssec ? dnssec.evidence : "DS / DNSKEY" },
+        { name: "CAA", status: (data.checks || []).find((check) => check.name === "CAA")?.status || "info", detail: (rec.CAA || []).length ? (rec.CAA || []).slice(0, 2).join(", ") : "(absent after parent walk)", evidence: "CAA at " + ((rec.CAA_SOURCE || [data.domain || target])[0]) }
       ],
       rowsTitle: "DNS FINDINGS",
       rows: data.checks || []
@@ -2110,7 +2136,7 @@ function buildEvidenceCard(data, toolName) {
 
   ctx.fillStyle = C.faint;
   ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace';
-  ctx.fillText("Authorized testing only. Read-only GET. Results are advisory.", pad, H - pad + 6);
+  ctx.fillText("Authorized testing only. Non-destructive check. Results are advisory.", pad, H - pad + 6);
   return canvas;
 }
 
@@ -2567,7 +2593,7 @@ const FINDING_FIX = {
   "SPF": "Publish a single SPF record ending in -all (or ~all) that authorizes only your legitimate senders.",
   "DMARC": "Publish a DMARC record with p=quarantine or p=reject so spoofed mail is handled by receivers.",
   "DKIM": "Publish DKIM keys and sign outbound mail; re-test after adding the selector.",
-  "DNSSEC": "Enable DNSSEC at the registrar so the zone publishes DS records at its parent.",
+  "DNSSEC": "Complete DNSSEC deployment so the apex DNSKEY and matching parent DS records are both published.",
   "CAA": "Publish a CAA record to restrict which certificate authorities may issue for the domain.",
   "Name servers": "Publish at least two authoritative name servers for delegation redundancy.",
   "Domain resolution": "Ensure the domain resolves in public DNS before measuring its security posture.",
@@ -2650,7 +2676,7 @@ function findingCopyText(c, toolName, target) {
     "",
     "Target: " + (target || "—"),
     "Generated: " + fmtStampUtc(),
-    "Authorized testing only — read-only GET."
+    "Authorized testing only — non-destructive check."
   ].join("\n");
 }
 
@@ -3987,12 +4013,32 @@ function dnsDmarcRecords(records) {
 function dnsDkimRecords(records) {
   const found = [];
   Object.keys(records || {}).forEach((key) => {
-    if (key.indexOf("DKIM:") === 0) {
-      const values = records[key].filter((v) => String(v).toLowerCase().indexOf("v=dkim1") !== -1);
-      if (values.length) found.push([key.slice(5), values[0]]);
-    }
+    if (key.indexOf("DKIM:") !== 0) return;
+    const value = (records[key] || []).find((candidate) => {
+      const tags = String(candidate).split(";").map((tag) => tag.trim()).filter(Boolean);
+      if (!tags.length || tags[0].toLowerCase() !== "v=dkim1") return false;
+      const keys = tags.filter((tag) => tag.toLowerCase().indexOf("p=") === 0).map((tag) => tag.slice(2).trim());
+      return keys.length && keys[keys.length - 1];
+    });
+    if (value) found.push([key.slice(5), value]);
   });
   return found;
+}
+
+function dnsCaaProperties(records) {
+  const parsed = [];
+  (records.CAA || []).forEach((record) => {
+    const match = String(record).trim().match(/^(\d+)\s+(\S+)\s+([\s\S]+)$/);
+    if (!match) return;
+    const flags = Number(match[1]);
+    if (!Number.isInteger(flags) || flags < 0 || flags > 255) return;
+    let value = match[3].trim();
+    if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
+      value = value.slice(1, -1);
+    }
+    parsed.push([flags, match[2].toLowerCase(), value]);
+  });
+  return parsed;
 }
 
 function dnsSpfQualifier(spf) {
@@ -4005,14 +4051,16 @@ function dnsSpfQualifier(spf) {
 }
 
 function dnsSpfLookupCount(spf) {
-  const terms = String(spf).toLowerCase().split(/\s+/);
   let count = 0;
-  terms.forEach((term) => {
-    if (["all", "ip4", "ip6", "a", "mx", "ptr", "include", "exists", "redirect", "exp"].indexOf(term) !== -1) {
-      if (term !== "all") count++;
-    } else if (/^(a|mx|ptr|include|exists):/.test(term) || /^redirect=/.test(term)) {
+  String(spf).toLowerCase().split(/\s+/).forEach((rawTerm) => {
+    const term = rawTerm.replace(/^[+~?-]+/, "");
+    if (term.indexOf("redirect=") === 0) {
       count++;
+      return;
     }
+    const mechanism = term.split(":", 1)[0].split("/", 1)[0];
+    if (["a", "mx", "ptr"].indexOf(mechanism) !== -1) count++;
+    else if (["include", "exists"].indexOf(mechanism) !== -1 && term.indexOf(":") !== -1) count++;
   });
   return count;
 }
@@ -4041,11 +4089,24 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
   }, extra || {});
 
   if ((statuses.A || "NOERROR") === "NXDOMAIN") {
+    const message = "NXDOMAIN — the domain does not exist. No security posture can be measured.";
     return finish({
-      status: "error",
+      status: "error", grade: "—",
       checks: [dnsFinding("Domain resolution", "error", "NXDOMAIN — the domain does not exist in public DNS.", "DNS", 0)],
-      risk: "unknown",
-      summary: "NXDOMAIN — the domain does not exist. No security posture can be measured."
+      risk: "unknown", summary: message, error: message
+    });
+  }
+
+  const failedStatuses = Object.keys(statuses).filter((key) => {
+    const value = String(statuses[key]).toUpperCase();
+    return value !== "NOERROR" && value !== "NXDOMAIN";
+  });
+  if (failedStatuses.length) {
+    const evidence = failedStatuses.sort().map((key) => key + ": " + statuses[key]).join("; ");
+    const message = "DNS evidence is incomplete because one or more queries failed; no posture grade was assigned.";
+    return finish({
+      status: "error", grade: "—", risk: "unknown", summary: message, error: evidence,
+      checks: [dnsFinding("DNS queries", "error", message, evidence, 0)]
     });
   }
 
@@ -4068,10 +4129,12 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
 
   const ds = records.DS || [];
   const dnskey = records.DNSKEY || [];
-  if (ds.length) {
-    checks.push(dnsFinding("DNSSEC", "ok", "DS records are published at the parent zone — the domain is DNSSEC-signed.", "DS: " + ds.slice(0, 3).join(", "), 0));
+  if (ds.length && dnskey.length) {
+    checks.push(dnsFinding("DNSSEC", "ok", "DS is published at the parent and DNSKEY at the apex — delegation evidence for DNSSEC is present.", "DS: " + ds.slice(0, 3).join(", ") + "; DNSKEY: " + dnskey.slice(0, 3).join(", "), 0));
+  } else if (ds.length) {
+    checks.push(dnsFinding("DNSSEC", "weak", "DS is published at the parent, but no apex DNSKEY was returned — DNSSEC deployment evidence is incomplete.", "DS: " + ds.slice(0, 3).join(", "), DNS_WEIGHTS["DNSSEC"]));
   } else if (dnskey.length) {
-    checks.push(dnsFinding("DNSSEC", "ok", "DNSKEY is published at the apex, but no DS was returned — confirm the parent delegation.", "DNSKEY: " + dnskey.slice(0, 3).join(", "), 0));
+    checks.push(dnsFinding("DNSSEC", "weak", "DNSKEY is published at the apex, but no parent DS was returned — the chain of trust is not established.", "DNSKEY: " + dnskey.slice(0, 3).join(", "), DNS_WEIGHTS["DNSSEC"]));
   } else {
     checks.push(dnsFinding("DNSSEC", "weak", "No DS or DNSKEY records — DNSSEC is not deployed for this zone.", "DNS", DNS_WEIGHTS["DNSSEC"]));
   }
@@ -4090,21 +4153,21 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
   const spf = dnsSpfRecords(records);
   if (spf.length) {
     if (spf.length > 1) {
-      checks.push(dnsFinding("SPF", "weak", "Multiple SPF records — RFC 7208 allows exactly one; receivers may treat this as PermError.", "SPF: " + spf.slice(0, 3).join(" | "), 5));
+      checks.push(dnsFinding("SPF", "weak", "Multiple SPF records cause a PermError — publish exactly one SPF policy.", "SPF: " + spf.slice(0, 3).join(" | "), DNS_WEIGHTS["SPF"]));
     } else {
       const text = spf[0];
       const qualifier = dnsSpfQualifier(text);
       const lookups = dnsSpfLookupCount(text);
-      if ((qualifier === "-all" || qualifier === "~all") && lookups === 0 && !receivesEmail) {
-        checks.push(dnsFinding("SPF", "ok", "SPF present with a null policy (" + qualifier + ") — appropriate for a domain that sends no mail.", text.slice(0, 180), 0));
-      } else if (qualifier === "+all") {
+      if (qualifier === "+all") {
         checks.push(dnsFinding("SPF", "weak", "SPF ends in +all — any host is authorized to send as this domain.", text.slice(0, 180), DNS_WEIGHTS["SPF"]));
+      } else if (lookups > 10) {
+        checks.push(dnsFinding("SPF", "weak", "SPF exceeds the RFC 7208 limit of 10 DNS lookups (" + lookups + ") and can produce PermError.", text.slice(0, 180), DNS_WEIGHTS["SPF"]));
       } else if (qualifier === "?all") {
         checks.push(dnsFinding("SPF", "weak", "SPF ends in ?all (neutral) — permissive and easily spoofed; prefer -all.", text.slice(0, 180), 5));
-      } else if (lookups > 10) {
-        checks.push(dnsFinding("SPF", "weak", "SPF exceeds the RFC 7208 limit of 10 DNS lookups (" + lookups + ") — receivers may reject it.", text.slice(0, 180), 5));
+      } else if (!qualifier) {
+        checks.push(dnsFinding("SPF", "weak", "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.", text.slice(0, 180), 5));
       } else {
-        checks.push(dnsFinding("SPF", "ok", "SPF present with a safe qualifier (" + (qualifier || "none") + ").", text.slice(0, 180), 0));
+        checks.push(dnsFinding("SPF", "ok", "SPF present with a restrictive qualifier (" + qualifier + ").", text.slice(0, 180), 0));
       }
     }
   } else if (receivesEmail) {
@@ -4116,20 +4179,39 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
   const dmarc = dnsDmarcRecords(records);
   if (dmarc.length) {
     if (dmarc.length > 1) {
-      checks.push(dnsFinding("DMARC", "weak", "Multiple DMARC records — receivers treat this as invalid; keep exactly one.", "DMARC: " + dmarc.slice(0, 2).join(" | "), 5));
+      checks.push(dnsFinding("DMARC", "weak", "Multiple DMARC records are invalid — publish exactly one policy.", "DMARC: " + dmarc.slice(0, 2).join(" | "), DNS_WEIGHTS["DMARC"]));
     } else {
       const text = dmarc[0];
-      let policy = "";
-      String(text).toLowerCase().split(";").forEach((token) => {
-        token = token.trim();
-        if (token.indexOf("p=") === 0) policy = token.slice(2).trim();
+      const tags = {};
+      const duplicateTags = [];
+      String(text).toLowerCase().split(";").forEach((rawToken) => {
+        const token = rawToken.trim();
+        const split = token.indexOf("=");
+        if (split === -1) return;
+        const name = token.slice(0, split).trim();
+        const value = token.slice(split + 1).trim();
+        if (Object.prototype.hasOwnProperty.call(tags, name)) duplicateTags.push(name);
+        tags[name] = value;
       });
-      if (policy === "none") {
+      const policy = tags.p || "";
+      const subdomainPolicy = tags.sp || "";
+      const pctRaw = Object.prototype.hasOwnProperty.call(tags, "pct") ? tags.pct : "100";
+      const pct = /^\d+$/.test(pctRaw) ? Number(pctRaw) : NaN;
+      const pctValid = Number.isInteger(pct) && pct >= 0 && pct <= 100;
+      if (duplicateTags.length) {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC repeats policy tags and may be rejected as invalid.", text.slice(0, 180), 10));
+      } else if (policy === "none") {
         checks.push(dnsFinding("DMARC", "weak", "DMARC present but p=none (monitor only) — spoofed mail is delivered; move to quarantine or reject.", text.slice(0, 180), 10));
-      } else if (policy === "quarantine" || policy === "reject") {
-        checks.push(dnsFinding("DMARC", "ok", "DMARC present with an enforcement policy (p=" + policy + ").", text.slice(0, 180), 0));
-      } else {
+      } else if (policy !== "quarantine" && policy !== "reject") {
         checks.push(dnsFinding("DMARC", "weak", "DMARC record present but no clear enforcement policy (p=) was found.", text.slice(0, 180), 10));
+      } else if (!pctValid) {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC has an invalid pct value, so enforcement coverage is unclear.", text.slice(0, 180), 10));
+      } else if (pct < 100) {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC enforces p=" + policy + " for only pct=" + pct + "% of failing mail.", text.slice(0, 180), pct === 0 ? 10 : 5));
+      } else if (subdomainPolicy === "none") {
+        checks.push(dnsFinding("DMARC", "weak", "DMARC enforces the organizational domain but sp=none leaves subdomains in monitoring mode.", text.slice(0, 180), 5));
+      } else {
+        checks.push(dnsFinding("DMARC", "ok", "DMARC present with an enforcement policy (p=" + policy + ", pct=100).", text.slice(0, 180), 0));
       }
     }
   } else if (receivesEmail || spf.length) {
@@ -4149,11 +4231,23 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
   }
 
   const caa = records.CAA || [];
-  if (caa.length) {
-    const restrictive = caa.some((c) => String(c).indexOf('issue ";"') !== -1);
-    checks.push(dnsFinding("CAA", "ok", "CAA restricts issuance" + (restrictive ? ' (issue ";" — no CA may issue)' : "."), "CAA: " + caa.slice(0, 3).join(", "), 0));
+  const caaSource = (records.CAA_SOURCE || [domain])[0];
+  const caaProperties = dnsCaaProperties(records);
+  const issue = caaProperties.filter((property) => property[1] === "issue");
+  const issuewild = caaProperties.filter((property) => property[1] === "issuewild");
+  const inherited = String(caaSource).replace(/\.$/, "").toLowerCase() !== String(domain).replace(/\.$/, "").toLowerCase();
+  const location = " at " + caaSource;
+  if (issue.length) {
+    const denyAll = issue.every((property) => !String(property[2]).split(";", 1)[0].trim());
+    let detail = "CAA" + (inherited ? " inherited from " + caaSource : "") + " restricts certificate issuance";
+    if (denyAll) detail += " (empty issue issuer — no CA may issue)";
+    checks.push(dnsFinding("CAA", "ok", detail + ".", "CAA" + location + ": " + caa.slice(0, 3).join(", "), 0));
+  } else if (issuewild.length) {
+    checks.push(dnsFinding("CAA", "weak", "CAA" + (inherited ? " inherited from " + caaSource : "") + " restricts wildcard issuance only; ordinary certificate issuance remains unrestricted.", "CAA" + location + ": " + caa.slice(0, 3).join(", "), 3));
+  } else if (caa.length) {
+    checks.push(dnsFinding("CAA", "weak", "CAA records are present but contain no issue property, so ordinary certificate issuance is unrestricted.", "CAA" + location + ": " + caa.slice(0, 3).join(", "), DNS_WEIGHTS["CAA"]));
   } else {
-    checks.push(dnsFinding("CAA", "weak", "No CAA record — any public CA may issue certificates for this domain.", "CAA: (none)", DNS_WEIGHTS["CAA"]));
+    checks.push(dnsFinding("CAA", "weak", "No CAA record was found on the domain or its parent labels — any public CA may issue certificates for it.", "CAA tree: (none)", DNS_WEIGHTS["CAA"]));
   }
 
   const score = Math.max(0, 100 - checks.reduce((sum, c) => sum + (c.deduction || 0), 0));
@@ -4172,6 +4266,49 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
 }
 
 const DNS_DOH = "https://dns.google/resolve";
+const DNS_DOH_TYPES = {
+  "A": 1, "NS": 2, "CNAME": 5, "MX": 15, "TXT": 16,
+  "AAAA": 28, "DS": 43, "DNSKEY": 48, "CAA": 257
+};
+
+function dnsDohTxtData(raw) {
+  // dns.google returns TXT RDATA in DNS presentation form: one or more quoted
+  // character-strings. Reassemble those strings just as the wire parser does.
+  const text = String(raw).trim();
+  let cursor = 0;
+  let output = "";
+  let sawChunk = false;
+  while (cursor < text.length) {
+    while (/\s/.test(text[cursor] || "")) cursor++;
+    if (cursor >= text.length) break;
+    if (text[cursor] !== '"') return text;
+    sawChunk = true;
+    cursor++;
+    let closed = false;
+    while (cursor < text.length) {
+      const char = text[cursor++];
+      if (char === '"') {
+        closed = true;
+        break;
+      }
+      if (char !== "\\") {
+        output += char;
+        continue;
+      }
+      const decimal = text.slice(cursor, cursor + 3);
+      if (/^\d{3}$/.test(decimal)) {
+        output += String.fromCharCode(Number(decimal));
+        cursor += 3;
+      } else if (cursor < text.length) {
+        output += text[cursor++];
+      } else {
+        return text;
+      }
+    }
+    if (!closed) return text;
+  }
+  return sawChunk ? output : text;
+}
 
 async function dohResolve(name, type) {
   const ctrl = new AbortController();
@@ -4181,9 +4318,13 @@ async function dohResolve(name, type) {
       { cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return { status: "error", answers: [] };
     const data = await res.json();
+    const expectedType = DNS_DOH_TYPES[type];
+    const answers = Array.isArray(data.Answer) ? data.Answer
+      .filter((answer) => Number(answer.type) === expectedType)
+      .map((answer) => type === "TXT" ? dnsDohTxtData(answer.data) : String(answer.data)) : [];
     return {
       status: dnsStatusCodeName(Number(data.Status)),
-      answers: Array.isArray(data.Answer) ? data.Answer.map((a) => String(a.data)) : []
+      answers: answers
     };
   } catch (_) {
     return { status: "error", answers: [] };
@@ -4192,15 +4333,32 @@ async function dohResolve(name, type) {
   }
 }
 
+async function collectRelevantCaa(domain, records, statuses) {
+  const labels = domain.split(".");
+  for (let index = 0; index < labels.length; index++) {
+    const owner = labels.slice(index).join(".");
+    const key = index === 0 ? "CAA" : "CAA@" + owner;
+    const result = await dohResolve(owner, "CAA");
+    statuses[key] = result.status;
+    if (result.answers.length) {
+      records.CAA = result.answers;
+      records.CAA_SOURCE = [owner];
+      return;
+    }
+    if (result.status !== "NOERROR" && result.status !== "NXDOMAIN") return;
+  }
+}
+
 async function collectDnsOverHttps(domain) {
   const records = {};
   const statuses = {};
   const apex = [["A", "A"], ["AAAA", "AAAA"], ["NS", "NS"], ["MX", "MX"],
-    ["TXT", "TXT"], ["CAA", "CAA"], ["DS", "DS"], ["DNSKEY", "DNSKEY"]];
+    ["TXT", "TXT"], ["DS", "DS"], ["DNSKEY", "DNSKEY"]];
   const jobs = apex.map((pair) => dohResolve(domain, pair[1]).then((r) => {
     statuses[pair[0]] = r.status;
     if (r.answers.length) records[pair[0]] = r.answers;
   }));
+  jobs.push(collectRelevantCaa(domain, records, statuses));
   jobs.push(dohResolve("_dmarc." + domain, "TXT").then((r) => {
     statuses.DMARC = r.status;
     if (r.answers.length) records.DMARC = r.answers;
@@ -4343,7 +4501,7 @@ function initSuite() {
         "<p>Header grading needs either a local <code>server.py</code> or a " +
         "third-party relay. Run the Clickjacking tool for a frame-based visual " +
         "proof that needs neither, or start <code>python3 server.py</code> for " +
-        "a full scan that never leaves your machine.</p></div>");
+        "a direct scan with no third-party header relay.</p></div>");
       setLoading(go, false);
       return;
     }
@@ -4351,7 +4509,7 @@ function initSuite() {
       consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
 
     const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP" };
-    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — read-only GETs");
+    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — non-destructive checks");
     const wants = (key) => active.includes(key);
     // CSP and Security Headers consume the same response fields. When both
     // are selected, reuse one header read rather than contacting the target twice.
@@ -4575,7 +4733,7 @@ function suiteSummaryHtml(s, engineNote) {
     '<p class="card-title">Assessment of ' + esc(s.url) + "</p>" +
     '<div class="suite-summary-verdict">' + verdict + "</div>" +
     '<div class="suite-summary-tools">' + chips + "</div>" +
-    '<p class="suite-src">' + esc(engineNote || "") + " · evidence-grade output · read-only GETs</p>" +
+    '<p class="suite-src">' + esc(engineNote || "") + " · evidence-grade output · non-destructive checks</p>" +
     "</div></div>";
 }
 
@@ -4691,8 +4849,9 @@ function renderRelayGate() {
     "(<code>" + RELAY_HOSTS.join("</code>, <code>") + "</code>). They would see the " +
     "target and your IP address, and many assessment NDAs prohibit that. CyberBuddy " +
     "also asks Google Public DNS for A/AAAA records so it can identify nonexistent " +
-    "domains instead of reporting a misleading scan. For a fully private scan, stop " +
-    "and run <code>python3 server.py</code> locally instead.</p>" +
+    "domains instead of reporting a misleading scan. To avoid relay and Google DNS " +
+    "disclosure, run <code>python3 server.py</code> locally; it contacts the target " +
+    "directly and uses your configured resolver.</p>" +
     "</div>" +
     '<div class="relay-consent-actions" role="group" aria-label="Relay options">' +
     option("host", "Allow \u2014 hostname only", true,
@@ -4778,10 +4937,10 @@ async function ensureRelayConsent(url) {
 }
 
 /* DNS-over-HTTPS consent gate. The DNS tool never touches the target's own
-   servers — its only disclosure is the domain name, sent to Google Public
-   DNS (dns.google) when the Python engine is offline. A two-option gate
-   makes that single disclosure explicit (there is no "full URL" choice:
-   only the domain is ever sent). */
+   servers. It discloses the domain and the parent labels needed for RFC 8659
+   CAA inheritance to Google Public DNS (dns.google) when the Python engine is
+   offline. There is no "full URL" choice: paths and query strings are never
+   sent. */
 function renderDnsRelayGate(wrap) {
   wrap.classList.remove("hidden");
   const option = (mode, label, rec, what, sends, gets) =>
@@ -4803,14 +4962,14 @@ function renderDnsRelayGate(wrap) {
     "This hosted page has no local engine, so it reads public DNS records through " +
     "<code>dns.google</code> (Google Public DNS). The domain's own servers are never " +
     "contacted — only its public DNS records are queried.</p>" +
-    "<p>Google receives the domain name you enter and your IP address. For a fully " +
-    "private scan, stop and run <code>python3 server.py</code> locally instead — the " +
-    "Python engine uses your system resolver.</p>" +
+    "<p>Google receives the domain name you enter, its parent labels queried for inherited CAA, and your IP address. To avoid this " +
+    "Google lookup, stop and run <code>python3 server.py</code> locally instead — the " +
+    "Python engine uses your configured system resolver, which may have its own operator.</p>" +
     "</div>" +
     '<div class="relay-consent-actions" role="group" aria-label="DNS resolution options">' +
     option("host", "Allow \u2014 resolve via public DNS", true,
-      "Sends <em>only</em> the domain to Google Public DNS to read its public records (SPF, DMARC, DKIM, DNSSEC, CAA and name servers).",
-      "<code>example.com</code> to dns.google", "A full 0\u2013100 DNS grade, flagged <em>unverified</em>") +
+      "Sends the domain and CAA parent-label queries to Google Public DNS to read public records (SPF, DMARC, DKIM, DNSSEC, CAA and name servers). Paths and query strings are never sent.",
+      "<code>sub.example.com</code>, then CAA parents, to dns.google", "A full 0\u2013100 DNS grade, flagged <em>unverified</em>") +
     option("deny", "No \u2014 do not use public DNS", false,
       "Nothing is sent to any third party. DNS grading is skipped on this hosted page.",
       "Nothing", "No DNS grade here \u2014 run server.py locally") +
@@ -5126,7 +5285,7 @@ function initKeyboard() {
     "<div><dt><kbd>?</kbd></dt><dd>Show or hide this help</dd></div>" +
     "<div><dt><kbd>Esc</kbd></dt><dd>Close menus and this help</dd></div>" +
     "</dl>" +
-    '<p class="form-hint">Authorized testing only. All checks are read-only GETs.</p>' +
+    '<p class="form-hint">Authorized testing only. Network checks are non-destructive.</p>' +
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);
   const close = document.getElementById("kbdHelpClose");
