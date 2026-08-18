@@ -161,13 +161,16 @@ broke in Round 6 — stacking contexts, panel geometry, pointer interception —
 are only observable in a real browser, so they live in `tests/browser/`:
 
     python3 server.py --port 8080 --allow-private        # shell 1
-    npm i puppeteer-core                                 # once
-    CB_CHROME=/path/to/chrome node tests/browser/layout.js
-    CB_CHROME=/path/to/chrome node tests/browser/dropdown.js
-    CB_CHROME=/path/to/chrome node tests/browser/overlays.js
+    npm install --prefix /tmp/cyberbuddy-browser puppeteer-core  # once
+    export NODE_PATH=/tmp/cyberbuddy-browser/node_modules
+    for suite in layout dropdown overlays relay-gate responsive csrf jwt; do
+      CB_CHROME=/path/to/chrome node "tests/browser/${suite}.js" || exit 1
+    done
 
-They need a live server and a Chromium binary, so they are not wired into
-the Pages workflow (which must stay dependency-free). Run them by hand
+The focused suites cover report geometry, global navigation, overlays,
+relay-consent focus/choice handling, responsive layouts, CSRF mechanics, and
+JWT labels/tab keyboard operation. They need a live server and a Chromium
+binary, so they are not wired into the Pages workflow. Run them by hand
 before a release, and after ANY change to positioning, z-index, grid
 templates or the report markup. Set `CB_TARGET` to point at a scannable
 host; the default assumes a throwaway local one on :8099.
@@ -426,9 +429,8 @@ should remain shared.
   level deep (`../css`, `../js`, `../icon-192.png`); tool pages are two levels
   (`../../`). The Pages asset guard catches a wrong depth, but only if the
   catalog is copied — and it is **not** covered by the `cp -a tools/…`
-  directory list, so `tools/index.html` must be copied explicitly. That edit
-  lives in `docs/pages-workflow-patch.md` (the arena token cannot push
-  workflow files).
+  directory list, so `.github/workflows/pages.yml` copies
+  `tools/index.html` explicitly.
 - **`/tools` vs `/tools/`.** `server.py` serves `/tools/` as the catalog and
   redirects `/tools` (no slash) to it, mirroring `/methodology`. A test pins
   both plus the `/CyberBuddy/tools/` mount. If you add another top-level
@@ -437,10 +439,10 @@ should remain shared.
   roadmap and is deliberately excluded like `docs/DEV-NOTES.md`, `tests/` and
   `REVIEW.md`. The CI-side regression guard is stdlib
   `PagesExclusionTests.test_workflow_never_copies_internal_paths` (it fails if
-  any future commit starts copying those paths into `_site/`); the equivalent
-  in-workflow leak check is carried in `docs/pages-workflow-patch.md` for the
-  maintainer. If you add a new internal doc directory, decide its Pages fate
-  in the same commit.
+  any future commit starts copying those paths into `_site/`); the workflow's
+  `Guard internal files stay out of the published site` step enforces the same
+  boundary during deployment. If you add a new internal doc directory, decide
+  its Pages fate in the same commit.
 - **Catalog static fallback vs JS registry.** `tools/index.html` ships a
   static no-JS fallback *and* `renderToolCatalog()` replaces it from
   `TOOLS_MENU`. This is the same intentional duplication the hub already has;
@@ -477,7 +479,7 @@ should remain shared.
   `test_guides_are_written_in_first_person_not_as_a_narrator` bans
   “maintainer”/“the author's” in guide prose and requires a first-person “I”.
 - **Concise is a tested property, not a wish.** `test_guides_stay_short` caps
-  every guide's visible word count at 1200 words. All five copy the pilot's
+  every guide's visible word count at 1200 words. Every guide follows the pilot's
   shape (attack in one paragraph → the controls / the ways it goes wrong →
   confirm with the tool → the fix → go deeper). Do not let one grow into an
   article.
@@ -492,9 +494,8 @@ should remain shared.
   `/CyberBuddy/guides/…` mount in `server.py`, (2) `sitemap.xml` + `llms.txt` +
   README entries, (3) the CSP meta copied verbatim from `server.py`, and (4) a
   Pages copy line. The workflow copies named directories only, so a new
-  directory is invisible on Pages until `cp -a guides _site/` is added —
-  carried in `docs/pages-workflow-patch.md` because the arena token cannot
-  push `.github/workflows/**`.
+  directory is invisible on Pages until its assembly rule is added to
+  `.github/workflows/pages.yml`; Guides currently uses `cp -a guides _site/`.
 - **Guides pages are one and two levels deep.** `guides/index.html` uses
   `../css`, `../js`; `guides/clickjacking/index.html` uses `../../`. Same trap
   as the catalog vs tool pages.
@@ -560,8 +561,8 @@ should remain shared.
 - **A new top-level section needs four wirings, not one.** `server.py` takes
   *two* edits — the `STATIC_PREFIXES` tuple **and** the redirect/static branch
   (~line 365) — or `/documentation` 404s while `/documentation/` works. Then
-  `sitemap.xml`, `llms.txt` and `README.md`. Then the unpushable workflow copy
-  line in `docs/pages-workflow-patch.md`. The `/CyberBuddy/…` mount comes free
+  `sitemap.xml`, `llms.txt` and `README.md`. Then update the Pages artifact
+  assembly in `.github/workflows/pages.yml`. The `/CyberBuddy/…` mount comes free
   via `strip_mount` once the branch clause is right.
 - **The page shell is copied from `guides/index.html`, one level deep.** `../`
   asset paths, `theme-boot.js` in the head *without* `defer`, the CSP meta
@@ -576,66 +577,28 @@ should remain shared.
 
 ---
 
-## JWT-00 traps (JWT Security Workbench development preview)
+## JWT workbench status and historical preview note
 
-The JWT tool shipped first as a **non-operational preview**. These traps keep
-it from silently becoming a half-working token processor before JWT-01:
+JWT-00 was the non-operational scaffold. It has been superseded by the live
+JWT-01/02/03 workbench; preview-only rules such as disabled controls,
+`noindex`, and `status: "preview"` **must not be restored**. Current invariants:
 
-- **"Beta" alone is not enough.** The brief is explicit: visitors read "beta"
-  as functional. The page carries the literal strings **BETA ROADMAP PREVIEW**
-  and **NOT OPERATIONAL** in the static markup (not injected by JS, not in a
-  tooltip, not inside `<details>`), and `JwtPreviewTests` pins both. Do not
-  soften the wording when restyling.
-- **The controller is tab navigation and nothing else.** `js/tool.jwt.js`
-  must not call `fetch`/`XMLHttpRequest`, touch `localStorage`/`sessionStorage`,
-  write `history`/`location`, parse JSON, or touch `crypto.subtle`/`atob`.
-  `JwtPreviewTests` strips comments then asserts the absence of each. If a
-  comment that *says* "does not call fetch()" trips the test, strip comments in
-  the assertion — do not weaken the assertion by removing the token.
-- **Disabled in markup, disabled by the controller.** Every non-tab
-  input/textarea/button/select on the page ships `disabled` +
-  `aria-disabled="true"`, and the controller force-disables them again on boot
-  (skipping `role="tab"`). A future edit that adds a token input must not
-  ship it enabled; the test `test_no_token_processing_action_is_enabled`
-  fails loudly if it does.
-- **No fake result, score or verdict.** There must be no gauge, `/ 100`,
-  `gaugeHtml`, `verdict-banner`, risk label, or pre-filled `"alg":"HS256"`
-  JSON on the page. The five tabs explain what *will* exist; none of it is
-  computed yet.
-- **Noindex, no canonical, no sitemap entry for the tool page.** The preview
-  carries `<meta name="robots" content="noindex, nofollow">`, deliberately
-  omits `rel="canonical"`, and is absent from `sitemap.xml`. The **guide**
-  (`guides/jwt/`) *is* indexed and in the sitemap. When JWT-01 ships and the
-  tool becomes functional, remove the noindex, add the canonical, add the
-  sitemap URL, and add the PWA shortcut — all four together.
-- **It is `status: "preview"`, not `live`, in `TOOLS_MENU`.** That is how the
-  menu, hub cards and catalog render a "Preview" badge / "View preview"
-  affordance instead of "Run check"/"Launch". Category stays `"local"` (it
-  never scans a target and must never join `initSuite`). `TOOLS =
-  PAGES.slice(1, 5)` in `tests/browser/responsive.js` must remain the four
-  URL-based scan tools — append JWT entries *after* index 4.
-- **Preview is one guide per tool, so `guides/jwt/` exists.** `GuidesTests`
-  enforces `set(tools/*) == set(guides/*)`; adding the tool without the guide
-  (or vice versa) fails the suite. The guide must link to
-  `../../methodology/` and `../../tools/jwt/`, stay first-person, cite RFC
-  7519/RFC 7515/WSTG-SESS-10/CWE-347, and stay under 1200 words — *including*
-  the JSON-LD block, which the word-count test does not strip.
-- **The CSP on the JWT page is stricter.** It uses `connect-src 'self'` (no
-  `http: https:`) because the preview makes no network calls, and keeps
-  `frame-src 'none'`. When JWT-01 adds verification it stays same-origin;
-  do not relax `connect-src` to reach a JWKS URL — keys are pasted, never
-  fetched by the hosted tool.
-- **Workflow copy.** The tool directories are copied by name in
-  `.github/workflows/pages.yml` (not a glob), so a new tool needs
-  `tools/jwt` on that line. `guides/` is copied whole-tree, so the guide
-  needs no named line. If the arena push of the workflow edit is rejected
-  (missing `workflows` permission), the same line is carried in
-  `docs/pages-workflow-patch.md` for the maintainer — that happened for
-  PR #20/#22 and may happen again.
-- **Cache-buster consistency.** Every page must use the same `?v=` string;
-  the Pages workflow stamps it with the commit SHA at deploy, but the source
-  strings must match or `test_cache_buster_is_consistent` fails. New pages
-  copy the existing `?v=20260814h` (or whatever is current), not a new date.
+- The registry entry is live and local-only. JWT never joins the four
+  URL-targeted hub scans, so browser suites may keep those scanners in a
+  separate `TOOLS` slice while testing JWT as its own page.
+- The tool has a canonical URL, sitemap entry, PWA shortcut, indexed guide,
+  and an explicit Pages workflow copy entry.
+- `connect-src 'self'` and `frame-src 'none'` stay strict. Tokens, keys,
+  candidate secrets, and JWKS documents are pasted or generated locally;
+  the tool never fetches a JWKS URL or persists sensitive material.
+- Main mode tabs and each nested key-type selector use the complete ARIA tabs
+  pattern: one selected/focusable tab, `aria-controls`/`aria-labelledby`
+  pairs, wrapped Arrow navigation, Home/End, focus movement, and synchronized
+  panel visibility. `tests/browser/jwt.js` pins the runtime behavior.
+- Claim-helper opt-in checkboxes and their value inputs need independent
+  accessible names. Never wrap both controls in one `<label>`.
+- `guides/jwt/` remains one concise guide paired with the live tool and cites
+  RFC 7519/RFC 7515/WSTG-SESS-10/CWE-347.
 
 ---
 
@@ -724,20 +687,21 @@ key material from leaking by accident:
   `lastParsed` (live), so re-analyzing a different token re-bases the diff
   automatically. A blank original (no token pasted) diffs against empty
   objects and says so in the heading.
-- **Key sub-tabs are per-tablist.** There are two `.jwt-key-tabs` groups
-  (verify + edit) with the same `data-keytype` values; `initKeyTabs` scopes
-  panels by `aria-controls` per tablist. Don't select tabs globally — and
-  don't match panels by substring (`"jwk"` is a prefix of `"jwks"`), that
-  wired the JWK tab to the JWKS panel once.
+- **Key sub-tabs are per-tablist.** There are three `.jwt-key-tabs` groups
+  (verify, edit, and variant signing); `initKeyTabs` scopes panels by
+  `aria-controls` per tablist. Don't select tabs globally — and don't match
+  panels by substring (`"jwk"` is a prefix of `"jwks"`), that wired the JWK
+  tab to the JWKS panel once.
 - **`role="tab"` count is pinned at 4+4+4+3.** Four panel tabs, four verify
   key tabs, four edit key tabs, three variant signing-key tabs. Adding a key
   type means updating `test_accessible_tabs_and_key_subtabs`.
 - **The guide is one edit from the 1200-word ceiling.** The visible-word
   count (tags stripped, JSON-LD included) sits at ~1195; every sentence added
   to `guides/jwt/` must trim an equal amount elsewhere.
-- **Keep JWT-03 panels disabled.** `test_variants_and_secret_tabs_remain_preview`
-  pins that every control in the Test Variants and Secret Test panels ships
-  `disabled`; the PWA shortcut stays omitted until the full workbench ships.
+- **JWT-03 preview state is historical.** Test Variants and Secret Test now
+  ship functional, enabled controls, and the PWA shortcut is present. Keep the
+  completion tests named above; do not restore the superseded
+  `test_variants_and_secret_tabs_remain_preview` expectation.
 
 ---
 
@@ -856,9 +820,10 @@ and the secret-test worker honest:
   `NS`, `CNAME` and `SOA` rdata can point back into the message. Read names
   from `packet` at their true offsets, never from an rdata slice — a slice
   breaks every compressed name. `_read_name` returns `(name, end_offset)`.
-- **DNSSEC verdict keys on DS, not DNSKEY.** Querying the apex for `DS`
-  returns the parent zone's delegation record — that is the chain-of-trust
-  signal. `DNSKEY` at the apex alone is evidence, not a signed zone.
+- **DNSSEC credit requires DS and DNSKEY evidence.** Querying the domain for
+  `DS` returns the parent zone's delegation record — the chain-of-trust
+  signal — while `DNSKEY` supplies the apex key material. Either record set
+  alone is incomplete and receives no DNSSEC credit.
 - **Null MX (RFC 7505) is "no email", not a missing MX.** `MX 0 .` means the
   domain explicitly declines mail. `_is_null_mx`/`dnsIsNullMx` treat it that
   way so SPF/DMARC/DKIM become informational instead of deductions.

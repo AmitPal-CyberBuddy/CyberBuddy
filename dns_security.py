@@ -31,13 +31,12 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
-import os
-import random
+import math
+import secrets
 import socket
 import struct
 import sys
 from dataclasses import asdict, dataclass, field
-from typing import Callable
 from urllib.parse import urlparse
 
 # Score weights. 100 is a perfect baseline; each finding deducts.
@@ -109,6 +108,9 @@ class DnsResult:
     grade: str = "F"
     risk: str = "unknown"
     summary: str = ""
+    # Machine-readable failure detail for ungraded results. This mirrors the
+    # browser grader and avoids forcing API/CLI consumers to parse `summary`.
+    error: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -122,11 +124,27 @@ def normalize_domain(raw: str) -> str:
     """Turn pasted input (URL, trailing dot, whitespace) into a lowercase
     FQDN without a trailing dot. Raises ValueError with a human message."""
     value = (raw or "").strip()
+    quote_pairs = {'"': '"', "'": "'", "“": "”", "‘": "’"}
+    if len(value) >= 2 and quote_pairs.get(value[0]) == value[-1]:
+        value = value[1:-1].strip()
     if not value:
         raise ValueError("Enter a domain to analyze.")
-    # Strip a URL scheme/path/query if someone pastes a full URL.
+    # Strip an HTTP(S) URL only after rejecting credentials and malformed
+    # ports. Silently accepting another scheme or dropping userinfo would make
+    # the CLI disagree with the browser validator and could conceal a secret.
     if "://" in value:
-        value = urlparse(value).netloc or urlparse(value).path
+        parsed = urlparse(value)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            raise ValueError("Enter a bare domain or an http(s) URL, such as example.com.")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("Remove username/password credentials before analyzing the domain.")
+        try:
+            host, _port = parsed.hostname, parsed.port
+        except ValueError as exc:
+            raise ValueError("Enter a valid domain, such as example.com.") from exc
+        if not host:
+            raise ValueError("Enter a valid domain, such as example.com.")
+        value = host
     value = value.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
     value = value.strip().rstrip(".")
     if not value:
@@ -134,10 +152,13 @@ def normalize_domain(raw: str) -> str:
     # Bracketed IPv6 -> reject below as an IP.
     if value.startswith("[") and value.endswith("]"):
         value = value[1:-1]
-    # Port suffix? Strip it — a host:port paste should still resolve.
+    # Port suffix? Strip a syntactically valid port — a host:port paste should
+    # still resolve, but an out-of-range value must not be silently discarded.
     if ":" in value and value.count(":") == 1:
         maybe_host, maybe_port = value.rsplit(":", 1)
         if maybe_port.isdigit():
+            if int(maybe_port) > 65535:
+                raise ValueError("Enter a valid domain and port (0-65535).")
             value = maybe_host
 
     try:
@@ -165,12 +186,15 @@ def normalize_domain(raw: str) -> str:
     for label in labels:
         if not label or len(label) > 63:
             raise ValueError("The domain contains an empty or over-long label.")
-        if not label.replace("-", "").replace("_", "").isalnum():
+        if not label.isascii() or not label.replace("-", "").isalnum():
             raise ValueError(f"Invalid characters in label '{label}'.")
         if label.startswith("-") or label.endswith("-"):
             raise ValueError("Domain labels cannot start or end with a hyphen.")
     tld = labels[-1]
-    if not tld.replace("_", "").isalpha():
+    if not (
+        (2 <= len(tld) <= 63 and tld.isalpha())
+        or (tld.startswith("xn--") and 6 <= len(tld) <= 63)
+    ):
         raise ValueError("The domain needs a plausible TLD, such as .com or .org.")
     return value
 
@@ -212,17 +236,28 @@ def system_resolvers() -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _encode_name(name: str) -> bytes:
+    """Encode a DNS name without silently discarding malformed bytes."""
+    labels = name.rstrip(".").split(".")
     out = bytearray()
-    for label in name.rstrip(".").split("."):
-        raw = label.encode("ascii", "ignore")
+    wire_length = 1
+    for label in labels:
+        try:
+            raw = label.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ValueError("DNS labels must be ASCII after IDNA normalization") from exc
+        if not raw or len(raw) > 63:
+            raise ValueError("DNS labels must contain between 1 and 63 bytes")
+        wire_length += len(raw) + 1
+        if wire_length > 255:
+            raise ValueError("encoded DNS name exceeds 255 bytes")
         out.append(len(raw))
         out.extend(raw)
     out.append(0)
     return bytes(out)
 
 
-def _build_query(name: str, qtype: int) -> bytes:
-    ident = random.randint(0, 0xFFFF)
+def _build_query(name: str, qtype: int, ident: int | None = None) -> bytes:
+    ident = secrets.randbits(16) if ident is None else ident
     flags = 0x0100  # RD=1 (recursion desired)
     header = struct.pack("!HHHHHH", ident, flags, 1, 0, 0, 0)
     question = _encode_name(name) + struct.pack("!HH", qtype, 1)
@@ -230,159 +265,310 @@ def _build_query(name: str, qtype: int) -> bytes:
 
 
 def _read_name(packet: bytes, offset: int) -> tuple[str, int]:
+    """Decode one DNS name and reject malformed compression structures.
+
+    Compression pointers must point backwards. Besides preventing cycles, this
+    avoids following attacker-controlled forward pointers into unrelated
+    bytes. ``end`` is the first byte after the name in the original stream.
+    """
+    if offset < 0 or offset >= len(packet):
+        raise ValueError("DNS name offset is outside the packet")
+
     labels: list[str] = []
-    next_offset = offset
-    jumped = False
-    end = offset
+    cursor = offset
+    end: int | None = None
+    seen: set[int] = set()
+    expanded_length = 1  # terminating root label
+
     while True:
-        if offset >= len(packet):
-            break
-        length = packet[offset]
-        if length == 0:
-            offset += 1
-            if not jumped:
-                end = offset
-            break
-        if (length & 0xC0) == 0xC0:
-            if offset + 1 >= len(packet):
-                break
-            pointer = ((length & 0x3F) << 8) | packet[offset + 1]
-            if not jumped:
-                end = offset + 2
-            offset = pointer
-            jumped = True
+        if cursor >= len(packet):
+            raise ValueError("truncated DNS name")
+        length = packet[cursor]
+        label_kind = length & 0xC0
+
+        if label_kind == 0xC0:
+            if cursor + 1 >= len(packet):
+                raise ValueError("truncated DNS compression pointer")
+            pointer = ((length & 0x3F) << 8) | packet[cursor + 1]
+            if pointer >= cursor:
+                raise ValueError("DNS compression pointer must point backwards")
+            if pointer in seen:
+                raise ValueError("cyclic DNS compression pointer")
+            if pointer >= len(packet):
+                raise ValueError("DNS compression pointer is outside the packet")
+            seen.add(pointer)
+            if end is None:
+                end = cursor + 2
+            cursor = pointer
             continue
-        offset += 1
-        labels.append(packet[offset:offset + length].decode("ascii", "replace"))
-        offset += length
+
+        if label_kind:
+            raise ValueError("reserved DNS label encoding")
+        if length == 0:
+            if end is None:
+                end = cursor + 1
+            break
+        if length > 63:
+            raise ValueError("DNS label exceeds 63 bytes")
+
+        label_start = cursor + 1
+        label_end = label_start + length
+        if label_end > len(packet):
+            raise ValueError("truncated DNS label")
+        try:
+            label = packet[label_start:label_end].decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise ValueError("non-ASCII DNS label") from exc
+        labels.append(label)
+        expanded_length += length + 1
+        if expanded_length > 255:
+            raise ValueError("expanded DNS name exceeds 255 bytes")
+        cursor = label_end
+
     return ".".join(labels), end
 
 
 def _parse_txt(rdata: bytes) -> str:
     out: list[str] = []
-    i = 0
-    while i < len(rdata):
-        ln = rdata[i]
-        i += 1
-        out.append(rdata[i:i + ln].decode("utf-8", "replace"))
-        i += ln
+    offset = 0
+    while offset < len(rdata):
+        length = rdata[offset]
+        offset += 1
+        if offset + length > len(rdata):
+            raise ValueError("truncated DNS TXT segment")
+        out.append(rdata[offset:offset + length].decode("utf-8", "replace"))
+        offset += length
     return "".join(out)
 
 
 def _parse_rdata(qtype: int, packet: bytes, rdata_off: int, rdlength: int) -> str:
-    rdata = packet[rdata_off:rdata_off + rdlength]
-    # Names inside rdata may be compression pointers into the full packet,
-    # so they are read from ``packet`` at their true offsets — never from
-    # the rdata slice.
+    rdata_end = rdata_off + rdlength
+    if rdata_off < 0 or rdlength < 0 or rdata_end > len(packet):
+        raise ValueError("DNS RDATA extends beyond the packet")
+    rdata = packet[rdata_off:rdata_end]
+
     if qtype == QTYPE_A:
+        if rdlength != 4:
+            raise ValueError("invalid A record length")
         return socket.inet_ntop(socket.AF_INET, rdata)
     if qtype == QTYPE_AAAA:
+        if rdlength != 16:
+            raise ValueError("invalid AAAA record length")
         return socket.inet_ntop(socket.AF_INET6, rdata)
     if qtype in (QTYPE_NS, QTYPE_CNAME, QTYPE_PTR):
-        return _read_name(packet, rdata_off)[0]
+        value, end = _read_name(packet, rdata_off)
+        if end != rdata_end:
+            raise ValueError("invalid compressed-name RDATA length")
+        return value
     if qtype == QTYPE_MX:
+        if rdlength < 3:
+            raise ValueError("invalid MX record length")
         pref = struct.unpack("!H", rdata[:2])[0]
-        exchange = _read_name(packet, rdata_off + 2)[0]
+        exchange, end = _read_name(packet, rdata_off + 2)
+        if end != rdata_end:
+            raise ValueError("invalid MX exchange length")
         return f"{pref} {exchange or '.'}"
     if qtype == QTYPE_TXT:
         return _parse_txt(rdata)
     if qtype == QTYPE_SOA:
-        mname, off = _read_name(packet, rdata_off)
-        rname, off = _read_name(packet, off)
-        serial, _refresh, _retry, _expire, _minimum = struct.unpack("!IIIII", packet[off:off + 20])
+        mname, cursor = _read_name(packet, rdata_off)
+        rname, cursor = _read_name(packet, cursor)
+        if cursor + 20 != rdata_end:
+            raise ValueError("invalid SOA record length")
+        serial, _refresh, _retry, _expire, _minimum = struct.unpack(
+            "!IIIII", packet[cursor:cursor + 20]
+        )
         return f"{mname} {rname} {serial}"
     if qtype == QTYPE_CAA:
+        if rdlength < 2:
+            raise ValueError("invalid CAA record length")
         flags = rdata[0]
         tag_len = rdata[1]
-        tag = rdata[2:2 + tag_len].decode("ascii", "replace")
+        if 2 + tag_len > rdlength:
+            raise ValueError("invalid CAA tag length")
+        tag = rdata[2:2 + tag_len].decode("ascii", "strict")
         value = rdata[2 + tag_len:].decode("utf-8", "replace")
         return f'{flags} {tag} "{value}"'
     if qtype == QTYPE_DS:
+        if rdlength < 4:
+            raise ValueError("invalid DS record length")
         keytag, algorithm, digest_type = struct.unpack("!HBB", rdata[:4])
-        digest = rdata[4:].hex().upper()
-        return f"{keytag} {algorithm} {digest_type} {digest}"
+        return f"{keytag} {algorithm} {digest_type} {rdata[4:].hex().upper()}"
     if qtype == QTYPE_DNSKEY:
+        if rdlength < 4:
+            raise ValueError("invalid DNSKEY record length")
         flags, protocol, algorithm = struct.unpack("!HBB", rdata[:4])
-        keylen = len(rdata) - 4
-        return f"flags={flags} protocol={protocol} algorithm={algorithm} keylen={keylen}"
+        return f"flags={flags} protocol={protocol} algorithm={algorithm} keylen={rdlength - 4}"
     return rdata.hex()
 
 
-def _parse_response(packet: bytes) -> tuple[dict, list[tuple[str, int, str]]]:
-    """Return (header, answers) where answers is a list of
-    (qtype_name, qtype, rdata_string)."""
+def _parse_response(
+    packet: bytes,
+    *,
+    expected_id: int | None = None,
+    expected_name: str | None = None,
+    expected_qtype: int | None = None,
+) -> tuple[dict, list[tuple[str, int, str]]]:
+    """Parse and correlate a DNS response with its exact request."""
     if len(packet) < 12:
         raise ValueError("short DNS response")
-    ident, flags, qdcount, ancount, nscount, arcount = struct.unpack("!HHHHHH", packet[:12])
+    ident, flags, qdcount, ancount, _nscount, _arcount = struct.unpack(
+        "!HHHHHH", packet[:12]
+    )
+    if expected_id is not None and ident != expected_id:
+        raise ValueError("DNS transaction ID mismatch")
+    if not flags & 0x8000:
+        raise ValueError("DNS packet is not a response")
+    if (flags >> 11) & 0xF:
+        raise ValueError("unexpected DNS opcode")
+    if qdcount != 1:
+        raise ValueError("DNS response must contain exactly one question")
+
+    offset = 12
+    question_name, offset = _read_name(packet, offset)
+    if offset + 4 > len(packet):
+        raise ValueError("truncated DNS question")
+    question_type, question_class = struct.unpack("!HH", packet[offset:offset + 4])
+    offset += 4
+    if question_class != 1:
+        raise ValueError("unexpected DNS question class")
+    if expected_name is not None and question_name.rstrip(".").lower() != expected_name.rstrip(".").lower():
+        raise ValueError("DNS question name mismatch")
+    if expected_qtype is not None and question_type != expected_qtype:
+        raise ValueError("DNS question type mismatch")
+
     rcode = flags & 0x000F
-    truncated = bool(flags & 0x0200)
     header = {
+        "id": ident,
         "rcode": rcode,
         "rcode_name": rcode_name(rcode),
-        "truncated": truncated,
+        "truncated": bool(flags & 0x0200),
         "ancount": ancount,
     }
-    offset = 12
-    for _ in range(qdcount):
-        _, offset = _read_name(packet, offset)
-        offset += 4
     answers: list[tuple[str, int, str]] = []
     for _ in range(ancount):
-        try:
-            _, offset = _read_name(packet, offset)
-            if offset + 10 > len(packet):
-                break
-            rtype, _rclass, _ttl, rdlength = struct.unpack("!HHIH", packet[offset:offset + 10])
-            offset += 10
-            rdata_off = offset
-            offset += rdlength
-        except (struct.error, IndexError):
-            break
-        answers.append((QTYPE_NAMES.get(rtype, str(rtype)), rtype,
-                        _parse_rdata(rtype, packet, rdata_off, rdlength)))
+        _owner, offset = _read_name(packet, offset)
+        if offset + 10 > len(packet):
+            raise ValueError("truncated DNS answer header")
+        rtype, rclass, _ttl, rdlength = struct.unpack(
+            "!HHIH", packet[offset:offset + 10]
+        )
+        offset += 10
+        rdata_off = offset
+        offset += rdlength
+        if offset > len(packet):
+            raise ValueError("truncated DNS answer data")
+        if rclass != 1:
+            continue
+        answers.append((
+            QTYPE_NAMES.get(rtype, str(rtype)),
+            rtype,
+            _parse_rdata(rtype, packet, rdata_off, rdlength),
+        ))
     return header, answers
 
 
-def _query_udp(resolver: str, name: str, qtype: int, timeout: float) -> bytes:
-    query = _build_query(name, qtype)
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.settimeout(timeout)
-        sock.sendto(query, (resolver, 53))
-        data, _addr = sock.recvfrom(4096)
-    return data
-
-
-def _query_tcp(resolver: str, name: str, qtype: int, timeout: float) -> bytes:
-    query = _build_query(name, qtype)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        sock.connect((resolver, 53))
-        sock.sendall(struct.pack("!H", len(query)) + query)
-        length_bytes = sock.recv(2)
-        if len(length_bytes) < 2:
-            raise socket.timeout("no length prefix")
-        length = struct.unpack("!H", length_bytes)[0]
-        chunks = bytearray()
-        while len(chunks) < length:
-            chunk = sock.recv(min(4096, length - len(chunks)))
-            if not chunk:
-                break
-            chunks.extend(chunk)
-        return bytes(chunks)
-
-
-def _query(resolver: str, name: str, qtype: int, timeout: float) -> tuple[dict, list[tuple[str, int, str]]]:
+def _socket_addresses(resolver: str, socktype: int) -> list[tuple]:
+    """Resolve an IP-literal resolver into IPv4/IPv6 socket addresses."""
     try:
-        packet = _query_udp(resolver, name, qtype, timeout)
-        header, answers = _parse_response(packet)
-        if header["truncated"]:
-            packet = _query_tcp(resolver, name, qtype, timeout)
-            header, answers = _parse_response(packet)
+        ipaddress.ip_address(resolver.split("%", 1)[0])
+    except ValueError as exc:
+        raise ValueError("resolver must be an IP address") from exc
+    return socket.getaddrinfo(resolver, 53, socket.AF_UNSPEC, socktype)
+
+
+def _query_udp(query: bytes, resolver: str, timeout: float = 8.0) -> bytes:
+    """Send one connected UDP query and ignore unrelated transaction IDs."""
+    expected_id = struct.unpack("!H", query[:2])[0]
+    last_error: Exception | None = None
+    for family, socktype, proto, _canonname, address in _socket_addresses(
+        resolver, socket.SOCK_DGRAM
+    ):
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.settimeout(timeout)
+            sock.connect(address)
+            sock.send(query)
+            for _ in range(16):
+                packet = sock.recv(65535)
+                if len(packet) >= 2 and struct.unpack("!H", packet[:2])[0] == expected_id:
+                    return packet
+            raise ValueError("too many unrelated DNS responses")
+        except (OSError, ValueError) as exc:
+            last_error = exc
+        finally:
+            sock.close()
+    if last_error is not None:
+        raise last_error
+    raise OSError("no usable resolver address")
+
+
+def _recv_exact(sock: socket.socket, length: int) -> bytes:
+    data = bytearray()
+    while len(data) < length:
+        chunk = sock.recv(length - len(data))
+        if not chunk:
+            raise OSError("DNS TCP connection closed early")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def _query_tcp(query: bytes, resolver: str, timeout: float = 8.0) -> bytes:
+    last_error: Exception | None = None
+    for family, socktype, proto, _canonname, address in _socket_addresses(
+        resolver, socket.SOCK_STREAM
+    ):
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.settimeout(timeout)
+            sock.connect(address)
+            sock.sendall(struct.pack("!H", len(query)) + query)
+            length = struct.unpack("!H", _recv_exact(sock, 2))[0]
+            if length < 12:
+                raise ValueError("short DNS TCP response")
+            return _recv_exact(sock, length)
+        except (OSError, ValueError) as exc:
+            last_error = exc
+        finally:
+            sock.close()
+    if last_error is not None:
+        raise last_error
+    raise OSError("no usable resolver address")
+
+
+def _query(
+    resolver: str,
+    name: str,
+    qtype: int,
+    timeout: float,
+) -> tuple[dict, list[tuple[str, int, str]]]:
+    query = _build_query(name, qtype)
+    expected_id = struct.unpack("!H", query[:2])[0]
+    try:
+        packet = _query_udp(query, resolver, timeout)
+        if len(packet) < 4:
+            raise ValueError("short DNS response")
+        if struct.unpack("!H", packet[2:4])[0] & 0x0200:
+            packet = _query_tcp(query, resolver, timeout)
+        header, answers = _parse_response(
+            packet,
+            expected_id=expected_id,
+            expected_name=name,
+            expected_qtype=qtype,
+        )
+        # A CNAME can legitimately accompany the requested RRset, but it must
+        # never be exposed as an A/TXT/etc value in the logical record map.
+        answers = [answer for answer in answers if answer[1] == qtype]
         return header, answers
     except socket.timeout:
-        return {"rcode": -1, "rcode_name": "timeout", "truncated": False, "ancount": 0}, []
-    except OSError as exc:
-        return {"rcode": -1, "rcode_name": f"error: {exc}", "truncated": False, "ancount": 0}, []
+        return {"rcode": -1, "rcode_name": "TIMEOUT", "truncated": False, "ancount": 0}, []
+    except (OSError, ValueError, struct.error) as exc:
+        return {
+            "rcode": -1,
+            "rcode_name": f"ERROR: {exc}",
+            "truncated": False,
+            "ancount": 0,
+        }, []
 
 
 # ---------------------------------------------------------------------------
@@ -401,17 +587,39 @@ def resolve_domain(
     to lists of string values; ``statuses`` maps the same keys to a status
     string (``NOERROR`` / ``NXDOMAIN`` / ``timeout`` / …).
     """
-    resolvers = resolvers or system_resolvers()
-    resolver = resolvers[0]
+    if timeout <= 0:
+        raise ValueError("DNS timeout must be greater than zero")
+    configured = list(resolvers or system_resolvers())
+    if not configured:
+        raise ValueError("at least one DNS resolver is required")
+    for resolver in configured:
+        try:
+            ipaddress.ip_address(resolver.split("%", 1)[0])
+        except ValueError as exc:
+            raise ValueError(f"resolver must be an IP address: {resolver}") from exc
+
     records: dict[str, list[str]] = {}
     statuses: dict[str, str] = {}
+    contacted: list[str] = []
 
-    def collect(key: str, qname: str, qtype: int) -> None:
-        header, answers = _query(resolver, qname, qtype, timeout)
-        statuses[key] = header["rcode_name"]
-        vals = [rdata for rtype_name, _rtype, rdata in answers]
+    def collect(key: str, qname: str, qtype: int) -> list[str]:
+        nonlocal configured
+        last_header = {"rcode_name": "ERROR: no resolver response"}
+        answers: list[tuple[str, int, str]] = []
+        for resolver in configured:
+            if resolver not in contacted:
+                contacted.append(resolver)
+            header, candidate_answers = _query(resolver, qname, qtype, timeout)
+            last_header, answers = header, candidate_answers
+            if header["rcode_name"] in {"NOERROR", "NXDOMAIN"}:
+                # Keep a healthy fallback first for the remaining queries.
+                configured = [resolver] + [item for item in configured if item != resolver]
+                break
+        statuses[key] = last_header["rcode_name"]
+        vals = [rdata for _rtype_name, _rtype, rdata in answers]
         if vals:
             records[key] = vals
+        return vals
 
     apex_types = {
         "A": QTYPE_A,
@@ -419,12 +627,29 @@ def resolve_domain(
         "NS": QTYPE_NS,
         "MX": QTYPE_MX,
         "TXT": QTYPE_TXT,
-        "CAA": QTYPE_CAA,
         "DS": QTYPE_DS,
         "DNSKEY": QTYPE_DNSKEY,
     }
     for key, qtype in apex_types.items():
         collect(key, domain, qtype)
+
+    # RFC 8659's RelevantCAASet walks from the requested FQDN toward (but not
+    # including) the DNS root and uses the first non-empty CAA RRset. Preserve
+    # each attempted status so a failed lookup cannot be misreported as an
+    # absent policy, and expose the effective owner for report evidence.
+    labels = domain.split(".")
+    for index in range(len(labels)):
+        owner = ".".join(labels[index:])
+        key = "CAA" if index == 0 else f"CAA@{owner}"
+        values = collect(key, owner, QTYPE_CAA)
+        if values:
+            if key != "CAA":
+                records.pop(key, None)
+            records["CAA"] = values
+            records["CAA_SOURCE"] = [owner]
+            break
+        if statuses[key] not in {"NOERROR", "NXDOMAIN"}:
+            break
 
     # DMARC lives at the reserved _dmarc subdomain.
     collect("DMARC", f"_dmarc.{domain}", QTYPE_TXT)
@@ -434,7 +659,7 @@ def resolve_domain(
     for selector in DKIM_SELECTORS:
         collect(f"DKIM:{selector}", f"{selector}._domainkey.{domain}", QTYPE_TXT)
 
-    return records, statuses, resolver
+    return records, statuses, ", ".join(contacted)
 
 
 # ---------------------------------------------------------------------------
@@ -470,12 +695,45 @@ def _dmarc_records(records: dict[str, list[str]]) -> list[str]:
 
 
 def _dkim_records(records: dict[str, list[str]]) -> list[tuple[str, str]]:
+    """Return syntactically recognizable, non-revoked DKIM key records."""
     found: list[tuple[str, str]] = []
     for key, values in records.items():
-        if key.startswith("DKIM:") and any("v=dkim1" in v.lower() for v in values):
-            selector = key.split(":", 1)[1]
-            found.append((selector, next(v for v in values if "v=dkim1" in v.lower())))
+        if not key.startswith("DKIM:"):
+            continue
+        for value in values:
+            tags = [token.strip() for token in value.split(";") if token.strip()]
+            if not tags or tags[0].lower() != "v=dkim1":
+                continue
+            public_keys = [token[2:].strip() for token in tags if token.lower().startswith("p=")]
+            if public_keys and public_keys[-1]:
+                found.append((key.split(":", 1)[1], value))
+                break
     return found
+
+
+def _caa_properties(records: dict[str, list[str]]) -> list[tuple[int, str, str]]:
+    """Parse the presentation form emitted by the wire decoder.
+
+    Unknown or malformed properties remain non-restrictive rather than earning
+    credit merely because some CAA-shaped bytes were returned.
+    """
+    parsed: list[tuple[int, str, str]] = []
+    for record in records.get("CAA", []):
+        parts = record.strip().split(None, 2)
+        if len(parts) != 3:
+            continue
+        try:
+            flags = int(parts[0], 10)
+        except ValueError:
+            continue
+        if not 0 <= flags <= 255:
+            continue
+        tag = parts[1].lower()
+        value = parts[2].strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        parsed.append((flags, tag, value))
+    return parsed
 
 
 def _spf_qualifier(spf: str) -> str:
@@ -489,13 +747,22 @@ def _spf_qualifier(spf: str) -> str:
 
 
 def _spf_lookup_count(spf: str) -> int:
-    terms = spf.lower().split()
+    """Count RFC 7208 section 4.6.4 DNS-interactive terms.
+
+    Qualifiers may prefix any mechanism, while ``a``/``mx`` can carry a CIDR
+    suffix. Strip those syntactic parts before classifying the mechanism so a
+    hostile record cannot hide lookups behind ``-include`` or ``a/24``.
+    """
     count = 0
-    for term in terms:
-        if term in ("all", "ip4", "ip6", "a", "mx", "ptr", "include", "exists", "redirect", "exp"):
-            if term != "all":
-                count += 1
-        elif term.startswith(("a:", "mx:", "ptr:", "include:", "exists:", "redirect=")):
+    for raw_term in spf.lower().split():
+        term = raw_term.lstrip("+-~?")
+        if term.startswith("redirect="):
+            count += 1
+            continue
+        mechanism = term.split(":", 1)[0].split("/", 1)[0]
+        if mechanism in {"a", "mx", "ptr"}:
+            count += 1
+        elif mechanism in {"include", "exists"} and ":" in term:
             count += 1
     return count
 
@@ -503,7 +770,7 @@ def _spf_lookup_count(spf: str) -> int:
 def grade_dns_from_records(
     domain: str,
     records: dict[str, list[str]],
-    statuses: dict[str, str],
+    statuses: dict[str, str] | None = None,
     resolver: str = "",
 ) -> DnsResult:
     """Score an already-collected record map. Pure function — no network.
@@ -517,13 +784,34 @@ def grade_dns_from_records(
 
     apex_status = statuses.get("A", "NOERROR")
     if apex_status == "NXDOMAIN":
+        message = "NXDOMAIN — the domain does not exist. No security posture can be measured."
         return DnsResult(
             domain=domain, url=domain, status="error", resolver=resolver,
             records=records, statuses=statuses,
             checks=[Check("Domain resolution", "error",
                           "NXDOMAIN — the domain does not exist in public DNS.", "DNS", 0)],
-            score=0, grade="F", risk="unknown",
-            summary="NXDOMAIN — the domain does not exist. No security posture can be measured.",
+            score=0, grade="—", risk="unknown", summary=message, error=message,
+        )
+
+    # An absent RRset is evidence only when the resolver completed the query.
+    # Never turn transport, parser, SERVFAIL or REFUSED failures into scored
+    # "missing" records; that would manufacture a posture grade from partial
+    # evidence. Missing status keys remain valid for pure fixture callers.
+    failed = {
+        key: value for key, value in statuses.items()
+        if str(value).upper() not in {"NOERROR", "NXDOMAIN"}
+    }
+    if failed:
+        evidence = "; ".join(f"{key}: {value}" for key, value in sorted(failed.items()))
+        message = (
+            "DNS evidence is incomplete because one or more queries failed; "
+            "no posture grade was assigned."
+        )
+        return DnsResult(
+            domain=domain, url=domain, status="error", resolver=resolver,
+            records=records, statuses=statuses,
+            checks=[Check("DNS queries", "error", message, evidence, 0)],
+            score=0, grade="—", risk="unknown", summary=message, error=evidence,
         )
 
     has_web = bool(records.get("A") or records.get("AAAA") or records.get("CNAME"))
@@ -552,17 +840,23 @@ def grade_dns_from_records(
                             f"{len(ns)} name servers published — delegation is redundant.",
                             "NS: " + ", ".join(ns[:6]), 0))
 
-    # DNSSEC — DS at the parent is the chain-of-trust signal.
+    # DNSSEC — a parent DS is the delegation signal, while the apex DNSKEY is
+    # the key material it delegates to. Require evidence of both record sets
+    # before awarding credit; either one alone is an incomplete deployment.
     ds = records.get("DS", [])
     dnskey = records.get("DNSKEY", [])
-    if ds:
+    if ds and dnskey:
         checks.append(Check("DNSSEC", "ok",
-                            "DS records are published at the parent zone — the domain is DNSSEC-signed.",
-                            "DS: " + ", ".join(ds[:3]), 0))
+                            "DS is published at the parent and DNSKEY at the apex — delegation evidence for DNSSEC is present.",
+                            "DS: " + ", ".join(ds[:3]) + "; DNSKEY: " + ", ".join(dnskey[:3]), 0))
+    elif ds:
+        checks.append(Check("DNSSEC", "weak",
+                            "DS is published at the parent, but no apex DNSKEY was returned — DNSSEC deployment evidence is incomplete.",
+                            "DS: " + ", ".join(ds[:3]), WEIGHTS["DNSSEC"]))
     elif dnskey:
-        checks.append(Check("DNSSEC", "ok",
-                            "DNSKEY is published at the apex, but no DS was returned — confirm the parent delegation.",
-                            "DNSKEY: " + ", ".join(dnskey[:3]), 0))
+        checks.append(Check("DNSSEC", "weak",
+                            "DNSKEY is published at the apex, but no parent DS was returned — the chain of trust is not established.",
+                            "DNSKEY: " + ", ".join(dnskey[:3]), WEIGHTS["DNSSEC"]))
     else:
         checks.append(Check("DNSSEC", "weak",
                             "No DS or DNSKEY records — DNSSEC is not deployed for this zone.",
@@ -590,31 +884,31 @@ def grade_dns_from_records(
     if spf:
         if len(spf) > 1:
             checks.append(Check("SPF", "weak",
-                                "Multiple SPF records — RFC 7208 allows exactly one; receivers may treat this as PermError.",
-                                "SPF: " + " | ".join(spf[:3]), 5))
+                                "Multiple SPF records cause a PermError — publish exactly one SPF policy.",
+                                "SPF: " + " | ".join(spf[:3]), WEIGHTS["SPF"]))
         else:
             text = spf[0]
             qualifier = _spf_qualifier(text)
             lookups = _spf_lookup_count(text)
-            if qualifier in ("-all", "~all") and lookups == 0 and not receives_email:
-                checks.append(Check("SPF", "ok",
-                                    "SPF present with a null policy (" + qualifier + ") — appropriate for a domain that sends no mail.",
-                                    text[:180], 0))
-            elif qualifier == "+all":
+            if qualifier == "+all":
                 checks.append(Check("SPF", "weak",
                                     "SPF ends in +all — any host is authorized to send as this domain.",
+                                    text[:180], WEIGHTS["SPF"]))
+            elif lookups > 10:
+                checks.append(Check("SPF", "weak",
+                                    f"SPF exceeds the RFC 7208 limit of 10 DNS lookups ({lookups}) and can produce PermError.",
                                     text[:180], WEIGHTS["SPF"]))
             elif qualifier == "?all":
                 checks.append(Check("SPF", "weak",
                                     "SPF ends in ?all (neutral) — permissive and easily spoofed; prefer -all.",
                                     text[:180], 5))
-            elif lookups > 10:
+            elif not qualifier:
                 checks.append(Check("SPF", "weak",
-                                    f"SPF exceeds the RFC 7208 limit of 10 DNS lookups ({lookups}) — receivers may reject it.",
+                                    "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.",
                                     text[:180], 5))
             else:
                 checks.append(Check("SPF", "ok",
-                                    "SPF present with a safe qualifier (" + (qualifier or "none") + ").",
+                                    "SPF present with a restrictive qualifier (" + qualifier + ").",
                                     text[:180], 0))
     elif receives_email:
         checks.append(Check("SPF", "missing",
@@ -630,27 +924,54 @@ def grade_dns_from_records(
     if dmarc:
         if len(dmarc) > 1:
             checks.append(Check("DMARC", "weak",
-                                "Multiple DMARC records — receivers treat this as invalid; keep exactly one.",
-                                "DMARC: " + " | ".join(dmarc[:2]), 5))
+                                "Multiple DMARC records are invalid — publish exactly one policy.",
+                                "DMARC: " + " | ".join(dmarc[:2]), WEIGHTS["DMARC"]))
         else:
             text = dmarc[0]
-            policy = ""
+            tags: dict[str, str] = {}
+            duplicate_tags: set[str] = set()
             for token in text.lower().split(";"):
                 token = token.strip()
-                if token.startswith("p="):
-                    policy = token[2:].strip()
-            if policy == "none":
+                if "=" not in token:
+                    continue
+                name, value = (part.strip() for part in token.split("=", 1))
+                if name in tags:
+                    duplicate_tags.add(name)
+                tags[name] = value
+            policy = tags.get("p", "")
+            subdomain_policy = tags.get("sp", "")
+            pct_raw = tags.get("pct", "100")
+            pct_valid = pct_raw.isascii() and pct_raw.isdigit()
+            pct = int(pct_raw) if pct_valid else 0
+            pct_valid = pct_valid and 0 <= pct <= 100
+            if duplicate_tags:
+                checks.append(Check("DMARC", "weak",
+                                    "DMARC repeats policy tags and may be rejected as invalid.",
+                                    text[:180], 10))
+            elif policy == "none":
                 checks.append(Check("DMARC", "weak",
                                     "DMARC present but p=none (monitor only) — spoofed mail is delivered; move to quarantine or reject.",
                                     text[:180], 10))
-            elif policy in ("quarantine", "reject"):
-                checks.append(Check("DMARC", "ok",
-                                    f"DMARC present with an enforcement policy (p={policy}).",
-                                    text[:180], 0))
-            else:
+            elif policy not in ("quarantine", "reject"):
                 checks.append(Check("DMARC", "weak",
                                     "DMARC record present but no clear enforcement policy (p=) was found.",
                                     text[:180], 10))
+            elif not pct_valid:
+                checks.append(Check("DMARC", "weak",
+                                    "DMARC has an invalid pct value, so enforcement coverage is unclear.",
+                                    text[:180], 10))
+            elif pct < 100:
+                checks.append(Check("DMARC", "weak",
+                                    f"DMARC enforces p={policy} for only pct={pct}% of failing mail.",
+                                    text[:180], 10 if pct == 0 else 5))
+            elif subdomain_policy == "none":
+                checks.append(Check("DMARC", "weak",
+                                    "DMARC enforces the organizational domain but sp=none leaves subdomains in monitoring mode.",
+                                    text[:180], 5))
+            else:
+                checks.append(Check("DMARC", "ok",
+                                    f"DMARC present with an enforcement policy (p={policy}, pct=100).",
+                                    text[:180], 0))
     elif receives_email or spf:
         checks.append(Check("DMARC", "missing",
                             "No DMARC record — spoofed email is delivered without a reported policy.",
@@ -676,16 +997,37 @@ def grade_dns_from_records(
                             "No DKIM on common selectors — not required when the domain does not sign email.",
                             "common selectors: (none)", 0))
 
-    # CAA
+    # CAA — score the first non-empty RRset from RFC 8659 tree climbing. A
+    # record containing only iodef/unknown properties does not restrict
+    # issuance; issuewild alone protects wildcard issuance, not ordinary
+    # certificates, so neither case can earn full credit.
     caa = records.get("CAA", [])
-    if caa:
-        restrictive = any('issue ";"' in c for c in caa)
-        detail = ("CAA restricts issuance" + (" (issue \";\" — no CA may issue)" if restrictive else "."))
-        checks.append(Check("CAA", "ok", detail, "CAA: " + ", ".join(caa[:3]), 0))
+    caa_source = (records.get("CAA_SOURCE") or [domain])[0]
+    caa_properties = _caa_properties(records)
+    issue = [prop for prop in caa_properties if prop[1] == "issue"]
+    issuewild = [prop for prop in caa_properties if prop[1] == "issuewild"]
+    location = " at " + caa_source
+    inherited = caa_source.rstrip(".").lower() != domain.rstrip(".").lower()
+    if issue:
+        deny_all = all(not value.split(";", 1)[0].strip() for _flags, _tag, value in issue)
+        detail = "CAA" + (" inherited from " + caa_source if inherited else "") + " restricts certificate issuance"
+        if deny_all:
+            detail += " (empty issue issuer — no CA may issue)"
+        checks.append(Check("CAA", "ok", detail + ".",
+                            "CAA" + location + ": " + ", ".join(caa[:3]), 0))
+    elif issuewild:
+        checks.append(Check("CAA", "weak",
+                            "CAA" + (" inherited from " + caa_source if inherited else "") +
+                            " restricts wildcard issuance only; ordinary certificate issuance remains unrestricted.",
+                            "CAA" + location + ": " + ", ".join(caa[:3]), 3))
+    elif caa:
+        checks.append(Check("CAA", "weak",
+                            "CAA records are present but contain no issue property, so ordinary certificate issuance is unrestricted.",
+                            "CAA" + location + ": " + ", ".join(caa[:3]), WEIGHTS["CAA"]))
     else:
         checks.append(Check("CAA", "weak",
-                            "No CAA record — any public CA may issue certificates for this domain.",
-                            "CAA: (none)", WEIGHTS["CAA"]))
+                            "No CAA record was found on the domain or its parent labels — any public CA may issue certificates for it.",
+                            "CAA tree: (none)", WEIGHTS["CAA"]))
 
     score = max(0, 100 - sum(c.deduction for c in checks))
     grade = grade_for(score)
@@ -757,15 +1099,16 @@ def scan_dns(
         return DnsResult(
             domain=domain or "", url=domain or "", status="error", resolver="",
             checks=[Check("domain", "error", str(exc))],
-            grade="F", risk="unknown", summary=str(exc),
+            grade="—", risk="unknown", summary=str(exc), error=str(exc),
         )
     try:
         records, statuses, resolver = resolve_domain(domain, timeout=timeout, resolvers=resolvers)
     except Exception as exc:  # noqa: BLE001 — surface resolver failures
+        message = f"DNS query failed: {exc}"
         return DnsResult(
             domain=domain, url=domain, status="error", resolver="",
-            checks=[Check("domain", "error", f"DNS query failed: {exc}")],
-            grade="F", risk="unknown", summary=f"DNS query failed: {exc}",
+            checks=[Check("domain", "error", message)],
+            grade="—", risk="unknown", summary=message, error=message,
         )
     return grade_dns_from_records(domain, records, statuses, resolver)
 
@@ -773,7 +1116,8 @@ def scan_dns(
 def print_human(result: DnsResult) -> None:
     print(f"\nDomain:      {result.domain}")
     print(f"Resolver:    {result.resolver or '—'}")
-    print(f"Score:       {result.score}/100  Grade: {result.grade}  Risk: {result.risk.upper()}")
+    score = f"{result.score}/100" if result.status == "ok" else "—"
+    print(f"Score:       {score}  Grade: {result.grade}  Risk: {result.risk.upper()}")
     print("-" * 72)
     for c in result.checks:
         print(f"[{c.status.upper():7}] {c.name}: {c.detail}")
@@ -796,31 +1140,55 @@ def collect_domains(args: argparse.Namespace) -> list[str]:
     domains = list(args.domains)
     if args.file:
         with open(args.file, encoding="utf-8") as fh:
-            domains.extend(line.strip() for line in fh if line.strip() and not line.lstrip().startswith("#"))
+            domains.extend(
+                line.strip() for line in fh
+                if line.strip() and not line.lstrip().startswith("#")
+            )
     seen: set[str] = set()
-    out: list[str] = []
-    for d in domains:
-        if d not in seen:
-            seen.add(d)
-            out.append(d)
-    return out
+    normalized: list[str] = []
+    for raw in domains:
+        domain = validate_domain(raw)
+        if domain not in seen:
+            seen.add(domain)
+            normalized.append(domain)
+    return normalized
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    domains = collect_domains(args)
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        print("Invalid timeout: use a finite value greater than zero.", file=sys.stderr)
+        return 2
+    if args.resolver:
+        try:
+            for resolver in args.resolver:
+                ipaddress.ip_address(resolver.split("%", 1)[0])
+        except ValueError:
+            print(f"Invalid resolver: {resolver} is not an IP address.", file=sys.stderr)
+            return 2
+    try:
+        domains = collect_domains(args)
+    except (OSError, UnicodeError) as exc:
+        print(f"Could not read domain file: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"Invalid domain: {exc}", file=sys.stderr)
+        return 2
     if not domains:
         print("Provide at least one domain or --file.", file=sys.stderr)
         return 2
-    resolvers = args.resolver or None
-    results = [scan_dns(d, timeout=args.timeout, resolvers=resolvers) for d in domains]
+
+    results = [
+        scan_dns(domain, timeout=args.timeout, resolvers=args.resolver or None)
+        for domain in domains
+    ]
     if args.json:
-        print(json.dumps([r.to_dict() for r in results], indent=2))
+        print(json.dumps([result.to_dict() for result in results], indent=2))
     else:
-        for r in results:
-            print_human(r)
+        for result in results:
+            print_human(result)
         print()
-    if any(r.risk == "high" for r in results):
+    if any(result.status != "ok" or result.risk == "high" for result in results):
         return 1
     return 0
 

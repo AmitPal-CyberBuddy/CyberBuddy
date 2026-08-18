@@ -74,7 +74,7 @@ Each tool’s collection, grading, and reporting were re-checked for one session
 
 **C. CSP** — Enforcement vs Report-Only correctly separated (missing enforced → HIGH even when report-only present); multiple enforced policies combine restrictively (intersection) with a note; duplicate directives inside one policy keep the first (browser spec) and are flagged; `default-src` fallback is used only for script/style/object, not for `base-uri`/`frame-ancestors`/`form-action`; reporting gaps are `info` not headline risk.
 
-**D. DNS** — Resolver is system (`/etc/resolv.conf`) locally and `dns.google` (DoH) on Pages after consent, both labelled with provenance; DNSSEC verdict keys on **DS** at the parent (not DNSKEY alone); null MX (`0 .`) makes SPF/DMARC/DKIM informational; DKIM misses are “hints, never proof of absence” on common selectors only; transient lookup/timeout vs NXDOMAIN wording is distinct.
+**D. DNS** — Resolver is system (`/etc/resolv.conf`) locally and `dns.google` (DoH) on Pages after consent, both labelled with provenance; DNSSEC credit requires **DS** at the parent together with an apex **DNSKEY** (either one alone is incomplete); null MX (`0 .`) makes SPF/DMARC/DKIM informational; DKIM misses are “hints, never proof of absence” on common selectors only; transient lookup/timeout vs NXDOMAIN wording is distinct.
 
 **E. CSRF** — `READY`/`LIMITED`/`NOT DIRECTLY REPRESENTABLE` is **browser-mechanics reproducibility**, never a vulnerability verdict. `application/json` and multipart-with-file correctly produce LIMITED; auto-submit is opt-in and fixed.
 

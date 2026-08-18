@@ -1,536 +1,89 @@
-# CyberBuddy — roadmap & session handoff
+# CyberBuddy roadmap
 
-> **Repo-internal planning document.** The Pages workflow never copies
-> `docs/` to the deployed site, so this file (like `docs/DEV-NOTES.md`) is
-> not published. It is the **source of truth for future Arena sessions**:
-> read it first, update it before you finish.
->
-> The repository is **public**, so this file is not secret. Do **not** put
-> credentials, private engagement details, customer data or sensitive plans
-> here. Everything below is deliberately safe to publish.
+Internal planning document. It is intentionally excluded from the published
+Pages artifact. Public behavior is documented in `README.md`,
+`documentation/`, and `methodology/`; confirmed defects belong in regression
+tests rather than promises here.
 
----
+_Last reconciled: 2026-08-18._
 
-## 1. Current project state
+## Product baseline
 
-Recorded at the start of the JWT-00 session (2026-08-15). See §5 “Current
-handoff” for the state at the end of that session.
+CyberBuddy currently ships seven live tools:
 
-> Post-snapshot update (2026-08-16, branch `arena/01a00910-cyberbuddy`,
-> not yet merged into `origin/main`): the JWT Security Workbench gained
-> prioritized **VAPT Testing Suggestions & Test Payloads** — severity-tagged
-> cards derived from the decoded token, one-click TEST PAYLOADs with
-> copy-as-Burp-Authorization-header and Burp verification steps, and tab
-> prefill hand-offs — plus anchor-precision (`scroll-padding-top`) and
-> scroll-to-results fixes across the hub suite and all four assess tools.
-> Python tests now **322** (`python3 -m unittest test_engines.py`).
+1. Clickjacking Validator
+2. Security Headers
+3. CORS Validator
+4. CSP Policy Auditor
+5. CSRF PoC Generator
+6. JWT Security Workbench
+7. DNS & Domain Security Analyzer
 
-| Item | Value |
-| --- | --- |
-| Latest merged feature/PR | **JWT-00 preview + JWT-01 decode/inspect/verify** (PR #24, merge commit `b8a9fdc`) — the JWT Security Workbench is live on GitHub Pages. Verified present in `origin/main` (`e2a9a86`, which also applies the `tools/jwt` workflow copy line) before this session; not re-applied. |
-| Live tools | 7 live — Clickjacking Validator, Security Headers, CORS Validator, CSP Policy Auditor, CSRF PoC Generator, **JWT Security Workbench (feature-complete: decode/inspect/verify + edit/generate/sign + test variants + bounded secret testing)**, **DNS & Domain Security Analyzer (public-DNS posture: SPF/DMARC/DKIM/DNSSEC/CAA)** |
-| Public sections | Hub · Tools catalog (`/tools/`) · Methodology · Guides (`/guides/`, one per tool — 7) · Documentation (`/documentation/`) |
-| Python test total | **249** after JWT-00; **245** after JWT-01 (preview tests replaced by functional engine tests); **258** after JWT-02; **274** after JWT-03 (16 variant/secret/worker tests) |
-| JavaScript file total | **21** (14 under `js/` incl. `js/jwt.engine.js` + `js/tool.jwt.js` + `js/tool.dns.js`, 7 under `tests/browser/`) — all pass `node --check` |
-| Browser suites | layout/dropdown/overlays/relay-gate/responsive/csrf — JWT-00 added the preview page and JWT guide to the `layout`/`dropdown`/`responsive` PAGES arrays; not runnable in the Arena sandbox (no Chromium) |
-| Pages assembly result | Hub, 404, methodology, catalog and six tool pages resolve; `docs/`, `tests/` and `REVIEW.md` absent from `_site/`. The JWT tool page (JWT-01) is indexed and in `sitemap.xml`. |
-| Release/version state | **Pre-1.0** — no tagged release; `main` carries the live site via GitHub Pages |
+The first four assess target URLs. DNS queries public records through a
+configured resolver. CSRF and JWT are browser-local utilities. JWT is no
+longer a roadmap preview: Analyze, Verify, Edit & Generate, Test Variants, and
+bounded Secret Test are all live.
 
-Tool categories in force (from IA-01): **Assess targets** (Clickjacking,
-Headers, CORS, CSP — the four that join the hub “Run suite”) and **Local
-utilities** (CSRF PoC Generator and the JWT Security Workbench — neither scans
-a target). JWT is `status: "live"` in `TOOLS_MENU` after JWT-01; it remains
-`category: "local"` and excluded from the Run suite.
+## Completed foundations
 
----
+- Scalable tool registry, global menu, hub groups, catalog and footer.
+- One public guide per tool, operator documentation and scoring methodology.
+- Python/JavaScript grader parity fixtures for HTTP and DNS scoring.
+- Local Python APIs, optional serverless API, static Pages fallback, published
+  demo cache and explicit relay/DNS consent.
+- CSRF hostile-input handling and local artifact generation.
+- JWT compact-JWS parsing, claim analysis, HMAC/RSA/RSA-PSS/ECDSA verification
+  and signing, local RSA key generation, VAPT test templates and bounded HMAC
+  secret testing.
+- Seven-tool PWA/discovery metadata, community files and unified release gate.
 
-## 2. Status definitions
+## Current release work
 
-A task is **not DONE merely because it was committed locally.** Mark it DONE
-only after a later session verifies it has merged into `origin/main`.
+### RELEASE-01 — Comprehensive public-launch audit
 
-| Status | Meaning |
-| --- | --- |
-| `TODO` | Not started. |
-| `NEXT` | The next approved work item — the only thing the next session may pick up. |
-| `IN PROGRESS` | Being implemented on a branch. |
-| `IN REVIEW` | PR open, not merged. |
-| `DONE` | Verified present in `origin/main`. |
-| `BLOCKED` | Cannot proceed — include the reason. |
-| `DEFERRED` | Intentionally postponed. |
+**Status:** completed on 2026-08-18. See
+`docs/RELEASE-AUDIT-2026-08-18.md` for the inventory, defect-to-regression
+matrix, release-gate evidence and residual browser limitation.
 
----
+Completed scope:
 
-## 3. Work-item format
+- inventory every public page, section, control, tool mode, export and route;
+- test each tool's validation, happy paths, errors, hostile input, privacy and
+  authorization language, reset/export behavior and hosted/local fallbacks;
+- audit keyboard/accessibility, responsive behavior, no-JavaScript navigation,
+  consent, recent scans, errors and report rendering;
+- review SSRF/rebinding, Host/origin/provenance checks, DNS wire handling,
+  credentials, relays, caching, generated artifacts and deployment;
+- add a regression for every repaired defect and run `python3 tools/verify.py`;
+- record browser/runtime limitations that cannot be exercised locally.
 
-Every roadmap item records, in order:
+The audit report, traceability matrix and stdlib/Node release gate are complete.
+Final browser-backed release approval still requires the manual suites in
+`tests/browser/README.md` when Chromium is available.
 
-1. **Stable ID** (e.g. `IA-01`).
-2. **Status** (from §2).
-3. **Goal** — the outcome in one or two sentences.
-4. **Scope** — what the work covers.
-5. **Explicit non-goals** — what must NOT be done in the same change.
-6. **Dependencies** — items that must land first.
-7. **Acceptance criteria** — observable conditions for completion.
-8. **Required tests** — regression + real-browser coverage where needed.
-9. **PR/commit reference** — filled in after completion.
-10. **Notes/traps** — anything the next session must know.
+## Candidate follow-up work
 
----
+These are backlog candidates, not advertised features or commitments:
 
-## 4. Ordered roadmap
+- Deterministic two-origin browser fixture/laboratory for offline CORS,
+  clickjacking and relay-flow tests.
+- Optional CI browser job when a maintained Chromium/Puppeteer dependency
+  policy is approved.
+- Shared persistent rate limiting for a production multi-instance hosted API.
+- Header-capable production hosting so CyberBuddy itself can deliver HSTS,
+  X-Frame-Options and `frame-ancestors` instead of relying on meta CSP limits.
+- Additional tools such as a TLS analyzer or HAR/traffic inspector only after
+  a threat model, privacy model, evidence contract and regression plan exist.
 
-Items are ordered; work flows down the list. Only the item marked `NEXT` is
-approved for the next session — do **not** implement later items in the same
-PR.
+## Planning rules
 
-### IA-01 — Scalable tool information architecture
-- **Status:** `DONE`
-- **Goal:** Let the site scale past five tools without a growing nav, footer
-  or tool list — two tool categories, a dedicated catalog, and one JS registry.
-- **Scope:** Group the Tools menu into *Assess targets* / *Local utilities*;
-  add `tools/index.html` (catalog); split the hub cards into the two groups;
-  make the footer category-based; publish the catalog (server routes,
-  sitemap, `llms.txt`, README, Pages workflow + exclusion guard).
-- **Non-goals:** No new security tool; no public Guides/About pages; no
-  visual redesign; no broad `app.js` refactor (the registry change is
-  behavior-preserving).
-- **Dependencies:** CSRF PoC Generator (PR #20) merged.
-- **Acceptance criteria:** Catalog at every viewport + both themes; dropdown
-  grouping and hit-testing pass; hub category layout and footer layout pass;
-  every existing browser suite stays green; `docs/ROADMAP.md`,
-  `docs/DEV-NOTES.md`, `tests/` and `REVIEW.md` stay out of `_site/`.
-- **Required tests:** stdlib `ToolCatalogTests` + `PagesExclusionTests`;
-  catalog page added to `layout`/`responsive`/`dropdown` browser suites;
-  new dropdown-grouping and hub-category/footer checks.
-- **PR/commit:** PR #22 · branch `arena/01a00217-cyberbuddy` · commit
-  `baaea21` · merged into `origin/main` as `2956801` (verified 2026-08-15).
-
-### GUIDES-01 — Public Guides foundation + one Clickjacking pilot guide
-- **Status:** `DONE`
-- **Goal:** A Guides section with a concise pilot guide (Clickjacking),
-  connected to the Clickjacking Validator.
-- **Scope:** Guides foundation + the pilot guide. Guides are **concise and
-  connected to CyberBuddy tools**, not full articles — depth is delegated to
-  primary references (OWASP, CWE, MDN, specs).
-- **Non-goals:** No long-form articles.
-- **Dependencies:** IA-01 merged.
-- **Acceptance criteria:** Pilot guide live, linked from the tool, linking out
-  to verified primary references for depth.
-- **Required tests:** navigation + content presence checks.
-- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (see the PR for
-  the final commit).
-- **Notes:** Delivered `guides/index.html` (hub) + `guides/clickjacking/`
-  (pilot); header nav and footer *Learn* column now carry a single **Guides**
-  entry; the 404 page offers a Guides card; the Clickjacking Validator links
-  back to the guide. Routes (`/guides`, `/guides/`, `/CyberBuddy/guides/…`),
-  `sitemap.xml`, `llms.txt` and README updated. "Go deeper" cites verified
-  primary sources (OWASP WSTG-CLNT-09, CWE-1021, the OWASP Clickjacking
-  Defense Cheat Sheet, MDN, CSP L3, PortSwigger) — **not** the Medium profile,
-  which has no clickjacking post; guide prose is first person throughout. The
-  Pages workflow still copies named directories only, so `cp -a guides _site/`
-  is carried in `docs/pages-workflow-patch.md` for the maintainer — **without
-  it the whole section 404s in production.**
-  The original "exactly one pilot guide / no full library" non-goal was lifted
-  mid-session by the maintainer; GUIDES-02 and GUIDES-03 were pulled into the
-  same PR (see below).
-
-### GUIDES-02 — Concise Security Headers and CSP guides
-- **Status:** `DONE`
-- **Goal:** Two concise guides for the Headers and CSP tools, same format as
-  the pilot.
-- **Scope:** Headers guide + CSP guide, each linking to its tool and to
-  verified primary references (a blog link only if a post on that topic exists).
-- **Non-goals:** No full articles.
-- **Dependencies:** GUIDES-01.
-- **Acceptance criteria:** Both guides live and linked.
-- **Required tests:** content presence.
-- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (folded into the
-  GUIDES-01 PR at the maintainer's request — all five tools needed a guide
-  before merge).
-- **Notes:** `guides/headers/` cites the OWASP HTTP Headers Cheat Sheet,
-  WSTG-CONF-07, CWE-693 (as thematic context only — the CWE is a Pillar and
-  its mapping is DISCOURAGED upstream) and MDN for HSTS/Referrer-Policy/
-  Set-Cookie. `guides/csp/` cites WSTG-CONF-12, the OWASP CSP Cheat Sheet,
-  CWE-79, MDN and CSP Level 3.
-
-### GUIDES-03 — Concise CORS and CSRF guides
-- **Status:** `DONE`
-- **Goal:** Two concise guides for the CORS and CSRF tools.
-- **Scope:** CORS guide + CSRF guide.
-- **Non-goals:** No full articles.
-- **Dependencies:** GUIDES-01.
-- **Acceptance criteria:** Both guides live and linked.
-- **Required tests:** content presence.
-- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (folded into the
-  GUIDES-01 PR).
-- **Notes:** `guides/cors/` cites WSTG-CLNT-07, CWE-942, PortSwigger and MDN
-  (CORS guide + `Access-Control-Allow-Origin`). `guides/csrf/` cites
-  WSTG-SESS-05, the OWASP CSRF Prevention Cheat Sheet, CWE-352, PortSwigger
-  and MDN `Set-Cookie`. Both stay under the 1200-word ceiling `GuidesTests`
-  enforces.
-
-### DOCS-01 — In-site documentation page
-- **Status:** `DONE`
-- **Goal:** Replace the footer's off-site "Documentation" → GitHub `#readme`
-  link with a real page in the site shell.
-- **Scope:** `documentation/index.html` (quick start, which engine answers, the
-  four Python CLIs, evidence/export, hosted-build limits, what leaves the
-  browser, then a hand-off to GitHub for contributor material) · footer link
-  retarget · `server.py` route pair · `sitemap.xml` / `llms.txt` / `README.md`.
-- **Non-goals:** No header nav entry (the four-item budget IA-01 settled on
-  stands — this is footer-only). No third copy of the scoring rules or the
-  privacy text: the page links to `/methodology/#hosted-scans` and
-  `/methodology/#privacy` instead.
-- **Dependencies:** IA-01 (footer structure), GUIDES-01 (page-shell template).
-- **Acceptance criteria:** `/documentation/`, `/documentation` and
-  `/CyberBuddy/documentation/` all resolve; the footer link no longer leaves
-  the site; no scoring text duplicated.
-- **Required tests:** `DocumentationPageTests` (18) — shell, canonical/OG/
-  Twitter, `../` asset paths, external-link hygiene, footer link internal +
-  README hop gone, operator-content presence, first person, methodology
-  deferral, hosted-limit honesty, header nav unchanged, sitemap/`llms.txt`/
-  `README.md`/`server.py` wiring, and the carried workflow copy line.
-- **PR/commit:** PR #23 · branch `arena/01a003bd-cyberbuddy` (folded into the
-  Guides PR at the maintainer's request — the docs page had to ship before
-  merge, not as a follow-up).
-- **Notes:** The directory is `documentation/`, **not** `docs/`: the Pages
-  leak guard fails the build when `_site/docs` exists, so a `docs/` page would
-  never publish. Needs the same kind of unpushable workflow line as `guides/`
-  (see `docs/pages-workflow-patch.md`).
-
-### ABOUT-01 — Dedicated About page
-- **Status:** `TODO`
-- **Goal:** A dedicated About page covering product purpose, scope, privacy,
-  architecture, responsible use, maintainer and a roadmap summary.
-- **Scope:** One About page + nav/footer wiring.
-- **Non-goals:** No marketing rewrite; no redesign.
-- **Dependencies:** IA-01 (uses the same scalable nav).
-- **Acceptance criteria:** About page live, linked from nav/footer, roadmap
-  summary accurate.
-- **Required tests:** navigation + content.
-- **PR/commit:** —
-
-### DX-01 — Contributor/agent documentation
-- **Status:** `TODO`
-- **Goal:** First-class contributor and agent docs.
-- **Scope:** `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/ADDING-A-TOOL.md`,
-  `docs/TESTING.md`, `docs/RELEASE-CHECKLIST.md`.
-- **Non-goals:** No tooling rewrite.
-- **Dependencies:** IA-01 (documents the registry it introduced).
-- **Acceptance criteria:** Each file exists and is accurate.
-- **Required tests:** link/consistency checks.
-- **PR/commit:** —
-
-### DX-02 — One verification entry point (`tools/verify.py`)
-- **Status:** `TODO`
-- **Goal:** A single command for Python, JS syntax, JSON/XML, routes and
-  Pages assembly checks.
-- **Scope:** `tools/verify.py`; real-browser mode may remain optional.
-- **Non-goals:** No dependency introduction.
-- **Dependencies:** DX-01.
-- **Acceptance criteria:** `python3 tools/verify.py` runs the whole gate.
-- **Required tests:** the entry point itself.
-- **PR/commit:** —
-
-### REFACTOR-01 — Extract pure URL-validation helpers
-- **Status:** `TODO`
-- **Goal:** Incrementally extract pure URL-validation helpers from the large
-  shared `js/app.js` without changing behavior.
-- **Scope:** Small, behavior-preserving extraction only.
-- **Non-goals:** No broad `app.js` refactor; no behavior change.
-- **Dependencies:** IA-01 (registry separation first).
-- **Acceptance criteria:** All parity/UX tests stay green.
-- **Required tests:** existing URL-validation contracts.
-- **PR/commit:** —
-
-### REFACTOR-02 — Extract evidence/export helpers
-- **Status:** `TODO`
-- **Goal:** Incrementally extract evidence/export helpers out of `js/app.js`.
-- **Scope:** Behavior-preserving extraction.
-- **Non-goals:** No behavior change.
-- **Dependencies:** REFACTOR-01.
-- **Acceptance criteria:** Export/evidence tests stay green.
-- **Required tests:** evidence-card + export contracts.
-- **PR/commit:** —
-
-### REFACTOR-03 — Review grader/module boundaries
-- **Status:** `TODO`
-- **Goal:** Review grader/module boundaries while preserving all parity
-  contracts.
-- **Scope:** Boundary review only.
-- **Non-goals:** No scoring change.
-- **Dependencies:** REFACTOR-01, REFACTOR-02.
-- **Acceptance criteria:** Parity fixtures unchanged and green.
-- **Required tests:** grader parity suites.
-- **PR/commit:** —
-
-### QA-01 — Deterministic local security fixtures/laboratory
-- **Status:** `TODO`
-- **Goal:** Deterministic local fixtures (victim + attacker origins) for CSRF
-  and the existing browser tests.
-- **Scope:** Local laboratory harness.
-- **Non-goals:** No new scanner.
-- **Dependencies:** REFACTOR work (cleaner seams to fixture).
-- **Acceptance criteria:** Offline, repeatable browser runs.
-- **Required tests:** the fixtures themselves.
-- **PR/commit:** —
-
-### RELEASE-01 — Full release audit and v1.0.0 preparation
-- **Status:** `TODO`
-- **Goal:** Full release audit and v1.0.0 preparation.
-- **Scope:** Docs, versioning, changelog, verification pass.
-- **Non-goals:** New features.
-- **Dependencies:** DX-02, QA-01.
-- **Acceptance criteria:** v1.0.0 tagged and documented.
-- **Required tests:** full suite + browser suites + Pages guard.
-- **PR/commit:** —
-
-### JWT-00 — JWT Security Workbench development preview
-- **Status:** `DONE`
-- **Goal:** Publish the product structure for a future JWT tool as a
-  non-operational roadmap preview, integrated across the whole site, without
-  implementing any token processing.
-- **Scope:** `tools/jwt/index.html` (five informational preview tabs —
-  Analyze, Verify, Edit & Generate, Test Variants, Secret Test),
-  `js/tool.jwt.js` (accessible keyboard tab navigation only), `guides/jwt/`,
-  registry entry (`status: "preview"`, `category: "local"`), hub/catalog/404
-  static cards, server aliases (`/jwt`), `sitemap.xml` (guide only; the tool
-  page is `noindex` and absent), `llms.txt`, README, Pages workflow copy line
-  + `docs/pages-workflow-patch.md`, and browser page arrays.
-- **Non-goals:** No decoding, verification, signing, generation, or secret
-  testing; no `fetch`, storage, history/query state, relay gate, share link,
-  LIVE/CACHED tag, numeric score, or fake result/verdict; no PWA shortcut
-  (added only when JWT-01 ships); no canonical URL on the noindex page.
-- **Dependencies:** GUIDES-01/02/03 + DOCS-01 (merged).
-- **Acceptance criteria:** The page is visibly labelled **BETA ROADMAP
-  PREVIEW · NOT OPERATIONAL** without interaction; every non-tab control is
-  disabled; the controller makes no network/storage/history call and contains
-  no crypto/parsing; the page is `noindex` and absent from the sitemap while
-  the guide is indexed; the JWT entry is labelled "Preview" (not "live") in
-  the menu, hub and catalog and is excluded from the Run suite.
-- **Required tests:** `JwtPreviewTests` (26 stdlib tests, each mutation-checked
-  against the pre-feature tree); route/alias/CSP/cache-buster coverage
-  extended; `layout`/`dropdown`/`responsive` browser arrays include the
-  preview and guide.
-- **PR/commit:** branch `arena/…-cyberbuddy` · PR #24 (open).
-- **Accuracy rules (carry into JWT-01/02/03):**
-  - HS256 is not automatically weak — a strong shared secret is fine.
-  - A missing `exp`/`iss`/`aud` is a *contextual* observation, never an
-    automatic verdict or score.
-  - Decoding is not verification.
-  - Verification with a supplied key proves only a key match, not that the
-    key is trusted by the target.
-  - A generated/modified variant never proves server acceptance.
-  - `kid`/`jku`/`x5u`/embedded `jwk`/algorithm confusion are *surfaces*,
-    not exploited findings, until the target accepts the variant.
-  - The hosted tool never sends a JWT to a target, a JWKS URL, or a third
-    party, and never persists a token, wordlist or discovered secret.
-- **Notes/traps:** `test_guides_stay_short` counts the JSON-LD block toward
-  the 1200-word ceiling — keep the guide prose tight. The
-  `_strip_js_comments` helper in `JwtPreviewTests` exists so a comment that
-  *says* the controller does not call `fetch()` cannot trip a "must not
-  contain fetch" assertion. The arena token may still lack the `workflows`
-  permission; the `tools/jwt` workflow copy line is also recorded in
-  `docs/pages-workflow-patch.md`. In `tests/browser/responsive.js` the JWT
-  entries stay appended at the end — `TOOLS = PAGES.slice(1, 5)` must remain
-  the four scan tools.
-
-### JWT-01 — Decode, inspect and verify
-- **Status:** `DONE`
-- **Goal:** Decode a compact JWS into its three parts, display header/payload/
-  signature and a claim timeline, and verify the signature with a key the
-  analyst supplies — entirely in the browser via the Web Crypto API.
-- **Scope:** Strict compact-JWS parsing (honest errors for malformed input and
-  JWE); header/payload/signature sections; `iat`/`nbf`/`exp` timeline with
-  clock-skew; expected `iss`/`aud`/`sub` validation; HMAC (`HS256/384/512`),
-  RSA (`RS256/384/512`, `PS256/384/512`) and ECDSA (`ES256/384`) verification
-  through `crypto.subtle`; PEM, JWK and pasted JWKS key inputs; three
-  distinct UI states (Decoded / Signature verified / Claims validated).
-- **Non-goals:** No editing or signing (JWT-02); no test variants or secret
-  testing (JWT-03); no network fetch of a JWKS URL (keys are pasted); no
-  token persistence or query/share state; no numeric score.
-- **Dependencies:** JWT-00.
-- **Acceptance criteria:** A token verifies only against a supplied key;
-  failures are specific (bad signature, unsupported alg, expired, wrong
-  audience); nothing leaves the browser; the page drops `noindex`, gains a
-  canonical URL, a PWA shortcut and a sitemap entry only once functional.
-- **Required tests:** pure decoder/verifier under Node (DOM-free), stdlib
-  content/route tests, real-browser verification matrix.
-- **PR/commit:** —
-- **Notes:** Web Crypto support varies by algorithm; feature-detect and
-  report "unsupported in this browser" honestly. A pasted JWKS must select
-  by `kid` and pin the algorithm — never trust the token's `alg` header to
-  choose the verifier (the algorithm-confusion trap).
-
-### JWT-02 — Edit and generate
-- **Status:** `IN REVIEW`
-- **Goal:** Modify header/payload claims and re-sign locally to build
-  authorized test tokens.
-- **Scope:** Header/payload editors; standard-claim helpers (`iss`, `sub`,
-  `aud`, `exp`, `nbf`, `iat`, `jti`); HMAC and private-key signing via Web
-  Crypto; local RSA test-key generation; original-vs-modified semantic diff;
-  explicit **TEST TOKEN** labels; safe copy/download with no accidental key
-  export.
-- **Non-goals:** No target requests; no key/secret persistence; no algorithm
-  that the browser cannot perform.
-- **Dependencies:** JWT-01.
-- **Acceptance criteria:** A generated token verifies with the matching key;
-  modified claims are shown in a diff before signing; every artifact is
-  labelled a test token.
-- **Required tests:** pure signer under Node; copy/download and labelling
-  tests; real-browser round-trip.
-- **PR/commit:** PR #25 · branch `arena/01a004aa-cyberbuddy` · commit
-  `27650ff` (open — not merged; do not mark DONE).
-
-### JWT-03 — Test variants and bounded secret testing
-- **Status:** `IN REVIEW`
-- **Goal:** Build authorized-test variants (`alg:none`, claim manipulation,
-  algorithm confusion with an analyst-supplied public key, embedded JWK,
-  JKU/X5U and `kid` mutation templates) and bounded HMAC secret testing for
-  HS256/384/512 only.
-- **Scope:** Variant templates (the tool never sends them); a Web Worker for
-  secret testing with progress/cancel and explicit browser resource limits;
-  a small built-in candidate list plus an uploaded custom wordlist (read in
-  the Worker, never persisted).
-- **Non-goals:** No RSA/EC cracking; no target/JWKS fetch; no large bundled
-  wordlist; no persistence of the token, wordlist or discovered secret; no
-  claim of server acceptance.
-- **Dependencies:** JWT-02.
-- **Acceptance criteria:** Every variant is labelled a test template, not a
-  finding; secret testing is cancellable and bounded; nothing is stored or
-  transmitted.
-- **Required tests:** variant builder under Node; Worker bounds/cancel;
-  real-browser variant + secret-test flow.
-- **PR/commit:** PR #25 · branch `arena/01a004aa-cyberbuddy` (folded into
-  the JWT-02 PR at the maintainer's request to merge once — see REVIEW
-  §28). Not merged; do not mark DONE.
-
-### DNS-01 — DNS & Domain Security Analyzer
-- **Status:** `IN REVIEW`
-- **Goal:** A seventh live tool that grades a domain's *public DNS* security
-  posture — SPF, DMARC, DKIM, DNSSEC, CAA and name-server redundancy — into a
-  0–100 score + A–F grade with the raw record behind every finding.
-- **Scope:** `dns_security.py` (stdlib DNS wire-format client over UDP with a
-  TCP fallback, plus the pure scorer `grade_dns_from_records`); a browser port
-  (`gradeDnsFromRecords` + DNS-over-HTTPS collection via `dns.google` in
-  `js/app.js`); the `/api/dns?domain=` endpoint in `server.py` and the
-  `api/dns.py` Vercel function; `tools/dns/index.html` + `js/tool.dns.js`; a
-  DNS guide; registry entry (`category: "assess"`, `suite: false` — standalone,
-  not in the hub Run suite); per-tool suite badges in the catalog; and the full
-  cross-surface set (hub/catalog/404/guides cards, sitemap, manifest, llms.txt,
-  README, methodology, documentation, browser PAGES arrays).
-- **Non-goals:** No connection to the target's own servers (resolver only); no
-  DNS record *modification* or zone transfer; no subdomain enumeration; no
-  joining the hub "Run suite" (that stays the four HTTP tools); no cached
-  DNS layer in CI; no third-party relays beyond the consent-gated
-  DNS-over-HTTPS fallback.
-- **Dependencies:** IA-01 (registry), GUIDES-01/02/03 + DOCS-01 (shell +
-  guide template), JWT-03 (the established "new tool" surface).
-- **Acceptance criteria:** Python and JS graders agree on a fixed records map;
-  an NXDOMAIN domain is reported as unknown, never graded; a no-email domain
-  keeps its SPF/DMARC/DKIM checks informational; DKIM misses are phrased as
-  hints, never proof of absence; the hosted path is gated behind a
-  DNS-specific consent prompt and labelled unverified; every existing stdlib
-  and asset/link test stays green.
-- **Required tests:** `DnsEngineTests` (pure scorer + input validation),
-  `DnsParityTests` (Node JS-vs-Python parity), `DnsSiteTests` (registry,
-  engine/gate, exports, sitemap/manifest/llms/route, workflow-patch copy line),
-  plus `dns`/`guide-dns` added to the `layout`/`dropdown`/`responsive` browser
-  PAGES arrays.
-- **PR/commit:** PR #32 · branch `arena/01a00c48-cyberbuddy` · commit
-  `c898eb8` (open — not merged; do not mark DONE).
-- **Notes/traps:** The arena push token cannot edit `.github/workflows/**`, so
-  the `tools/dns` copy line lives in `docs/pages-workflow-patch.md`. DKIM
-  probing checks common selectors only. DNSSEC verdict keys on the DS record at
-  the parent zone. The tool is `suite: false` — `TOOLS = PAGES.slice(1, 5)` in
-  `tests/browser/responsive.js` must stay the four URL scan tools. The DNS
-  consent gate is separate from the header relay gate (a domain is all that is
-  ever disclosed).
-
-### RESP-01 — Multi-device, standards-first responsive layout
-- **Status:** `IN REVIEW`
-- **Goal:** Rework the site's responsiveness from ad-hoc breakpoints into a
-  deliberate, standards-based multi-device layout — a fluid type/spacing
-  scale (`clamp()` + custom-property tokens), `auto-fit`/`minmax()` card
-  grids, a documented breakpoint ladder, and a large-monitor tier so a
-  2560px panel uses its width instead of leaving huge gutters.
-- **Scope:** `css/app.css` (design tokens, `.container` width tiers, card
-  grids, `prefers-contrast: more`), `tests/browser/responsive.js` (wide-monitor
-  + contrast assertions), `test_engines.py` (a stdlib gate for the new rules),
-  and the docs.
-- **Non-goals:** No new tools; no scoring/engine/behaviour change; no brand
-  redesign or content restructure; no container queries (`container-type`
-  imposes layout containment that would clip the absolutely-positioned score
-  gauges/radar); no `.github/workflows/**` change.
-- **Dependencies:** none (pure presentation over the shipped suite).
-- **Acceptance criteria:** every page adapts intentionally at phone / tablet /
-  laptop / desktop / wide-monitor widths; `python3 -m unittest test_engines.py`
-  stays green; `node --check` clean; `tools/audit_site.py` green on an
-  assembled `_site/`; the real-browser suites (responsive/layout/dropdown/
-  overlays) pass.
-- **Required tests:** `FluidResponsiveSystemTests` (stdlib) + the extended
-  `tests/browser/responsive.js` §7 (wide-monitor column, auto-fit columns,
-  prefers-contrast).
-- **PR/commit:** branch `arena/01a00e47-cyberbuddy` (open).
-- **Notes/traps:** media queries cannot read custom properties, so breakpoint
-  *values* stay literals (documented in `:root`) while every *dimension* they
-  drive is a token. The wide-monitor tiers live at the end of `app.css` to
-  avoid disturbing the `@media print` → `@media (max-width: 760px)` block
-  slicing the existing tests depend on. No Chromium in the Arena sandbox (and
-  none installable — apt mirrors and the puppeteer download host are both
-  unreachable), so the real-browser suites were extended but not executed;
-  run `responsive`/`layout`/`dropdown`/`overlays` by hand before merge.
-
-### FUTURE-01 — External payload-corpus integration
-- **Status:** `DEFERRED`
-- **Goal:** (Mention only) A separately maintained payload corpus may be
-  linked later.
-- **Scope:** Not designed or implemented now.
-- **Non-goals:** No design/implementation in this or the near-term sessions.
-- **Dependencies:** —
-- **Acceptance criteria:** — (deferred)
-- **Required tests:** — (deferred)
-- **PR/commit:** —
-
----
-
-## 5. Current handoff
-
-> **This session (CORS-method-aware, branch `arena/01a00f6e-cyberbuddy`):** completed **CORS method-aware coverage + final accuracy review**.
-> - **CORS:** GET baseline remains read-only; added analyst-selected **HEAD**, direct **OPTIONS**, and **preflight simulation** (`OPTIONS + Origin + Access-Control-Request-Method: POST` + optional `Access-Control-Request-Headers`) — no POST is ever sent automatically. Python engine evaluates `Origin: null` for every selected method, retains ATTACKER_A/B/null evidence per method, and rolls up the highest primary risk (reflected+creds=High, reflection or wildcard+creds=Medium, else Low; Vary never drives headline). Unsupported methods (405/501) are reported as *not assessed*, not safe. A global “CORS PASS” is never shown when only GET was examined — wording is “No risky CORS behavior observed for GET” plus a coverage matrix. Browser JS is explicit about its limits (cannot forge Origin, cannot set ACRM/ACRH or inspect automatic preflight; may attempt GET/HEAD/direct OPTIONS; must state server.py is required for two-origin/null/preflight proof) with identical scoring semantics for equivalent inputs.
-> - **UI/controller:** method picker (HEAD, OPTIONS, preflight POST + headers) with authorized-testing warning; report shows selected/tested/unassessed lists, per-method risk and a coverage matrix; exports (Markdown/JSON/CSV/HTML/evidence PNG) include methods and per-method evidence; `server.py` and `api/cors.py` accept `?methods=&preflight=&preflight_headers=`; `js/app.js` `apiCors`/`probeCorsLive` handle method-aware probing and browser limits.
-> - **Docs:** methodology adds CORS risk ladder per method + rollup + Vary + unassessed + browser limits; CORS guide adds GET-vs-POST/preflight, method selection, per-method null, coverage matrix and browser limits while staying under 1200 words; README CORS row notes method-aware coverage; `DEV-NOTES.md` adds method-aware traps; `ACCURACY-CROSSCHECK.md` records controlled `curl -D` verification (GET/HEAD/OPTIONS/preflight + null) and the focused A-F accuracy review.
-> - **Testing:** 375 tests (11 new `CorsMethodAwareTests`); `python3 -m unittest test_engines.py` green; `node --check` clean; assembled `_site` + `tools/audit_site.py` green; controlled `tests/cors_fixture.py` verified with `curl -D` for all methods and null. Browser suites need Chromium and remain a release gate — no Chromium in sandbox (apt/puppeteer unreachable); stdlib assertions cover changed contracts.
-> - **Accuracy review (A-F):** Verified Security Headers (method/redirect/duplicate/HSTS/response-specific), Clickjacking (relay assessment + XFO/CSP precedence), CSP (enforcement vs Report-Only, multiple policies, duplicate directives, default-src fallback), DNS (resolver/DS vs DNSKEY/null MX/DKIM hints), CSRF (READY/LIMITED wording), JWT (decode ≠ verify, test artifacts). No scoring drift beyond CORS method-aware; report fixes in `ACCURACY-CROSSCHECK.md`. **IN REVIEW:** this branch; do not merge from this session.
-
-> **Previous session (CORS-accuracy, branch `arena/01a00ef9-cyberbuddy`):** fixed
-> the hosted CORS fallback false assurance: a concrete ACAO echo with
-> credentials now reports MEDIUM with an explicit single-origin limitation;
-> Python now also probes `Origin: null` (HIGH with credentials, MEDIUM without).
-> Added icons to header Tools menu items, removed misleading URL-only share
-> controls, and added combined suite downloads. The all-tool controlled-fixture
-> / curl cross-check is recorded in `docs/ACCURACY-CROSSCHECK.md`; it found no
-> scoring drift, but renamed a relay-derived clickjacking “proof” to an
-> assessment while retaining provenance. Updated CORS guide, methodology, parity
-> tests and durable traps. Browser suites need Chromium and remain a release
-> gate. **IN REVIEW:** PR #35; do not merge it from this session.
-
-## 6. Future-session protocol
-
-Every future coding session **must**:
-
-1. Start from the latest `origin/main` on its Arena-assigned branch.
-2. Read `docs/ROADMAP.md` and `docs/DEV-NOTES.md` first.
-3. Verify whether the previous `IN REVIEW` item merged.
-4. Mark it `DONE` only if present in `origin/main`.
-5. Select only the item marked `NEXT`.
-6. Change that item to `IN PROGRESS`.
-7. Do not implement later roadmap items in the same PR.
-8. Run the baseline before behavior changes.
-9. Add regression tests and real-browser coverage where needed.
-10. Update `docs/DEV-NOTES.md` with durable traps.
-11. Update `docs/ROADMAP.md` status and handoff before finishing.
-12. Mark the current item `IN REVIEW` after opening the PR and make exactly
-    one following item `NEXT`.
-13. Never merge the PR itself.
+1. Do not mark a tool live until its controls, evidence, failure states,
+   documentation, guide, routes, metadata and tests ship together.
+2. Never equate a generated payload with target acceptance or an observation
+   with a verified vulnerability.
+3. Preserve local/private data boundaries: JWTs, keys, secrets and raw CSRF
+   requests are never persisted or sent by CyberBuddy.
+4. Hosted fallback disclosures must be opt-in and named; “local” must not be
+   described as “no network” when an HTTP target or DNS resolver is contacted.
+5. Keep internal planning files out of `_site/`.
+6. No release is complete until `python3 tools/verify.py` passes.

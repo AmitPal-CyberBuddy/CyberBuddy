@@ -15,7 +15,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from apilib import _cors_headers, _json, _rate_limited  # noqa: E402
-from dns_security import scan_dns  # noqa: E402
+from dns_security import scan_dns, validate_domain  # noqa: E402
 
 
 def app(environ: dict, start_response) -> list[bytes]:
@@ -35,6 +35,11 @@ def app(environ: dict, start_response) -> list[bytes]:
     domain = (qs.get("domain") or [""])[0].strip()
     if not domain:
         return _json(start_response, "400 Bad Request", {"error": "domain required"})
+
+    try:
+        domain = validate_domain(domain)
+    except ValueError as exc:
+        return _json(start_response, "400 Bad Request", {"error": str(exc)})
 
     result = scan_dns(domain)
     return _json(start_response, "200 OK", result.to_dict())

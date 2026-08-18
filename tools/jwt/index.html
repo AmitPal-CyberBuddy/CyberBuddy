@@ -75,6 +75,18 @@
   <script src="../../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/tools/jwt/" data-init="initJwt">
+<noscript>
+  <aside class="noscript-banner" aria-label="JavaScript status">
+    <p><strong>JavaScript is disabled.</strong> Reading pages and links still work, but interactive scanners, local security utilities, theme controls, and exports require JavaScript.</p>
+    <nav class="noscript-nav" aria-label="No-JavaScript navigation">
+      <a href="../../">Home</a>
+      <a href="../../tools/">Tools</a>
+      <a href="../../guides/">Guides</a>
+      <a href="../../methodology/">Methodology</a>
+      <a href="../../documentation/">Documentation</a>
+    </nav>
+  </aside>
+</noscript>
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 06 · Local in your browser</p>
@@ -204,29 +216,29 @@
           </p>
           <div class="jwt-key-tabs" role="tablist" aria-label="Key type">
             <button type="button" role="tab" id="jwt-key-secret-tab" class="jwt-key-tab is-active"
-              data-keytype="secret" aria-selected="true" aria-controls="jwt-key-secret">HMAC secret</button>
+              data-keytype="secret" aria-selected="true" tabindex="0" aria-controls="jwt-key-secret">HMAC secret</button>
             <button type="button" role="tab" id="jwt-key-pem-tab" class="jwt-key-tab"
-              data-keytype="pem" aria-selected="false" aria-controls="jwt-key-pem">PEM public key</button>
+              data-keytype="pem" aria-selected="false" tabindex="-1" aria-controls="jwt-key-pem">PEM public key</button>
             <button type="button" role="tab" id="jwt-key-jwk-tab" class="jwt-key-tab"
-              data-keytype="jwk" aria-selected="false" aria-controls="jwt-key-jwk">JWK</button>
+              data-keytype="jwk" aria-selected="false" tabindex="-1" aria-controls="jwt-key-jwk">JWK</button>
             <button type="button" role="tab" id="jwt-key-jwks-tab" class="jwt-key-tab"
-              data-keytype="jwks" aria-selected="false" aria-controls="jwt-key-jwks">JWKS</button>
+              data-keytype="jwks" aria-selected="false" tabindex="-1" aria-controls="jwt-key-jwks">JWKS</button>
           </div>
 
           <div class="jwt-key-panels">
-            <div id="jwt-key-secret" class="jwt-key-panel" role="tabpanel">
+            <div id="jwt-key-secret" aria-labelledby="jwt-key-secret-tab" class="jwt-key-panel" role="tabpanel">
               <label class="jwt-field"><span>HMAC shared secret (HS256/384/512)</span>
                 <input type="password" id="jwtSecret" autocomplete="off" placeholder="Shared secret" /></label>
             </div>
-            <div id="jwt-key-pem" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <div id="jwt-key-pem" aria-labelledby="jwt-key-pem-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
               <label class="jwt-field"><span>PEM SPKI public key (RSA / EC)</span>
                 <textarea id="jwtPem" placeholder="-----BEGIN PUBLIC KEY-----…" spellcheck="false"></textarea></label>
             </div>
-            <div id="jwt-key-jwk" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <div id="jwt-key-jwk" aria-labelledby="jwt-key-jwk-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
               <label class="jwt-field"><span>Public JWK (JSON)</span>
                 <textarea id="jwtJwk" placeholder='{"kty":"RSA", "n":"…", "e":"AQAB"}' spellcheck="false"></textarea></label>
             </div>
-            <div id="jwt-key-jwks" class="jwt-key-panel hidden" role="tabpanel" hidden>
+            <div id="jwt-key-jwks" aria-labelledby="jwt-key-jwks-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
               <label class="jwt-field"><span>JWKS (JSON with a "keys" array; key matched by kid)</span>
                 <textarea id="jwtJwks" placeholder='{"keys":[…]}' spellcheck="false"></textarea></label>
             </div>
@@ -321,27 +333,27 @@
           <strong>Apply</strong> to write it into the payload editor. An empty
           value removes the claim. Time claims are epoch seconds.</p>
         <div class="jwt-help-grid">
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpIssUse" />
-            <span class="jwt-help-k">iss</span>
-            <input type="text" id="jwtHelpIss" autocomplete="off" placeholder="https://issuer.example" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpSubUse" />
-            <span class="jwt-help-k">sub</span>
-            <input type="text" id="jwtHelpSub" autocomplete="off" placeholder="user-123" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpAudUse" />
-            <span class="jwt-help-k">aud</span>
-            <input type="text" id="jwtHelpAud" autocomplete="off" placeholder="my-api" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpExpUse" />
-            <span class="jwt-help-k">exp</span>
-            <input type="number" id="jwtHelpExp" placeholder="epoch seconds" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpNbfUse" />
-            <span class="jwt-help-k">nbf</span>
-            <input type="number" id="jwtHelpNbf" placeholder="epoch seconds" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpIatUse" />
-            <span class="jwt-help-k">iat</span>
-            <input type="number" id="jwtHelpIat" placeholder="epoch seconds" /></label>
-          <label class="jwt-help-row"><input type="checkbox" id="jwtHelpJtiUse" />
-            <span class="jwt-help-k">jti</span>
-            <input type="text" id="jwtHelpJti" autocomplete="off" placeholder="unique id" /></label>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpIssUse" aria-label="Set issuer claim" />
+            <label class="jwt-help-k" for="jwtHelpIss">iss</label>
+            <input type="text" id="jwtHelpIss" autocomplete="off" placeholder="https://issuer.example" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpSubUse" aria-label="Set subject claim" />
+            <label class="jwt-help-k" for="jwtHelpSub">sub</label>
+            <input type="text" id="jwtHelpSub" autocomplete="off" placeholder="user-123" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpAudUse" aria-label="Set audience claim" />
+            <label class="jwt-help-k" for="jwtHelpAud">aud</label>
+            <input type="text" id="jwtHelpAud" autocomplete="off" placeholder="my-api" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpExpUse" aria-label="Set expiration-time claim" />
+            <label class="jwt-help-k" for="jwtHelpExp">exp</label>
+            <input type="number" id="jwtHelpExp" placeholder="epoch seconds" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpNbfUse" aria-label="Set not-before claim" />
+            <label class="jwt-help-k" for="jwtHelpNbf">nbf</label>
+            <input type="number" id="jwtHelpNbf" placeholder="epoch seconds" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpIatUse" aria-label="Set issued-at claim" />
+            <label class="jwt-help-k" for="jwtHelpIat">iat</label>
+            <input type="number" id="jwtHelpIat" placeholder="epoch seconds" /></div>
+          <div class="jwt-help-row"><input type="checkbox" id="jwtHelpJtiUse" aria-label="Set token-ID claim" />
+            <label class="jwt-help-k" for="jwtHelpJti">jti</label>
+            <input type="text" id="jwtHelpJti" autocomplete="off" placeholder="unique id" /></div>
         </div>
         <div class="jwt-btn-row">
           <button type="button" id="jwtHelpApply" class="btn btn-primary">Apply helpers to payload</button>
@@ -390,32 +402,32 @@
 
         <div class="jwt-key-tabs jwt-edit-key-tabs" role="tablist" aria-label="Signing key type">
           <button type="button" role="tab" id="jwt-edit-key-secret-tab" class="jwt-key-tab is-active"
-            data-keytype="secret" aria-selected="true" aria-controls="jwt-edit-key-secret">HMAC secret</button>
+            data-keytype="secret" aria-selected="true" tabindex="0" aria-controls="jwt-edit-key-secret">HMAC secret</button>
           <button type="button" role="tab" id="jwt-edit-key-pem-tab" class="jwt-key-tab"
-            data-keytype="pem" aria-selected="false" aria-controls="jwt-edit-key-pem">Private key (PEM)</button>
+            data-keytype="pem" aria-selected="false" tabindex="-1" aria-controls="jwt-edit-key-pem">Private key (PEM)</button>
           <button type="button" role="tab" id="jwt-edit-key-jwk-tab" class="jwt-key-tab"
-            data-keytype="jwk" aria-selected="false" aria-controls="jwt-edit-key-jwk">Private JWK</button>
+            data-keytype="jwk" aria-selected="false" tabindex="-1" aria-controls="jwt-edit-key-jwk">Private JWK</button>
           <button type="button" role="tab" id="jwt-edit-key-generated-tab" class="jwt-key-tab"
-            data-keytype="generated" aria-selected="false" aria-controls="jwt-edit-key-generated">Generated test key</button>
+            data-keytype="generated" aria-selected="false" tabindex="-1" aria-controls="jwt-edit-key-generated">Generated test key</button>
         </div>
         <div class="jwt-key-panels">
-          <div id="jwt-edit-key-secret" class="jwt-key-panel" role="tabpanel">
+          <div id="jwt-edit-key-secret" aria-labelledby="jwt-edit-key-secret-tab" class="jwt-key-panel" role="tabpanel">
             <label class="jwt-field"><span>HMAC shared secret (HS256/384/512)</span>
               <input type="password" id="jwtEditSecret" autocomplete="off" placeholder="Shared secret" /></label>
           </div>
-          <div id="jwt-edit-key-pem" class="jwt-key-panel hidden" role="tabpanel" hidden>
+          <div id="jwt-edit-key-pem" aria-labelledby="jwt-edit-key-pem-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
             <label class="jwt-field"><span>Private key — PEM PKCS#8 (BEGIN PRIVATE KEY)</span>
               <textarea id="jwtEditPem" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"></textarea></label>
             <p class="jwt-field-note">Web Crypto cannot read PKCS#1 ("RSA PRIVATE KEY"),
               SEC1 ("EC PRIVATE KEY") or encrypted PEM — convert to PKCS#8 first, e.g.
               <code>openssl pkcs8 -topk8 -nocrypt -in key.pem</code>.</p>
           </div>
-          <div id="jwt-edit-key-jwk" class="jwt-key-panel hidden" role="tabpanel" hidden>
+          <div id="jwt-edit-key-jwk" aria-labelledby="jwt-edit-key-jwk-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
             <label class="jwt-field"><span>Private JWK (JSON; must include "d")</span>
               <textarea id="jwtEditJwk" spellcheck="false" placeholder='{"kty":"RSA","n":"…","e":"AQAB","d":"…"}'></textarea></label>
             <p class="jwt-field-note">A JWK without <code>d</code> is a public key and cannot sign.</p>
           </div>
-          <div id="jwt-edit-key-generated" class="jwt-key-panel hidden" role="tabpanel" hidden>
+          <div id="jwt-edit-key-generated" aria-labelledby="jwt-edit-key-generated-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
             <p class="jwt-field-note">Generate a throwaway RSA key pair
               <em>in this tab</em> for authorized testing. The private key stays
               in memory unless you explicitly copy or download it. Never reuse a
@@ -481,22 +493,22 @@
           pair.</p>
         <div class="jwt-key-tabs jwt-var-key-tabs" role="tablist" aria-label="Variant signing key type">
           <button type="button" role="tab" id="jwt-var-key-secret-tab" class="jwt-key-tab is-active"
-            data-keytype="secret" aria-selected="true" aria-controls="jwt-var-key-secret">HMAC secret</button>
+            data-keytype="secret" aria-selected="true" tabindex="0" aria-controls="jwt-var-key-secret">HMAC secret</button>
           <button type="button" role="tab" id="jwt-var-key-private-tab" class="jwt-key-tab"
-            data-keytype="private" aria-selected="false" aria-controls="jwt-var-key-private">Private key</button>
+            data-keytype="private" aria-selected="false" tabindex="-1" aria-controls="jwt-var-key-private">Private key</button>
           <button type="button" role="tab" id="jwt-var-key-generated-tab" class="jwt-key-tab"
-            data-keytype="generated" aria-selected="false" aria-controls="jwt-var-key-generated">Generated RSA pair</button>
+            data-keytype="generated" aria-selected="false" tabindex="-1" aria-controls="jwt-var-key-generated">Generated RSA pair</button>
         </div>
         <div class="jwt-key-panels">
-          <div id="jwt-var-key-secret" class="jwt-key-panel" role="tabpanel">
+          <div id="jwt-var-key-secret" aria-labelledby="jwt-var-key-secret-tab" class="jwt-key-panel" role="tabpanel">
             <label class="jwt-field"><span>HMAC shared secret (for HS* base tokens)</span>
               <input type="password" id="jwtVarSecret" autocomplete="off" placeholder="Shared secret" /></label>
           </div>
-          <div id="jwt-var-key-private" class="jwt-key-panel hidden" role="tabpanel" hidden>
+          <div id="jwt-var-key-private" aria-labelledby="jwt-var-key-private-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
             <label class="jwt-field"><span>Private key — PEM PKCS#8 or JWK JSON</span>
               <textarea id="jwtVarPrivate" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----&#10;or {&quot;kty&quot;:&quot;RSA&quot;,&quot;n&quot;:…,&quot;e&quot;:…,&quot;d&quot;:…}"></textarea></label>
           </div>
-          <div id="jwt-var-key-generated" class="jwt-key-panel hidden" role="tabpanel" hidden>
+          <div id="jwt-var-key-generated" aria-labelledby="jwt-var-key-generated-tab" class="jwt-key-panel hidden" role="tabpanel" hidden>
             <p class="jwt-field-note">Generate a throwaway RSA pair for the
               analyzed token's algorithm (RS*/PS*). Held in memory only.</p>
             <div class="jwt-btn-row">

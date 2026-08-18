@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>Methodology — CyberBuddy</title>
-  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification &amp; VAPT test payloads — engines, grades, and hosted-site limits." />
+  <meta name="description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, DNS, CSRF, and JWT — scoring, evidence, privacy, and hosted-site limits." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="CyberBuddy" />
   <link rel="canonical" href="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
   <meta property="og:title" content="Methodology — CyberBuddy" />
-  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads." />
+  <meta property="og:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, DNS, CSRF, and JWT — scoring, evidence, privacy, and hosted-site limits." />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Methodology — CyberBuddy" />
-  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads." />
+  <meta name="twitter:description" content="How CyberBuddy assesses clickjacking, security headers, CSP, CORS, DNS, CSRF, and JWT — scoring, evidence, privacy, and hosted-site limits." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="apple-touch-icon" href="../icon-192.png" />
@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "TechArticle",
       "headline": "CyberBuddy methodology",
-      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT verification and VAPT test payloads.",
+      "description": "How CyberBuddy assesses clickjacking, security headers, CSP, CORS, DNS, CSRF, and JWT — scoring, evidence, privacy, and hosted-site limits.",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/",
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
@@ -53,14 +53,27 @@
   <script src="../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/methodology/">
+<noscript>
+  <aside class="noscript-banner" aria-label="JavaScript status">
+    <p><strong>JavaScript is disabled.</strong> Reading pages and links still work, but interactive scanners, local security utilities, theme controls, and exports require JavaScript.</p>
+    <nav class="noscript-nav" aria-label="No-JavaScript navigation">
+      <a href="../">Home</a>
+      <a href="../tools/">Tools</a>
+      <a href="../guides/">Guides</a>
+      <a href="../methodology/">Methodology</a>
+      <a href="../documentation/">Documentation</a>
+    </nav>
+  </aside>
+</noscript>
 <main id="main" class="container page-hero prose">
 
   <p class="kicker reveal">How it scores</p>
   <h1 class="reveal">Methodology</h1>
   <p class="lead reveal" style="--d: .08s;">
-    Four read-only scanners and two local security utilities (CSRF PoC generator &amp; JWT Security Workbench),
-    the same graders in Python and in the browser, and report cards you can paste into an
-    assessment. Authorized testing only.
+    Four non-destructive HTTP assessment tools, one public-DNS analyzer, and
+    two local security utilities (CSRF PoC Generator and JWT Security Workbench) —
+    with transparent scoring and report cards you can paste into an assessment.
+    Authorized testing only.
   </p>
 
   <div class="section-head reveal">
@@ -184,10 +197,10 @@
         <tr><th scope="col">Check</th><th scope="col">Weight</th><th scope="col">What “ok” means</th></tr>
       </thead>
       <tbody>
-        <tr><td class="k">DMARC</td><td>20</td><td><code>_dmarc</code> TXT with <code>p=quarantine</code> or <code>p=reject</code>.</td></tr>
-        <tr><td class="k">SPF</td><td>15</td><td>One <code>v=spf1</code> TXT ending in <code>-all</code> (or <code>~all</code>), within the 10-lookup budget.</td></tr>
+        <tr><td class="k">DMARC</td><td>20</td><td>One <code>_dmarc</code> TXT with <code>p=quarantine</code> or <code>p=reject</code>, full <code>pct=100</code> coverage, and no <code>sp=none</code> gap.</td></tr>
+        <tr><td class="k">SPF</td><td>15</td><td>Exactly one <code>v=spf1</code> TXT with an <code>-all</code> (or <code>~all</code>) mechanism, within the 10-lookup budget.</td></tr>
         <tr><td class="k">DKIM</td><td>10</td><td>A <code>v=DKIM1</code> key on a common selector (a miss is never proof of absence).</td></tr>
-        <tr><td class="k">DNSSEC</td><td>10</td><td>DS published at the parent zone.</td></tr>
+        <tr><td class="k">DNSSEC</td><td>10</td><td>DS published at the parent and DNSKEY at the apex.</td></tr>
         <tr><td class="k">Name servers</td><td>10</td><td>At least two authoritative name servers.</td></tr>
         <tr><td class="k">CAA</td><td>5</td><td>A certificate-authority authorization record.</td></tr>
       </tbody>
@@ -333,14 +346,16 @@
       <strong>The DNS analyzer reads public DNS only.</strong> It queries a
       resolver (your system resolver locally, or <code>dns.google</code> after
       consent on the hosted site) and never connects to the target's own
-      servers. The only disclosure on the hosted path is the domain name and
-      your IP to Google Public DNS; records returned this way are labelled
+      servers. The only disclosure on the hosted path is the domain name (plus
+      its parent labels queried for inherited CAA) and your IP to Google Public
+      DNS; records returned this way are labelled
       <span class="unverified-flag">unverified</span>.
     </p>
     <p>
-      For a scan where nothing leaves your machine, run
+      To avoid disclosing a target to header relays or Google Public DNS, run
       <code>python3 server.py</code> locally — the same graders, same-origin,
-      no relays.
+      and no CyberBuddy relay or storage. HTTP scans still contact the target,
+      and DNS analysis still uses your configured resolver.
     </p>
   </article>
 

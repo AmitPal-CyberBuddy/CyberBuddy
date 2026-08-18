@@ -9,7 +9,7 @@
  *
  * Covers, at seven widths from a 2560px monitor down to a 360px phone:
  *   - static pages: no element spills, no clipped text, tap targets >= 24px;
- *   - live reports for all four tools;
+ *   - live reports for all four URL-based scanners;
  *   - the hub suite;
  *   - a deliberately hostile target whose headers carry 400-char unbreakable
  *     tokens (the classic "one long value blows out the grid" regression);
@@ -57,10 +57,10 @@ const PAGES = [
   ["guide-csp", "/guides/csp/"],
   ["guide-csrf", "/guides/csrf/"],
   ["documentation", "/documentation/"],
-  // JWT-00: development preview + its guide. Appended at the end on purpose:
-  // TOOLS = PAGES.slice(1, 5) stays the four URL-based scan tools; the JWT
-  // preview is local/non-operational and must never join the Run suite.
-  ["jwt-preview", "/tools/jwt/"],
+  // JWT Workbench + guide. Appended at the end on purpose: TOOLS below stays
+  // the four URL-based scan tools; JWT is a live local utility and must never
+  // join the URL-targeted Run suite.
+  ["jwt", "/tools/jwt/"],
   ["guide-jwt", "/guides/jwt/"],
   // DNS-01: standalone target tool + its guide. Also appended at the end:
   // the DNS analyzer takes a domain, not a URL, so it must never join the
@@ -179,7 +179,7 @@ async function scan(page, path, url) {
     }
   }
 
-  /* ---- 2. Live reports for all four tools ------------------------------- */
+  /* ---- 2. Live reports for all four URL-based scanners ------------------ */
   for (const [tn, path] of TOOLS) {
     for (const [vn, w, h] of VPS) {
       for (const theme of ["dark", "light"]) {

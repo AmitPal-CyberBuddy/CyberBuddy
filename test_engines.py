@@ -7,8 +7,12 @@ import http.client
 import json
 import os
 import re
+import runpy
 import shutil
+import socket
 import subprocess
+import sys
+import tempfile
 import threading
 import unittest
 import urllib.request
@@ -16,6 +20,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 from email.message import Message
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 from clickjacking_validator import (
     Finding,
@@ -44,7 +49,7 @@ from security_headers import (
     grade_headers_from_map,
     summarize,
 )
-from server import ROOT, TOOL_ALIASES, _under_root, default_bind, strip_mount
+from server import ROOT, TOOL_ALIASES, _under_root, default_bind, is_loopback_bind, strip_mount
 
 
 class NormalizeUrlTests(unittest.TestCase):
@@ -725,6 +730,14 @@ class MountAndBindTests(unittest.TestCase):
         self.assertEqual(TOOL_ALIASES["/dns"], "/tools/dns/")
         self.assertEqual(TOOL_ALIASES["/dns/"], "/tools/dns/")
 
+    def test_all_loopback_address_forms_are_recognized(self):
+        for host in ("localhost", "LOCALHOST.", "127.0.0.1", "127.0.0.2", "::1", "::1%lo0"):
+            with self.subTest(host=host):
+                self.assertTrue(is_loopback_bind(host))
+        for host in ("0.0.0.0", "::", "192.0.2.1", "example.com"):
+            with self.subTest(host=host):
+                self.assertFalse(is_loopback_bind(host))
+
     def test_default_bind_loopback_without_port_env(self):
         env = os.environ
         old_port, old_host = env.get("PORT"), env.get("HOST")
@@ -919,6 +932,71 @@ console.log(JSON.stringify(values.map((value) => ({ value, ...urlValidation(valu
                 self.assertFalse(by_value[raw]["valid"])
                 self.assertEqual(by_value[raw]["code"], code)
                 self.assertTrue(by_value[raw]["message"])
+
+    def test_dns_domain_validation_matches_idn_and_hostname_rules(self):
+        rows = self._run_app_js(r'''
+const values = [
+  "пример.рф", "xn--e1afmkfd.xn--p1ai", "'example.com'", "“example.com”",
+  "https://Example.COM/path", "example.com:443/path", "_dmarc.example.com", "example.c",
+  "'example.com\"", "https://user:secret@example.com/path", "https://@example.com/path",
+  "ftp://example.com", "https://example.com:not-a-port/path", "https://example.com:99999/path",
+  "example.com:99999/path"
+];
+console.log(JSON.stringify(values.map((value) => ({ value, ...domainValidation(value) }))));
+''')
+        by_value = {row["value"]: row for row in rows}
+        expected = "xn--e1afmkfd.xn--p1ai"
+        accepted = {
+            "пример.рф": expected,
+            expected: expected,
+            "'example.com'": "example.com",
+            "“example.com”": "example.com",
+            "https://Example.COM/path": "example.com",
+            "example.com:443/path": "example.com",
+        }
+        for raw, normalized in accepted.items():
+            with self.subTest(raw=raw):
+                self.assertTrue(by_value[raw]["valid"])
+                self.assertEqual(by_value[raw]["domain"], normalized)
+        rejected = {
+            "_dmarc.example.com": "hostname",
+            "example.c": "public-tld",
+            "'example.com\"": "hostname",
+            "https://user:secret@example.com/path": "credentials",
+            "https://@example.com/path": "credentials",
+            "ftp://example.com": "scheme",
+            "https://example.com:not-a-port/path": "malformed",
+            "https://example.com:99999/path": "malformed",
+            "example.com:99999/path": "malformed",
+        }
+        for raw, code in rejected.items():
+            with self.subTest(raw=raw):
+                self.assertFalse(by_value[raw]["valid"])
+                self.assertEqual(by_value[raw]["code"], code)
+
+    def test_dnskey_without_parent_ds_is_weak_in_browser_grader(self):
+        result = self._run_app_js(r'''
+const result = gradeDnsFromRecords("example.com", {
+  A: ["203.0.113.10"], NS: ["ns1.example.com.", "ns2.example.com."],
+  DNSKEY: ["flags=257 protocol=3 algorithm=13 keylen=64"]
+}, { A: "NOERROR" }, "browser");
+console.log(JSON.stringify(result.checks.find((check) => check.name === "DNSSEC")));
+''')
+        self.assertEqual(result["status"], "weak")
+        self.assertEqual(result["deduction"], 10)
+        self.assertIn("chain of trust is not established", result["detail"])
+
+    def test_parent_ds_without_apex_dnskey_is_weak_in_browser_grader(self):
+        result = self._run_app_js(r'''
+const result = gradeDnsFromRecords("example.com", {
+  A: ["203.0.113.10"], NS: ["ns1.example.com.", "ns2.example.com."],
+  DS: ["12345 8 2 ABCDEF"]
+}, { A: "NOERROR" }, "browser");
+console.log(JSON.stringify(result.checks.find((check) => check.name === "DNSSEC")));
+''')
+        self.assertEqual(result["status"], "weak")
+        self.assertEqual(result["deduction"], 10)
+        self.assertIn("evidence is incomplete", result["detail"])
 
     def test_single_origin_browser_cors_ignores_vary_as_headline_risk(self):
         result = self._run_app_js(r'''
@@ -1158,6 +1236,7 @@ class ServerRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import server as srv
+        cls.srv = srv
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
         cls.port = cls.httpd.server_address[1]
         cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
@@ -1169,10 +1248,10 @@ class ServerRouteTests(unittest.TestCase):
         cls.httpd.server_close()
         cls.thread.join(timeout=5)
 
-    def _req(self, path: str, method: str = "GET"):
+    def _req(self, path: str, method: str = "GET", headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         try:
-            conn.request(method, path)
+            conn.request(method, path, headers=headers or {})
             resp = conn.getresponse()
             body = resp.read()
             headers = {k.lower(): v for k, v in resp.getheaders()}
@@ -1186,14 +1265,13 @@ class ServerRouteTests(unittest.TestCase):
         self.assertIn(b"CyberBuddy", body)
         self.assertIn("text/html", headers.get("content-type", ""))
 
-    def test_six_tool_pages(self):
+    def test_all_seven_tool_pages(self):
         expect = {
             "/tools/clickjacking/": b"Clickjacking Validator",
             "/tools/headers/": b"Security Headers",
             "/tools/cors/": b"CORS Validator",
             "/tools/csp/": b"CSP Policy Auditor",
             "/tools/csrf/": b"CSRF PoC Generator",
-            # JWT-00: the development preview page resolves and is labelled.
             "/tools/jwt/": b"JWT Security Workbench",
             "/tools/dns/": b"DNS &amp; Domain Security Analyzer",
         }
@@ -1336,13 +1414,92 @@ class ServerRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("application/json", headers.get("content-type", ""))
         self.assertTrue(json.loads(body).get("ok"))
+        opt_in = {"X-Requested-With": "CyberBuddy"}
         for path in ("/api/scan", "/api/headers", "/api/cors", "/api/csp"):
-            status, _, body = self._req(path)
+            status, _, body = self._req(path, headers=opt_in)
             self.assertEqual(status, 400, path)
             self.assertIn("url required", json.loads(body).get("error", ""))
-        status, _, body = self._req("/api/dns")
+        status, _, body = self._req("/api/dns", headers=opt_in)
         self.assertEqual(status, 400)
         self.assertIn("domain required", json.loads(body).get("error", ""))
+
+    def test_api_requires_explicit_browser_or_cli_opt_in(self):
+        status, _, body = self._req("/api/headers?url=https%3A%2F%2Fexample.com")
+        self.assertEqual(status, 403)
+        self.assertIn("X-Requested-With", json.loads(body).get("error", ""))
+
+        # A forged cross-site Origin is rejected even if the custom header is
+        # supplied. Provenance alone is insufficient: a same-origin Referer
+        # must also carry the non-simple opt-in header used by the UI.
+        status, _, _ = self._req(
+            "/api/headers?url=https%3A%2F%2Fexample.com",
+            headers={
+                "Origin": "https://evil.example",
+                "X-Forwarded-Host": "evil.example",
+                "X-Requested-With": "CyberBuddy",
+            },
+        )
+        self.assertEqual(status, 403)
+        referer = f"http://127.0.0.1:{self.port}/tools/headers/"
+        status, _, _ = self._req(
+            "/api/headers", headers={"Referer": referer},
+        )
+        self.assertEqual(status, 403)
+        status, _, body = self._req(
+            "/api/headers",
+            headers={"Referer": referer, "X-Requested-With": "CyberBuddy"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("url required", json.loads(body).get("error", ""))
+
+    def test_api_non_simple_header_blocks_non_loopback_rebinding(self):
+        original = self.srv.HOST
+        self.srv.HOST = "0.0.0.0"
+        try:
+            status, _, _ = self._req(
+                "/api/headers?url=https%3A%2F%2Fexample.com",
+                headers={
+                    "Host": "attacker.example",
+                    "Origin": "http://attacker.example",
+                },
+            )
+            self.assertEqual(status, 403)
+        finally:
+            self.srv.HOST = original
+
+    def test_api_rejects_dns_rebinding_host_on_loopback(self):
+        status, _, _ = self._req(
+            "/api/headers?url=https%3A%2F%2Fexample.com",
+            headers={"Host": "attacker.example", "X-Requested-With": "CyberBuddy"},
+        )
+        self.assertEqual(status, 403)
+
+    def test_api_rejects_rebinding_on_any_loopback_bind_address(self):
+        original = self.srv.HOST
+        self.srv.HOST = "127.0.0.2"
+        try:
+            status, _, _ = self._req(
+                "/api/headers?url=https%3A%2F%2Fexample.com",
+                headers={"Host": "attacker.example", "X-Requested-With": "CyberBuddy"},
+            )
+            self.assertEqual(status, 403)
+            status, _, body = self._req(
+                "/api/headers",
+                headers={"Host": "127.0.0.2", "X-Requested-With": "CyberBuddy"},
+            )
+            self.assertEqual(status, 400)
+            self.assertIn("url required", json.loads(body).get("error", ""))
+        finally:
+            self.srv.HOST = original
+
+    def test_dns_api_returns_json_for_invalid_domain(self):
+        status, headers, body = self._req(
+            "/api/dns?domain=localhost",
+            headers={"X-Requested-With": "CyberBuddy"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("application/json", headers.get("content-type", ""))
+        self.assertIn("public domain", json.loads(body).get("error", ""))
 
     def test_unknown_path_serves_404_page(self):
         status, headers, body = self._req("/does-not-exist")
@@ -1352,24 +1509,56 @@ class ServerRouteTests(unittest.TestCase):
 
     def test_four_apis_scan_this_server(self):
         target = quote(f"http://127.0.0.1:{self.port}/", safe="")
-        status, _, body = self._req("/api/headers?url=" + target)
+        opt_in = {"X-Requested-With": "CyberBuddy"}
+        status, _, body = self._req("/api/headers?url=" + target, headers=opt_in)
         self.assertEqual(status, 200)
         headers_data = json.loads(body)
         self.assertIn("grade", headers_data)
         self.assertTrue(headers_data.get("checks"))
-        status, _, body = self._req("/api/scan?url=" + target)
+        status, _, body = self._req("/api/scan?url=" + target, headers=opt_in)
         self.assertEqual(status, 200)
         scan_data = json.loads(body)
         self.assertTrue(scan_data.get("findings"))
-        status, _, body = self._req("/api/cors?url=" + target)
+        status, _, body = self._req("/api/cors?url=" + target, headers=opt_in)
         self.assertEqual(status, 200)
         cors_data = json.loads(body)
         self.assertTrue(cors_data.get("checks"))
-        status, _, body = self._req("/api/csp?url=" + target)
+        status, _, body = self._req("/api/csp?url=" + target, headers=opt_in)
         self.assertEqual(status, 200)
         csp_data = json.loads(body)
         self.assertIn("policy", csp_data)
         self.assertTrue(csp_data.get("checks"))
+
+
+class HostedDnsApiTests(unittest.TestCase):
+    """The deployed DNS function must reject malformed input before it can
+    trigger a resolver query, just like the local server route."""
+
+    def test_invalid_domain_returns_400_without_scanning(self):
+        import apilib
+
+        apilib._hits.clear()
+        namespace = runpy.run_path(str(ROOT / "api" / "dns.py"))
+        app = namespace["app"]
+
+        def unexpected_scan(_domain):
+            self.fail("scan_dns must not run for an invalid domain")
+
+        app.__globals__["scan_dns"] = unexpected_scan
+        response = {}
+
+        def start_response(status, headers):
+            response["status"] = status
+            response["headers"] = dict(headers)
+
+        body = b"".join(app({
+            "REQUEST_METHOD": "GET",
+            "QUERY_STRING": "domain=localhost",
+            "REMOTE_ADDR": "192.0.2.20",
+        }, start_response))
+        self.assertEqual(response["status"], "400 Bad Request")
+        self.assertIn("application/json", response["headers"]["Content-Type"])
+        self.assertIn("public domain", json.loads(body)["error"])
 
 
 class HostedSiteTests(unittest.TestCase):
@@ -1757,21 +1946,10 @@ class HostedCspTests(unittest.TestCase):
     site is a credibility problem, so keep these locked in."""
 
     PAGES = [
-        "index.html",
-        "404.html",
-        "methodology/index.html",
-        "guides/index.html",
-        "guides/clickjacking/index.html",
-        "tools/index.html",
-        "tools/clickjacking/index.html",
-        "tools/headers/index.html",
-        "tools/cors/index.html",
-        "tools/csp/index.html",
-        "tools/csrf/index.html",
-        # JWT-00 preview: it is a non-framing, non-network page, so it
-        # must carry the same strict meta CSP as every other tool page.
-        "tools/jwt/index.html",
-        "guides/jwt/index.html",
+        str(path.relative_to(ROOT))
+        for path in sorted(ROOT.rglob("*.html"))
+        if path.relative_to(ROOT).parts[0]
+        not in {"_site", "node_modules", ".git", "__pycache__"}
     ]
 
     def _csp(self, page: str) -> str:
@@ -1835,6 +2013,41 @@ class HostedCspTests(unittest.TestCase):
         """Without #relayGate the hub silently degrades to 'no header data'
         on the hosted site with no way for the analyst to opt in."""
         self.assertIn('id="relayGate"', (ROOT / "index.html").read_text(encoding="utf-8"))
+
+
+class NoScriptFallbackTests(unittest.TestCase):
+    """Every page remains navigable and honest when client JavaScript fails."""
+
+    SHELL_PAGES = [page for page in HostedCspTests.PAGES if page != "404.html"]
+
+    def test_shell_pages_offer_static_global_navigation(self):
+        for page in self.SHELL_PAGES:
+            text = (ROOT / page).read_text(encoding="utf-8")
+            with self.subTest(page=page):
+                self.assertIn('<noscript><link rel="stylesheet"', text)
+                self.assertIn('class="noscript-banner"', text)
+                self.assertIn('aria-label="No-JavaScript navigation"', text)
+                self.assertIn(">Home</a>", text)
+                self.assertIn(">Tools</a>", text)
+                self.assertIn(">Guides</a>", text)
+                self.assertIn(">Methodology</a>", text)
+                self.assertIn(">Documentation</a>", text)
+                self.assertIn("interactive scanners", text)
+
+    def test_no_script_styles_keep_content_visible_and_controls_honest(self):
+        css = (ROOT / "css" / "noscript.css").read_text(encoding="utf-8")
+        self.assertIn(".reveal { opacity: 1 !important", css)
+        self.assertIn("body[data-init] main button", css)
+        self.assertIn("pointer-events: none", css)
+
+    def test_404_keeps_static_navigation_and_hides_its_script_only_theme_control(self):
+        page = (ROOT / "404.html").read_text(encoding="utf-8")
+        self.assertIn('<noscript><link rel="stylesheet"', page)
+        self.assertEqual(7, len(re.findall(r'data-slug="[^"]+"', page)))
+        self.assertIn('id="guidesLink"', page)
+        self.assertIn('id="methodLink"', page)
+        css = (ROOT / "css" / "noscript.css").read_text(encoding="utf-8")
+        self.assertIn("#themeToggle { display: none !important", css)
 
 
 class ClearRecentScansTests(unittest.TestCase):
@@ -3150,7 +3363,8 @@ class GuidesTests(unittest.TestCase):
         """Concise by design: a guide is a few minutes of reading, not a
         long-form article."""
         for slug in self.GUIDES:
-            text = re.sub(r"<[^>]+>", " ", self._guide(slug))
+            page = re.sub(r"<noscript\b[^>]*>.*?</noscript>", " ", self._guide(slug), flags=re.S)
+            text = re.sub(r"<[^>]+>", " ", page)
             words = len(text.split())
             with self.subTest(guide=slug, words=words):
                 self.assertLess(words, 1200, words)
@@ -3387,12 +3601,9 @@ class DocumentationPageTests(unittest.TestCase):
         would silently 404 on the hosted site."""
         self.assertFalse((ROOT / "docs" / "index.html").exists())
 
-    def test_workflow_patch_carries_the_copy_line(self):
-        """The arena token cannot push .github/workflows/**, so the one-line
-        workflow edit is carried for the maintainer. Without it the directory
-        is never copied into _site/ and the page 404s when hosted."""
-        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        self.assertIn("cp -a documentation _site/", patch)
+    def test_workflow_publishes_the_documentation_directory(self):
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("cp -a documentation _site/", workflow)
 
 
 class JwtWorkbenchTests(unittest.TestCase):
@@ -4229,6 +4440,40 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         # The verify button is enabled (not a preview).
         self.assertNotIn('id="jwtVerify" disabled', page)
 
+    def test_key_type_tabs_have_complete_keyboard_and_aria_contract(self):
+        page = self._page()
+        tab_to_panel = {
+            "jwt-key-secret-tab": "jwt-key-secret", "jwt-key-pem-tab": "jwt-key-pem",
+            "jwt-key-jwk-tab": "jwt-key-jwk", "jwt-key-jwks-tab": "jwt-key-jwks",
+            "jwt-edit-key-secret-tab": "jwt-edit-key-secret", "jwt-edit-key-pem-tab": "jwt-edit-key-pem",
+            "jwt-edit-key-jwk-tab": "jwt-edit-key-jwk", "jwt-edit-key-generated-tab": "jwt-edit-key-generated",
+            "jwt-var-key-secret-tab": "jwt-var-key-secret", "jwt-var-key-private-tab": "jwt-var-key-private",
+            "jwt-var-key-generated-tab": "jwt-var-key-generated",
+        }
+        for tab_id, panel_id in tab_to_panel.items():
+            tab = re.search(r'<button\b(?=[^>]*\bid="%s")[^>]*>' % re.escape(tab_id), page)
+            panel = re.search(r'<div\b(?=[^>]*\bid="%s")[^>]*>' % re.escape(panel_id), page)
+            self.assertIsNotNone(tab, tab_id)
+            self.assertIsNotNone(panel, panel_id)
+            self.assertIn('aria-controls="%s"' % panel_id, tab.group(0))
+            self.assertRegex(tab.group(0), r'tabindex="(?:0|-1)"')
+            self.assertIn('aria-labelledby="%s"' % tab_id, panel.group(0))
+        ctrl = self._controller()
+        for key in ("ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"):
+            self.assertIn(key, ctrl)
+        self.assertIn('setAttribute("tabindex", on ? "0" : "-1")', ctrl)
+
+    def test_claim_helpers_label_checkbox_and_value_separately(self):
+        page = self._page()
+        claims = ("Iss", "Sub", "Aud", "Exp", "Nbf", "Iat", "Jti")
+        self.assertNotIn('<label class="jwt-help-row">', page)
+        for claim in claims:
+            use = re.search(r'<input\b(?=[^>]*\bid="jwtHelp%sUse")[^>]*>' % claim, page)
+            value_label = re.search(r'<label\b(?=[^>]*\bfor="jwtHelp%s")[^>]*>' % claim, page)
+            self.assertIsNotNone(use, claim)
+            self.assertIn("aria-label=", use.group(0))
+            self.assertIsNotNone(value_label, claim)
+
     def test_edit_panel_is_functional(self):
         """JWT-02: the Edit & Generate panel is a working editor/signer."""
         page = self._page()
@@ -4989,6 +5234,96 @@ console.log(JSON.stringify(out));
         self.assertIn("_pasted", controller)
 
 
+class ReleaseVerificationTests(unittest.TestCase):
+    """Launch-facing copy, metadata, and quality gates must not drift."""
+
+    def test_audit_site_rejects_missing_or_empty_artifacts(self):
+        script = ROOT / "tools" / "audit_site.py"
+        with tempfile.TemporaryDirectory() as temp:
+            missing = Path(temp) / "missing"
+            proc = subprocess.run(
+                [sys.executable, str(script), str(missing)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn("directory does not exist", proc.stderr)
+
+            empty = Path(temp) / "empty"
+            empty.mkdir()
+            proc = subprocess.run(
+                [sys.executable, str(script), str(empty)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn("no HTML pages", proc.stderr)
+
+    def test_audit_site_accepts_a_minimal_valid_artifact(self):
+        script = ROOT / "tools" / "audit_site.py"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "index.html").write_text(
+                '<!doctype html><a href="#ready">Ready</a><h1 id="ready">Ready</h1>',
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(script), str(root)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("1 HTML page", proc.stdout)
+
+    def test_public_copy_describes_non_destructive_method_coverage(self):
+        surfaces = (
+            ROOT / "index.html",
+            ROOT / "tools" / "index.html",
+            ROOT / "documentation" / "index.html",
+            ROOT / "README.md",
+            ROOT / "llms.txt",
+            ROOT / "js" / "app.js",
+        )
+        stale = (
+            "All scans are read-only GETs",
+            "all scans are read-only GETs",
+            "All checks are read-only GETs",
+            "Destructive requests</strong> — GET only",
+            "POST / PUT / DELETE testing",
+        )
+        for path in surfaces:
+            text = path.read_text(encoding="utf-8")
+            for phrase in stale:
+                with self.subTest(path=path.relative_to(ROOT), phrase=phrase):
+                    self.assertNotIn(phrase, text)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for phrase in ("GET baseline", "HEAD/OPTIONS", "preflight", "POST, PUT, PATCH, or DELETE"):
+            self.assertIn(phrase, readme)
+
+    def test_launch_metadata_lists_all_seven_tools(self):
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        catalog = (ROOT / "tools" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("clickjacking, headers, CSP, CORS, DNS, CSRF, and JWT", hub)
+        self.assertIn('"numberOfItems": 7', catalog)
+        for slug in ("clickjacking", "headers", "cors", "csp", "dns", "csrf", "jwt"):
+            self.assertIn(f'/CyberBuddy/tools/{slug}/', catalog)
+        self.assertIn('data-count="7" data-pad="2">07</span>', hub)
+        self.assertIn('data-count="5">5</span>', hub)
+
+    def test_ci_runs_the_complete_release_verifier(self):
+        verifier = (ROOT / "tools" / "verify.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("check_javascript_syntax", verifier)
+        self.assertIn("check_structured_data", verifier)
+        self.assertIn("check_pages_artifact", verifier)
+        self.assertIn('"--others"', verifier)
+        self.assertIn('"--exclude-standard"', verifier)
+        self.assertIn("python tools/verify.py", workflow)
+
+
 class PagesAssetVerificationTests(unittest.TestCase):
     """The Pages workflow's "Verify referenced assets exist" step must accept
     root-relative references (404.html points at /CyberBuddy/… assets so it
@@ -5037,20 +5372,11 @@ class PagesAssetVerificationTests(unittest.TestCase):
                 )
 
     def test_workflow_asset_check_handles_root_relative_paths(self):
-        """The workflow step must resolve /CyberBuddy/… references, otherwise
-        404.html fails the build every deploy. The arena push token cannot
-        commit .github/workflows/**, so the fix may live in the workflow (a
-        maintainer applied it) or in docs/pages-workflow-patch.md (pending)."""
+        """The applied workflow resolves /CyberBuddy/… references from the
+        artifact root; otherwise 404.html fails every deployment."""
         workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
-        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        self.assertTrue(
-            'rel="${ref#/}"' in workflow or 'rel="${ref#/}"' in patch,
-            "root-relative asset check fix is neither applied nor documented",
-        )
-        self.assertTrue(
-            '[ -f "_site/$rel" ]' in workflow or '[ -f "_site/$rel" ]' in patch,
-            "root-relative asset check fix is neither applied nor documented",
-        )
+        self.assertIn('rel="${ref#/}"', workflow)
+        self.assertIn('[ -f "_site/$rel" ]', workflow)
 
 
 class PagesExclusionTests(unittest.TestCase):
@@ -5062,10 +5388,9 @@ class PagesExclusionTests(unittest.TestCase):
     run by CI via `python3 -m unittest test_engines.py`) pins that the
     assemble step never copies them into _site/.
 
-    Note: the arena push token is not granted the `workflows` permission, so
-    the *catalog publish + leak-guard* workflow edit itself cannot be
-    committed here — it is carried in docs/pages-workflow-patch.md for the
-    maintainer to apply (the same mechanism as PR #20).
+    The workflow already contains both explicit public-surface assembly and
+    the leak guard. docs/pages-workflow-patch.md is a historical record, not
+    an outstanding deployment instruction.
     """
 
     def test_roadmap_doc_exists(self):
@@ -5120,21 +5445,18 @@ class PagesExclusionTests(unittest.TestCase):
         for name in ("docs/ROADMAP.md", "docs/DEV-NOTES.md", "REVIEW.md"):
             self.assertIn(name, guard, name)
 
-    def test_patch_doc_documents_the_catalog_and_guard(self):
-        """The workflow edit that cannot be pushed (catalog copy + internal
-        -file guard) must stay recorded for the maintainer."""
-        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        self.assertIn("cp tools/index.html _site/tools/", patch)
-        self.assertIn("docs/ROADMAP.md", patch)
-        self.assertIn("docs/DEV-NOTES.md", patch)
-        self.assertIn("REVIEW.md", patch)
+    def test_workflow_publishes_catalog_guides_and_dns(self):
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("cp tools/index.html _site/tools/", workflow)
+        self.assertIn("cp -a guides _site/", workflow)
+        self.assertIn("tools/dns", workflow)
 
-    def test_patch_doc_documents_the_guides_copy(self):
-        """A new published top-level section must have its Pages fate decided
-        in the same commit. guides/ cannot be added to pages.yml from here, so
-        the copy line lives in the patch doc for the maintainer."""
+    def test_historical_patch_doc_has_no_pending_manual_patch(self):
         patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        self.assertIn("cp -a guides _site/", patch)
+        prose = re.sub(r"\s+", " ", patch)
+        self.assertIn("already applied", prose)
+        self.assertIn("no manual patch left", prose)
+        self.assertIn(".github/workflows/pages.yml", prose)
 
 
 class LinkLabelTests(unittest.TestCase):
@@ -5225,11 +5547,39 @@ class DnsEngineTests(unittest.TestCase):
         from dns_security import grade_dns_from_records
         return grade_dns_from_records(domain, records, statuses or {})
 
-    def test_normalize_domain_strips_url_path_and_dot(self):
+    def test_normalize_domain_strips_url_path_dot_and_valid_port(self):
         from dns_security import normalize_domain
         self.assertEqual(normalize_domain("https://Example.COM/path?q=1"), "example.com")
+        self.assertEqual(normalize_domain("example.com:443/path"), "example.com")
         self.assertEqual(normalize_domain("example.com."), "example.com")
         self.assertEqual(normalize_domain("  sub.example.com  "), "sub.example.com")
+
+    def test_normalize_domain_accepts_internationalized_tlds(self):
+        from dns_security import normalize_domain
+        expected = "xn--e1afmkfd.xn--p1ai"
+        self.assertEqual(normalize_domain("пример.рф"), expected)
+        self.assertEqual(normalize_domain(expected), expected)
+
+    def test_normalize_domain_accepts_matching_quoted_values(self):
+        from dns_security import normalize_domain
+        for raw in ('"example.com"', "'example.com'", "“example.com”", "‘example.com’"):
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_domain(raw), "example.com")
+        with self.assertRaises(ValueError):
+            normalize_domain("'example.com\"")
+
+    def test_normalize_domain_rejects_url_credentials_schemes_and_ports(self):
+        from dns_security import normalize_domain
+        for bad in (
+            "https://user:secret@example.com/path",
+            "https://@example.com/path",
+            "ftp://example.com",
+            "https://example.com:not-a-port/path",
+            "https://example.com:99999/path",
+            "example.com:99999/path",
+        ):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                normalize_domain(bad)
 
     def test_normalize_domain_rejects_ips_and_localhost(self):
         from dns_security import normalize_domain
@@ -5246,11 +5596,23 @@ class DnsEngineTests(unittest.TestCase):
         self.assertEqual(result.checks[0].name, "Domain resolution")
         self.assertEqual(result.checks[0].status, "error")
 
+    def test_resolver_or_parser_failure_is_not_scored_as_missing_records(self):
+        result = self._grade(
+            {"A": ["203.0.113.10"]},
+            statuses={"A": "NOERROR", "NS": "ERROR"},
+        )
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.grade, "—")
+        self.assertEqual(result.risk, "unknown")
+        self.assertIn("NS", result.error)
+        self.assertIn("no posture grade", result.summary.lower())
+
     def test_strong_domain_scores_high(self):
         result = self._grade({
             "A": ["203.0.113.10"],
             "NS": ["ns1.example.com.", "ns2.example.com."],
             "DS": ["12345 8 2 ABCDEF"],
+            "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
             "MX": ["10 mail.example.com."],
             "TXT": ["v=spf1 include:_spf.example.com -all"],
             "DMARC": ["v=DMARC1; p=reject; rua=mailto:dmarc@example.com"],
@@ -5274,6 +5636,30 @@ class DnsEngineTests(unittest.TestCase):
         self.assertEqual(spf.status, "weak")
         self.assertEqual(spf.deduction, 15)
 
+    def test_spf_without_all_is_neutral_not_safe(self):
+        result = self._grade({
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 ip4:203.0.113.0/24"],
+        })
+        spf = next(c for c in result.checks if c.name == "SPF")
+        self.assertEqual(spf.status, "weak")
+        self.assertEqual(spf.deduction, 5)
+        self.assertIn("neutral", spf.detail)
+
+    def test_spf_lookup_budget_counts_qualified_and_cidr_mechanisms(self):
+        from dns_security import _spf_lookup_count
+        policy = (
+            "v=spf1 -include:a.example +a/24 ~mx:mail.example/24 "
+            "?exists:%{i}.one.example ptr:two.example "
+            "include:3.example include:4.example include:5.example "
+            "include:6.example include:7.example redirect=8.example"
+        )
+        self.assertEqual(_spf_lookup_count(policy), 11)
+        result = self._grade({"TXT": [policy]})
+        spf = next(c for c in result.checks if c.name == "SPF")
+        self.assertEqual(spf.deduction, 15)
+        self.assertIn("11", spf.detail)
+
     def test_dmarc_none_is_a_weak_finding(self):
         result = self._grade({
             "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
@@ -5287,12 +5673,42 @@ class DnsEngineTests(unittest.TestCase):
         self.assertEqual(dmarc.status, "weak")
         self.assertEqual(dmarc.deduction, 10)
 
+    def test_dmarc_partial_and_subdomain_monitoring_do_not_earn_full_credit(self):
+        cases = (
+            ("v=DMARC1; p=reject; pct=0", 10, "pct=0%"),
+            ("v=DMARC1; p=reject; pct=25", 5, "pct=25%"),
+            ("v=DMARC1; p=reject; sp=none", 5, "sp=none"),
+            ("v=DMARC1; p=reject; pct=invalid", 10, "invalid pct"),
+        )
+        for policy, deduction, detail in cases:
+            with self.subTest(policy=policy):
+                result = self._grade({"MX": ["10 mail.example.com."], "DMARC": [policy]})
+                dmarc = next(c for c in result.checks if c.name == "DMARC")
+                self.assertEqual(dmarc.status, "weak")
+                self.assertEqual(dmarc.deduction, deduction)
+                self.assertIn(detail, dmarc.detail)
+
+    def test_duplicate_email_policies_and_revoked_dkim_are_not_protected(self):
+        result = self._grade({
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 -all", "v=spf1 ~all"],
+            "DMARC": ["v=DMARC1; p=reject", "v=DMARC1; p=quarantine"],
+            "DKIM:default": ["v=DKIM1; k=rsa; p="],
+        })
+        checks = {check.name: check for check in result.checks}
+        self.assertEqual(checks["SPF"].deduction, 15)
+        self.assertEqual(checks["DMARC"].deduction, 20)
+        self.assertEqual(checks["DKIM"].status, "weak")
+        self.assertNotEqual(checks["DKIM"].deduction, 0)
+
     def test_null_mx_keeps_email_checks_informational(self):
         # RFC 7505 null MX: the domain explicitly has no email, so a missing
         # SPF/DMARC/DKIM is not a finding.
         result = self._grade({
             "A": ["203.0.113.10"], "NS": ["ns1.example.com.", "ns2.example.com."],
-            "MX": ["0 ."], "DS": ["12345 8 2 ABCDEF"],
+            "MX": ["0 ."],
+            "DS": ["12345 8 2 ABCDEF"],
+            "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
         })
         for name in ("MX", "SPF", "DMARC", "DKIM"):
             check = next(c for c in result.checks if c.name == name)
@@ -5316,10 +5732,50 @@ class DnsEngineTests(unittest.TestCase):
             "MX": ["10 mail.example.com."], "TXT": ["v=spf1 -all"],
             "DMARC": ["v=DMARC1; p=reject"], "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
             "DS": ["12345 8 2 ABCDEF"],
+            "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
         })
         caa = next(c for c in result.checks if c.name == "CAA")
         self.assertEqual(caa.status, "weak")
         self.assertEqual(caa.deduction, 5)
+        self.assertIn("parent labels", caa.detail)
+
+    def test_caa_requires_an_issue_property_and_reports_inheritance(self):
+        cases = (
+            ({"CAA": ['0 iodef "mailto:security@example.com"']}, 5, "no issue property"),
+            ({"CAA": ['0 issuewild "letsencrypt.org"']}, 3, "wildcard issuance only"),
+            ({
+                "CAA": ['0 issue "letsencrypt.org"'],
+                "CAA_SOURCE": ["example.com"],
+            }, 0, "inherited from example.com"),
+        )
+        for records, deduction, detail in cases:
+            with self.subTest(records=records):
+                result = self._grade(records, domain="www.example.com")
+                caa = next(c for c in result.checks if c.name == "CAA")
+                self.assertEqual(caa.deduction, deduction)
+                self.assertIn(detail, caa.detail)
+
+    def test_dnskey_without_parent_ds_does_not_claim_dnssec(self):
+        result = self._grade({
+            "A": ["203.0.113.10"],
+            "NS": ["ns1.example.com.", "ns2.example.com."],
+            "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
+        })
+        dnssec = next(c for c in result.checks if c.name == "DNSSEC")
+        self.assertEqual(dnssec.status, "weak")
+        self.assertEqual(dnssec.deduction, 10)
+        self.assertIn("chain of trust is not established", dnssec.detail)
+
+    def test_parent_ds_without_apex_dnskey_does_not_claim_dnssec(self):
+        result = self._grade({
+            "A": ["203.0.113.10"],
+            "NS": ["ns1.example.com.", "ns2.example.com."],
+            "DS": ["12345 8 2 ABCDEF"],
+        })
+        dnssec = next(c for c in result.checks if c.name == "DNSSEC")
+        self.assertEqual(dnssec.status, "weak")
+        self.assertEqual(dnssec.deduction, 10)
+        self.assertIn("evidence is incomplete", dnssec.detail)
 
     def test_single_ns_is_weak(self):
         result = self._grade({"A": ["203.0.113.10"], "NS": ["ns1.example.com."]})
@@ -5341,6 +5797,224 @@ class DnsEngineTests(unittest.TestCase):
         self.assertEqual(name, "www.example.com")
         self.assertEqual(end, len(raw))
 
+    def test_normalize_domain_rejects_non_hostname_dns_labels(self):
+        from dns_security import normalize_domain
+        for bad in ("foo_bar.example", "_dmarc.example.com", "-bad.example", "bad-.example"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                normalize_domain(bad)
+
+    def test_read_name_rejects_cycles_forward_pointers_and_bad_lengths(self):
+        from dns_security import _read_name
+        malformed = (
+            b"\xc0\x00",                  # self-cycle
+            b"\xc0\x02\x00",            # forward pointer
+            b"\xc0\xff",                  # out-of-bounds pointer
+            b"\x40" + b"A" * 64 + b"\x00",  # reserved label type / >63
+            b"\x04ab",                    # declared label runs off packet
+            (b"\x3f" + b"a" * 63) * 4 + b"\x00",  # expanded name >255
+        )
+        for packet in malformed:
+            with self.subTest(packet=packet[:8]), self.assertRaises(ValueError):
+                _read_name(packet, 0)
+
+    def test_parse_response_correlates_id_question_and_response_flag(self):
+        import struct
+        from dns_security import QTYPE_A, QTYPE_TXT, _encode_name, _parse_response
+        name = "example.com"
+        question = _encode_name(name) + struct.pack("!HH", QTYPE_A, 1)
+        answer = b"\xc0\x0c" + struct.pack("!HHIH", QTYPE_A, 1, 60, 4) + b"\xcb\x00\x71\x09"
+        packet = struct.pack("!HHHHHH", 0xCAFE, 0x8180, 1, 1, 0, 0) + question + answer
+        header, answers = _parse_response(
+            packet, expected_id=0xCAFE, expected_name=name, expected_qtype=QTYPE_A
+        )
+        self.assertEqual(header["rcode_name"], "NOERROR")
+        self.assertEqual(answers, [("A", QTYPE_A, "203.0.113.9")])
+        for kwargs in (
+            {"expected_id": 0xBEEF},
+            {"expected_name": "other.example"},
+            {"expected_qtype": QTYPE_TXT},
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                _parse_response(packet, **kwargs)
+        not_response = packet[:2] + struct.pack("!H", 0x0100) + packet[4:]
+        with self.assertRaisesRegex(ValueError, "not a response"):
+            _parse_response(not_response)
+
+    def test_udp_query_connects_resolver_and_ignores_wrong_transaction(self):
+        import struct
+        import dns_security
+
+        query = struct.pack("!H", 0x1234) + b"query"
+        wrong = struct.pack("!H", 0x9999) + b"wrong"
+        right = struct.pack("!H", 0x1234) + b"right"
+
+        class FakeSocket:
+            def __init__(self):
+                self.connected = None
+                self.sent = b""
+                self.replies = [wrong, right]
+            def settimeout(self, _timeout): pass
+            def connect(self, address): self.connected = address
+            def send(self, payload): self.sent = payload; return len(payload)
+            def recv(self, _size): return self.replies.pop(0)
+            def close(self): pass
+
+        fake = FakeSocket()
+        addresses = [(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP, "", ("1.1.1.1", 53))]
+        with patch.object(dns_security, "_socket_addresses", return_value=addresses), \
+             patch.object(dns_security.socket, "socket", return_value=fake):
+            self.assertEqual(dns_security._query_udp(query, "1.1.1.1"), right)
+        self.assertEqual(fake.connected, ("1.1.1.1", 53))
+        self.assertEqual(fake.sent, query)
+
+    def test_tcp_query_reads_fragmented_length_and_body_exactly(self):
+        import struct
+        import dns_security
+
+        query = struct.pack("!H", 0x1234) + b"query"
+        body = struct.pack("!H", 0x1234) + b"response-body"
+        prefix = struct.pack("!H", len(body))
+
+        class FakeSocket:
+            def __init__(self):
+                self.replies = [prefix[:1], prefix[1:], body[:3], body[3:8], body[8:]]
+                self.sent = b""
+            def settimeout(self, _timeout): pass
+            def connect(self, _address): pass
+            def sendall(self, payload): self.sent = payload
+            def recv(self, size):
+                chunk = self.replies.pop(0)
+                self.assertion = len(chunk) <= size
+                return chunk
+            def close(self): pass
+
+        fake = FakeSocket()
+        addresses = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("1.1.1.1", 53))]
+        with patch.object(dns_security, "_socket_addresses", return_value=addresses), \
+             patch.object(dns_security.socket, "socket", return_value=fake):
+            self.assertEqual(dns_security._query_tcp(query, "1.1.1.1"), body)
+        self.assertTrue(fake.assertion)
+        self.assertEqual(fake.sent, struct.pack("!H", len(query)) + query)
+
+    def test_parse_response_rejects_malformed_typed_rdata(self):
+        import struct
+        from dns_security import QTYPE_A, _encode_name, _parse_response
+        question = _encode_name("example.com") + struct.pack("!HH", QTYPE_A, 1)
+        answer = b"\xc0\x0c" + struct.pack("!HHIH", QTYPE_A, 1, 60, 3) + b"bad"
+        packet = struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + question + answer
+        with self.assertRaisesRegex(ValueError, "A record length"):
+            _parse_response(
+                packet, expected_id=9, expected_name="example.com", expected_qtype=QTYPE_A
+            )
+
+    def test_resolve_domain_falls_back_and_reports_every_contacted_resolver(self):
+        import dns_security
+        error = {"rcode_name": "TIMEOUT"}
+        success = {"rcode_name": "NOERROR"}
+
+        def fake_query(resolver, _name, _qtype, _timeout):
+            return (error, []) if resolver == "192.0.2.1" else (success, [])
+
+        with patch.object(dns_security, "_query", side_effect=fake_query) as query:
+            _records, statuses, used = dns_security.resolve_domain(
+                "example.com", resolvers=["192.0.2.1", "192.0.2.2"]
+            )
+        self.assertTrue(all(status == "NOERROR" for status in statuses.values()))
+        self.assertEqual(used, "192.0.2.1, 192.0.2.2")
+        self.assertEqual(query.call_args_list[0].args[0], "192.0.2.1")
+        self.assertEqual(query.call_args_list[1].args[0], "192.0.2.2")
+        self.assertTrue(all(call.args[0] == "192.0.2.2" for call in query.call_args_list[2:]))
+
+    def test_resolve_domain_uses_nearest_inherited_caa_rrset(self):
+        import dns_security
+        success = {"rcode_name": "NOERROR"}
+        queried_caa = []
+
+        def fake_query(_resolver, name, qtype, _timeout):
+            if qtype == dns_security.QTYPE_CAA:
+                queried_caa.append(name)
+                if name == "example.com":
+                    return success, [("CAA", qtype, '0 issue "letsencrypt.org"')]
+            return success, []
+
+        with patch.object(dns_security, "_query", side_effect=fake_query), \
+             patch.object(dns_security, "DKIM_SELECTORS", ()):
+            records, statuses, _used = dns_security.resolve_domain(
+                "app.eu.example.com", resolvers=["192.0.2.53"]
+            )
+        self.assertEqual(
+            queried_caa,
+            ["app.eu.example.com", "eu.example.com", "example.com"],
+        )
+        self.assertEqual(records["CAA_SOURCE"], ["example.com"])
+        self.assertEqual(records["CAA"], ['0 issue "letsencrypt.org"'])
+        self.assertEqual(statuses["CAA@example.com"], "NOERROR")
+
+    def test_query_does_not_mix_cname_into_requested_values(self):
+        import struct
+        import dns_security
+        query = struct.pack("!H", 7) + b"query"
+        answers = [("CNAME", dns_security.QTYPE_CNAME, "alias.example."),
+                   ("A", dns_security.QTYPE_A, "203.0.113.10")]
+        header = {"rcode_name": "NOERROR", "truncated": False}
+        with patch.object(dns_security, "_build_query", return_value=query), \
+             patch.object(dns_security, "_query_udp", return_value=b"\x00\x07\x81\x80"), \
+             patch.object(dns_security, "_parse_response", return_value=(header, answers)):
+            status, values = dns_security._query(
+                "1.1.1.1", "example.com", dns_security.QTYPE_A, 8.0
+            )
+        self.assertEqual(status["rcode_name"], "NOERROR")
+        self.assertEqual(values, [("A", dns_security.QTYPE_A, "203.0.113.10")])
+
+    def test_cli_json_serializes_one_result_and_returns_risk_exit_code(self):
+        import io
+        import dns_security
+        result = dns_security.grade_dns_from_records(
+            "example.com",
+            {"A": ["203.0.113.10"], "NS": ["ns1.example.com."],
+             "MX": ["10 mail.example.com."]},
+        )
+        with patch.object(dns_security, "scan_dns", return_value=result), \
+             patch("sys.stdout", new_callable=io.StringIO) as output:
+            code = dns_security.main(["example.com", "--json"])
+        self.assertEqual(code, 1)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["domain"], "example.com")
+        self.assertEqual(payload[0]["error"], "")
+
+    def test_cli_rejects_an_invalid_domain_as_usage_error(self):
+        import io
+        import dns_security
+        with patch("sys.stderr", new_callable=io.StringIO) as output:
+            code = dns_security.main(["localhost"])
+        self.assertEqual(code, 2)
+        self.assertIn("Invalid domain", output.getvalue())
+
+    def test_cli_rejects_invalid_timeout_resolver_and_input_file(self):
+        import io
+        import dns_security
+        cases = (
+            (["example.com", "--timeout", "0"], "Invalid timeout"),
+            (["example.com", "--resolver", "resolver.example"], "Invalid resolver"),
+            (["--file", "/definitely/missing/cyberbuddy-domains.txt"], "Could not read"),
+        )
+        for argv, message in cases:
+            with self.subTest(argv=argv), \
+                 patch("sys.stderr", new_callable=io.StringIO) as output:
+                self.assertEqual(dns_security.main(argv), 2)
+                self.assertIn(message, output.getvalue())
+
+    def test_cli_normalizes_and_deduplicates_inputs_before_scanning(self):
+        import io
+        import dns_security
+        result = dns_security.grade_dns_from_records("example.com", {})
+        with patch.object(dns_security, "scan_dns", return_value=result) as scan, \
+             patch("sys.stdout", new_callable=io.StringIO):
+            dns_security.main(["Example.com", "https://example.com/path"])
+        scan.assert_called_once()
+        self.assertEqual(scan.call_args.args[0], "example.com")
+
 
 class DnsParityTests(unittest.TestCase):
     """The JS grader must agree with the Python engine, record map for record
@@ -5356,6 +6030,7 @@ class DnsParityTests(unittest.TestCase):
         "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
         "CAA": ['0 issue "letsencrypt.org"'],
         "DS": ["12345 8 2 ABCDEF"],
+        "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
     }
 
     def _python_grade(self):
@@ -5399,10 +6074,133 @@ class DnsParityTests(unittest.TestCase):
             self.assertEqual(js_checks[check.name][0], check.status, check.name)
             self.assertEqual(js_checks[check.name][1], check.deduction, check.name)
 
+    def test_js_grader_matches_python_for_email_policy_edges(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import json as _json
+        from dns_security import grade_dns_from_records
+        scenarios = [
+            {
+                "MX": ["10 mail.example.com."],
+                "TXT": ["v=spf1 ip4:203.0.113.0/24"],
+                "DMARC": ["v=DMARC1; p=reject; pct=0"],
+                "DKIM:default": ["v=DKIM1; p="],
+            },
+            {
+                "TXT": [
+                    "v=spf1 -include:a +a/24 ~mx:m/24 ?exists:%{i}.x ptr:y "
+                    "include:3 include:4 include:5 include:6 include:7 redirect=8"
+                ],
+                "DMARC": ["v=DMARC1; p=reject; sp=none"],
+                "DKIM:default": ["v=DKIM1; p=active"],
+            },
+            {
+                "TXT": ["v=spf1 -all", "v=spf1 ~all"],
+                "DMARC": ["v=DMARC1; p=reject", "v=DMARC1; p=quarantine"],
+            },
+        ]
+        expected = []
+        for records in scenarios:
+            result = grade_dns_from_records("example.com", records, {"A": "NOERROR"})
+            expected.append({
+                check.name: (check.status, check.deduction)
+                for check in result.checks
+            })
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\nconst scenarios = " + _json.dumps(scenarios) + ";\n"
+            + "console.log(JSON.stringify(scenarios.map((records) => {"
+            + " const r=gradeDnsFromRecords('example.com',records,{A:'NOERROR'},'browser');"
+            + " return Object.fromEntries(r.checks.map((c)=>[c.name,[c.status,c.deduction||0]]));"
+            + "})));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        actual = _json.loads(proc.stdout.strip().splitlines()[-1])
+        normalized_expected = [
+            {name: list(value) for name, value in checks.items()}
+            for checks in expected
+        ]
+        self.assertEqual(actual, normalized_expected)
+
+    def test_browser_doh_filters_answer_types_and_walks_inherited_caa(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\n(async function(){\n"
+            + "global.fetch = async function(){ return {ok:true,json:async function(){return {Status:0,Answer:[{type:5,data:'alias.example.'},{type:16,data:'\\\"v=spf1 \\\" \\\"-all\\\"'}]};}};};\n"
+            + "const txt = await dohResolve('app.example.com','TXT');\n"
+            + "const calls=[]; dohResolve=async function(name,type){calls.push([name,type]); return {status:'NOERROR',answers:name==='example.com' ? ['0 issue \\\"letsencrypt.org\\\"'] : []};};\n"
+            + "const records={}, statuses={}; await collectRelevantCaa('app.eu.example.com',records,statuses);\n"
+            + "console.log(JSON.stringify({txt:txt.answers,calls:calls,records:records,statuses:statuses}));\n"
+            + "})().catch(function(error){console.error(error);process.exit(1);});\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["txt"], ["v=spf1 -all"])
+        self.assertEqual(
+            payload["calls"],
+            [["app.eu.example.com", "CAA"], ["eu.example.com", "CAA"], ["example.com", "CAA"]],
+        )
+        self.assertEqual(payload["records"]["CAA_SOURCE"], ["example.com"])
+        self.assertEqual(payload["statuses"]["CAA@example.com"], "NOERROR")
+
+    def test_js_grader_refuses_to_score_incomplete_dns_evidence(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\nconst r = gradeDnsFromRecords('example.com', {A:['203.0.113.10']}, {A:'NOERROR',NS:'error'}, 'dns-relay');\n"
+            + "console.log(JSON.stringify({status:r.status,grade:r.grade,risk:r.risk,error:r.error,checks:r.checks}));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["grade"], "—")
+        self.assertEqual(payload["risk"], "unknown")
+        self.assertIn("NS", payload["error"])
+        self.assertEqual(payload["checks"][0]["name"], "DNS queries")
+
 
 class DnsSiteTests(unittest.TestCase):
     """The DNS tool is wired through the registry, menu, catalog, sitemap,
-    manifest, llms.txt and the Pages workflow patch."""
+    manifest, llms.txt and the applied Pages workflow."""
 
     def test_dns_tool_is_registered_as_standalone_assess(self):
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
@@ -5457,11 +6255,13 @@ class DnsSiteTests(unittest.TestCase):
         self.assertIn('qs.get("domain")', src)
         self.assertIn('"/dns": "/tools/dns/"', src)
 
-    def test_patch_doc_documents_the_dns_copy(self):
-        """The arena token cannot push .github/workflows/**, so the one-line
-        tool copy edit is carried for the maintainer, like the others."""
-        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        self.assertIn("tools/dns", patch)
+    def test_hosted_dns_function_has_scanner_timeout_budget(self):
+        config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(config["functions"]["api/dns.py"]["maxDuration"], 60)
+
+    def test_pages_workflow_publishes_the_dns_tool(self):
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+        self.assertIn("tools/dns", workflow)
 
 
 if __name__ == "__main__":

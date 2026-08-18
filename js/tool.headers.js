@@ -75,7 +75,7 @@
         "<h3>Header read declined</h3>" +
         "<p>Third-party relays were declined, so response headers cannot be read " +
         "from this hosted page. Run <code>python3 server.py</code> locally for a " +
-        "same-origin scan that never leaves your machine, then retry.</p>";
+        "direct scan with no third-party header relay, then retry.</p>";
       $("staticNotice").classList.remove("hidden");
       $("results").classList.add("hidden");
       return;

@@ -71,6 +71,18 @@
   <script src="../../js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/tools/dns/" data-init="initDns">
+<noscript>
+  <aside class="noscript-banner" aria-label="JavaScript status">
+    <p><strong>JavaScript is disabled.</strong> Reading pages and links still work, but interactive scanners, local security utilities, theme controls, and exports require JavaScript.</p>
+    <nav class="noscript-nav" aria-label="No-JavaScript navigation">
+      <a href="../../">Home</a>
+      <a href="../../tools/">Tools</a>
+      <a href="../../guides/">Guides</a>
+      <a href="../../methodology/">Methodology</a>
+      <a href="../../documentation/">Documentation</a>
+    </nav>
+  </aside>
+</noscript>
 <main id="main" class="container page-hero">
 
   <p class="kicker reveal">Tool 07</p>
@@ -191,8 +203,8 @@
     <p>
       No DNS records could be read for this domain from this hosted page.
       Public DNS lookups may have been declined, blocked or rate-limited.
-      Run <code>python3 server.py</code> locally for a resolver-local scan
-      that never leaves your machine, then retry.
+      Run <code>python3 server.py</code> locally to use your configured system
+      resolver instead of Google Public DNS, then retry.
     </p>
   </div>
 

@@ -43,7 +43,7 @@ Short, tool-connected notes — one per tool. Each guide covers one weakness, ho
 
 1. Python engines (`server.py` or optional Vercel `api/`) when reachable.
 2. Same-origin published reports at `cache/<host>.json` for the demo targets listed in `urls.txt` (GitHub Actions, every 6 hours).
-3. In-browser graders, a direct CORS read, then opt-in third-party header relays. All checks are read-only GETs.
+3. In-browser graders, a direct CORS read, then opt-in third-party header relays. HTTP checks are non-destructive: a GET baseline plus analyst-selected HEAD/OPTIONS and CORS preflight simulation; CyberBuddy never sends POST, PUT, PATCH, or DELETE to a target.
 4. The DNS & Domain Security Analyzer reads public DNS through the system resolver locally, or a consent-gated DNS-over-HTTPS lookup (Google Public DNS) on the hosted site. It never connects to the target's own servers.
 
 ## Constraints
@@ -52,4 +52,4 @@ Authorized testing only. Do not scan systems without permission. Results are adv
 
 ## Privacy
 
-Scan history is stored only in the user's browser (localStorage, 24h expiry); it is never uploaded and never shared between users. Published reports cover only the fixed demo targets in urls.txt, never user-submitted URLs. Third-party header relays (hackertarget.com, allorigins.win, corsproxy.io, codetabs.com) are opt-in, receive the hostname only by default, and their results are labelled unverified. The DNS analyzer's hosted fallback sends only the domain name to dns.google after consent; records returned that way are labelled unverified.
+Scan history is stored only in the user's browser (localStorage, 24h expiry); it is never uploaded and never shared between users. Published reports cover only the fixed demo targets in urls.txt, never user-submitted URLs. Third-party header relays (hackertarget.com, allorigins.win, corsproxy.io, codetabs.com) are opt-in, receive the hostname only by default, and their results are labelled unverified. The DNS analyzer's hosted fallback sends the domain name and its parent labels needed for inherited CAA checks to dns.google after consent; records returned that way are labelled unverified.

@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a focused capability or improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What assessment or operator problem is currently difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the user flow, evidence produced, and standards or primary references.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Security and privacy boundaries
+      description: What contacts a target, what stays local, what consent is needed, and how hostile input is handled?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: Project fit
+      options:
+        - label: The proposal can preserve clear authorization and non-destructive defaults.
+          required: true
+        - label: The proposal can produce honest evidence without overstating a vulnerability verdict.
+          required: true

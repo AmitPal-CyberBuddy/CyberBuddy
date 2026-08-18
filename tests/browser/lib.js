@@ -5,11 +5,13 @@
  * CI). Run them locally against a live server:
  *
  *   python3 server.py --port 8080 --allow-private   # in another shell
- *   CB_CHROME=/path/to/chrome node tests/browser/layout.js
- *   CB_CHROME=/path/to/chrome node tests/browser/dropdown.js
- *   CB_CHROME=/path/to/chrome node tests/browser/overlays.js
+ *   for suite in layout dropdown overlays relay-gate responsive csrf jwt; do
+ *     CB_CHROME=/path/to/chrome node "tests/browser/${suite}.js" || exit 1
+ *   done
  *
- * Requires `npm i puppeteer-core` somewhere on NODE_PATH. Each suite exits
+ * Install outside the repo with
+ * `npm install --prefix /tmp/cyberbuddy-browser puppeteer-core`, then export
+ * `NODE_PATH=/tmp/cyberbuddy-browser/node_modules`. Each suite exits
  * non-zero on the first failed assertion so it can gate a release.
  */
 "use strict";

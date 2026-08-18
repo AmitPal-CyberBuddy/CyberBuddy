@@ -17,7 +17,7 @@ report card as the other assess tools. It reads:
 | DMARC | 20 | `_dmarc` TXT with `p=quarantine` or `p=reject` |
 | SPF | 15 | one `v=spf1` TXT ending `-all`/`~all`, within the 10-lookup budget |
 | DKIM | 10 | a `v=DKIM1` key on a common selector |
-| DNSSEC | 10 | DS published at the parent zone |
+| DNSSEC | 10 | DS published at the parent and DNSKEY at the apex |
 | Name servers | 10 | at least two authoritative NS |
 | CAA | 5 | a certificate-authority authorization record |
 
@@ -46,7 +46,7 @@ deductions. An NXDOMAIN domain is reported **unknown — never graded**.
 4. **No cached layer.** CI publishes HTTP scan caches; DNS has no cache layer —
    the Python engine or the consent-gated DoH grader always answers fresh.
 5. **Honesty rules** (carried through the UI, guide and tests): a DKIM miss is
-   a hint, never proof of absence; DNSSEC verdicts key on DS, not DNSKEY;
+   a hint, never proof of absence; DNSSEC credit requires both parent DS and apex DNSKEY evidence;
    RFC 7505 null MX means "no email", not a missing MX.
 
 ## 3. Files

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https: http:; frame-src 'none'" />
   <title>CyberBuddy — Browser Security Assessment Suite</title>
-  <meta name="description" content="CyberBuddy: clickjacking validation, security header and CSP auditing, CORS posture checks, CSRF PoC generation, and JWT Security Workbench — evidence-grade results for your report." />
+  <meta name="description" content="CyberBuddy: seven browser security tools for clickjacking, headers, CSP, CORS, DNS, CSRF, and JWT testing — with evidence-grade results for your report." />
   <meta name="theme-color" content="#07090d" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)" />
   <meta name="color-scheme" content="dark light" />
@@ -19,11 +19,12 @@
   <link rel="prefetch" href="tools/headers/" />
   <link rel="prefetch" href="tools/cors/" />
   <link rel="prefetch" href="tools/csp/" />
+  <link rel="prefetch" href="tools/dns/" />
   <link rel="prefetch" href="tools/csrf/" />
   <link rel="prefetch" href="tools/jwt/" />
 
   <meta property="og:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta property="og:description" content="Clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT Security Workbench — evidence-grade checks you can screenshot." />
+  <meta property="og:description" content="Seven browser security tools for clickjacking, headers, CSP, CORS, DNS, CSRF, and JWT testing — with evidence-grade output." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CyberBuddy" />
   <meta property="og:url" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/" />
@@ -33,7 +34,7 @@
   <meta property="og:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CyberBuddy — Browser Security Assessment Suite" />
-  <meta name="twitter:description" content="Clickjacking, security headers, CSP, CORS, CSRF PoC generation, and JWT Security Workbench — evidence-grade checks you can screenshot." />
+  <meta name="twitter:description" content="Seven browser security tools for clickjacking, headers, CSP, CORS, DNS, CSRF, and JWT testing — with evidence-grade output." />
   <meta name="twitter:image" content="https://amitpal-cyberbuddy.github.io/CyberBuddy/og-cyberbuddy.png" />
   <meta name="twitter:image:alt" content="CyberBuddy — Browser Security Assessment Suite" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2307090d' stroke='%233ee0c2' stroke-width='2'/%3E%3Cpath d='M8 16h4l3-7 6 14 3-7h4' fill='none' stroke='%233ee0c2' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
@@ -53,7 +54,7 @@
       "@type": "WebApplication",
       "name": "CyberBuddy",
       "url": "https://amitpal-cyberbuddy.github.io/CyberBuddy/",
-      "description": "Browser security assessment suite — clickjacking validation, security header grading, CSP auditing, CORS posture checks, CSRF PoC generation, and JWT Security Workbench with evidence-grade output. Authorized testing only.",
+      "description": "Seven-tool browser security assessment suite for clickjacking, security headers, CSP, CORS, DNS posture, CSRF PoC generation, and JWT testing, with evidence-grade output. Authorized testing only.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Any (web browser)",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -74,6 +75,18 @@
   <script src="js/boot.js?v=20260816f" defer></script>
 </head>
 <body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
+<noscript>
+  <aside class="noscript-banner" aria-label="JavaScript status">
+    <p><strong>JavaScript is disabled.</strong> Reading pages and links still work, but interactive scanners, local security utilities, theme controls, and exports require JavaScript.</p>
+    <nav class="noscript-nav" aria-label="No-JavaScript navigation">
+      <a href="./">Home</a>
+      <a href="./tools/">Tools</a>
+      <a href="./guides/">Guides</a>
+      <a href="./methodology/">Methodology</a>
+      <a href="./documentation/">Documentation</a>
+    </nav>
+  </aside>
+</noscript>
 <main id="main" class="container">
 
   <section class="hero">
@@ -83,9 +96,9 @@
       <span class="line">report needs.</span>
     </h1>
     <p class="lead reveal" style="--d: .14s; margin-top: 16px;">
-      Clickjacking, security headers, CSP, CORS, CSRF PoC generation, and
-      JWT Security Workbench — assessed against OWASP-aligned methodology with raw evidence you can
-      screenshot. Authorized testing only. All scans are read-only GETs.
+      Clickjacking, security headers, CSP, CORS, DNS posture, CSRF PoC generation,
+      and JWT testing — assessed against OWASP-aligned methodology with raw evidence
+      you can screenshot. Authorized testing only; network checks are non-destructive.
     </p>
 
     <div class="suite-wrap reveal" style="--d: .2s;">
@@ -152,8 +165,8 @@
       <div class="card">
         <h2 style="font-size: 1.02rem;">Built for assessments</h2>
         <ul class="why-list">
-          <li><strong>No tab sprawl.</strong> Framing protections, header posture, CSP, CORS, and CSRF PoCs — one roof.</li>
-          <li><strong>Evidence-grade output.</strong> Every finding shows the raw header value it used.</li>
+          <li><strong>No tab sprawl.</strong> Seven focused tools for web, DNS, CSRF, and JWT assessment — one roof.</li>
+          <li><strong>Evidence-grade output.</strong> Every assessed finding shows the raw evidence behind it.</li>
           <li><strong>Hosted and local.</strong> GitHub Pages runs the graders in your browser. <code>server.py</code> is the same scoring, on your machine.</li>
         </ul>
         <div class="disclaimer mt-0" style="margin-top: 18px;">
@@ -172,23 +185,24 @@
     <article class="card scope-card reveal" style="--d: .05s;">
       <p class="card-title">What CyberBuddy does</p>
       <ul class="scope-list does">
-        <li><strong>Read-only GET requests</strong> — no state is changed on the target</li>
-        <li><strong>Header inspection</strong> — the raw value behind every finding</li>
-        <li><strong>CORS analysis</strong> — cross-origin access posture</li>
+        <li><strong>Non-destructive HTTP checks</strong> — a GET baseline plus analyst-selected HEAD, OPTIONS, and preflight simulation for CORS</li>
+        <li><strong>Header inspection</strong> — the raw value behind every assessed finding</li>
+        <li><strong>DNS posture analysis</strong> — public records through a resolver, never the target's servers</li>
+        <li><strong>CORS analysis</strong> — cross-origin access posture with explicit method coverage</li>
         <li><strong>Framing analysis</strong> — live clickjacking proof</li>
-        <li><strong>CSRF PoC generation</strong> — standalone HTML from a pasted request, fully local</li>
-        <li><strong>JWT analysis &amp; verification</strong> — local decode, claim inspection, crypto verification, prioritized VAPT test suggestions &amp; payloads, variant generation and secret testing</li>
+        <li><strong>CSRF PoC generation</strong> — standalone HTML from a pasted request, fully local and inert inside CyberBuddy</li>
+        <li><strong>JWT analysis &amp; verification</strong> — local decode, claim inspection, crypto verification, prioritized VAPT test suggestions &amp; payloads, variant generation and bounded secret testing</li>
         <li><strong>Evidence collection</strong> — screenshot-ready report cards</li>
       </ul>
     </article>
     <article class="card scope-card reveal" style="--d: .12s;">
       <p class="card-title">What it does not do</p>
       <ul class="scope-list doesnot">
-        <li><strong>Exploitation</strong> — no payloads, no attacks</li>
-        <li><strong>Authentication bypass</strong> — no credential testing</li>
-        <li><strong>Destructive requests</strong> — GET only</li>
-        <li><strong>POST / PUT / DELETE testing</strong> — never sent</li>
+        <li><strong>Automatic exploitation</strong> — generated PoCs and JWT test artifacts stay inert until you deliberately export and use them</li>
+        <li><strong>Login attacks</strong> — no credential submission, spraying, or authentication bypass automation</li>
+        <li><strong>State-changing HTTP requests</strong> — CyberBuddy never sends POST, PUT, PATCH, or DELETE to a target</li>
         <li><strong>Credential collection</strong> — tokens, keys and requests processed locally never leave your browser</li>
+        <li><strong>Silent third-party sharing</strong> — relays and hosted DNS lookups require consent and disclose exactly what leaves the page</li>
       </ul>
     </article>
   </div>
@@ -284,25 +298,25 @@
 
   <div class="stats-row" role="list" aria-label="CyberBuddy by the numbers">
     <div class="stat reveal" style="--d: .05s;" role="listitem">
-      <span class="stat-num" data-count="7" data-pad="2">0</span>
+      <span class="stat-num" data-count="7" data-pad="2">07</span>
       <span class="stat-label">Live security tools</span>
     </div>
     <div class="stat reveal" style="--d: .12s;" role="listitem">
-      <span class="stat-num" data-count="10">0</span>
+      <span class="stat-num" data-count="10">10</span>
       <span class="stat-label">Header classes graded</span>
     </div>
     <div class="stat reveal" style="--d: .19s;" role="listitem">
-      <span class="stat-num" data-count="100">0</span>
+      <span class="stat-num" data-count="100">100</span>
       <span class="stat-label">Point scoring scale (0–100)</span>
     </div>
     <div class="stat reveal" style="--d: .26s;" role="listitem">
-      <span class="stat-num" data-count="6">0</span>
-      <span class="stat-label">Grade bands, A–F</span>
+      <span class="stat-num" data-count="5">5</span>
+      <span class="stat-label">Grade bands: A, B, C, D, F</span>
     </div>
   </div>
 
   <div class="section-head reveal">
-    <h2>How an assessment runs</h2>
+    <h2>How an HTTP assessment runs</h2>
   </div>
   <div class="pipeline-diagram reveal" style="--d: .06s;">
     <div class="pd-node">
@@ -318,7 +332,7 @@
     <div class="pd-node">
       <span class="pd-step">03</span>
       <div><strong>Collect evidence</strong>
-        <p>Read-only GETs capture the raw response values.
+        <p>Non-destructive probes capture raw responses; CORS coverage can add selected HEAD, OPTIONS, and preflight checks.
         <span class="pd-tags"><span class="tool-tag">headers</span><span class="tool-tag">CORS</span><span class="tool-tag">framing</span><span class="tool-tag">CSP</span></span></p>
       </div>
     </div>

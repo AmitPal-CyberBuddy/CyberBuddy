@@ -1,5 +1,12 @@
 # CyberBuddy
 
+[![CI](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/ci.yml/badge.svg)](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/ci.yml)
+[![GitHub Pages](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/pages.yml/badge.svg)](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/pages.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
+
+**[Launch CyberBuddy](https://amitpal-cyberbuddy.github.io/CyberBuddy/)** · [Tools](https://amitpal-cyberbuddy.github.io/CyberBuddy/tools/) · [Guides](https://amitpal-cyberbuddy.github.io/CyberBuddy/guides/) · [Documentation](https://amitpal-cyberbuddy.github.io/CyberBuddy/documentation/) · [Methodology](https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/)
+
 A single web product that hosts multiple browser security checks under one UI.
 Night-ops console theme (dark by default, with a sun/moon toggle in the header
 that persists per browser) — no framework, no build step, no third-party Python
@@ -8,8 +15,12 @@ browser on GitHub Pages and on `server.py` when you host it yourself.
 
 Requires **Python 3.10+** (`python3 --version`).
 
-**Authorized testing only.** Every tool scans systems you point it at; you are
-responsible for having permission to test them. All checks are read-only GETs.
+**Authorized testing only.** Use target assessments only on systems you own or
+have written permission to test. Network checks are non-destructive: HTTP
+assessment uses a GET baseline plus analyst-selected HEAD/OPTIONS and CORS
+preflight simulation; CyberBuddy never sends POST, PUT, PATCH, or DELETE to a
+target. DNS analysis reads public records through a resolver. CSRF and JWT
+artifacts are generated locally and are never executed automatically.
 
 ## Tools
 
@@ -119,7 +130,7 @@ guides/
   jwt/index.html                # guide, paired with the JWT Security Workbench
   dns/index.html                # guide, paired with the DNS & Domain Security Analyzer
 css/app.css                     # shared design system
-css/noscript.css                # no-JS fallback (reveal animations off)
+css/noscript.css                # no-JS content, navigation, and inactive-control fallback
 css/404.css                     # standalone styles for 404.html
 js/app.js                       # shared helpers (nav, footer, icons, API, export)
 js/boot.js                      # reads <body data-page/data-init> and boots a page
@@ -147,7 +158,7 @@ LICENSE                         # Apache-2.0
 tests/grader_fixtures.json      # shared headers/clickjacking Python<->JS contract
 tests/csp_fixtures.json         # shared CSP Python<->JS audit contract
 docs/performance.md             # engine performance notes
-docs/pages-workflow-patch.md    # REQUIRED manual edit to pages.yml
+docs/pages-workflow-patch.md    # historical note for the applied Pages asset-check repair
 docs/DEV-NOTES.md               # internal maintainer notes — never deployed, never in shipped files
 urls.txt                        # demo targets pre-scanned for the published cache
 humans.txt                      # who built it
@@ -185,9 +196,15 @@ python3 cors_validator.py https://example.com/api
 
 python3 csp_checker.py https://example.com
 python3 csp_checker.py -f urls.txt --json
+
+python3 dns_security.py example.com
+python3 dns_security.py example.com --json
 ```
 
-`--public-only` refuses loopback / RFC1918 targets (metadata is always blocked).
+For the four HTTP CLIs, `--public-only` refuses loopback / RFC1918 targets
+(metadata and link-local addresses are always blocked). The DNS CLI accepts
+public domain names rather than target URLs and queries only configured DNS
+resolvers.
 
 The CSP auditor includes the useful baseline checks from the original standalone
 checker — missing enforcement, wildcards, `'unsafe-inline'`, `'unsafe-eval'`,
@@ -218,43 +235,21 @@ checked automatically (node required for the JS side; skipped if absent).
 GitHub Pages is static — no Python, no relays needed for most targets. Three
 layers make the hosted site as close to `server.py` as possible:
 
-1. **Cached reports (built-in).** Add your targets to `urls.txt` and build
-   the cache — the UI reads `cache/<host>.json` same-origin whenever it is
-   present. Two ways to produce it:
+1. **Cached reports (built-in).** Add authorized demo targets to `urls.txt`.
+   The Pages workflow already runs `python3 tools/build_cache.py` on deploy and
+   every six hours, copies any generated `cache/` directory into the artifact,
+   and publishes the project metadata, methodology, guides, documentation and
+   disclosure contact. To inspect the same output locally, run the cache
+   builder directly; generated reports are intentionally ignored by Git:
 
-   - **Locally (zero workflow changes):** `python3 tools/build_cache.py`,
-     then commit the generated `cache/` directory. Your targets get full
-     reports — two-origin CORS proof, server-side header reads,
-     metadata/private-IP blocking — with **no third-party relays**.
-   - **Automatically (one-time workflow edit):** add these two lines to the
-     `build` job of `.github/workflows/pages.yml` so every deploy (and a
-     `schedule` of your choosing) refreshes the cache before publishing:
+   ```bash
+   python3 tools/build_cache.py
+   ```
 
-     ```yaml
-     - name: Build scan cache
-       run: python3 tools/build_cache.py
-     ```
-     and add `test -d cache && cp -a cache _site/ || true` to the
-     *Assemble static site* step. (The workflow files are owned by the
-     repo maintainer — edit them on your branch.)
-
-   - **Metadata assets:** the workflow also copies `og-cyberbuddy.png`,
-     `icon-192.png`, `icon-512.png`, `manifest.webmanifest`, `robots.txt`,
-     `sitemap.xml`, `humans.txt`, `llms.txt`, the `methodology/` page, the
-     `guides/` section, the `documentation/` page, and
-     `.well-known/security.txt` into `_site/`. Use
-     `test -f "$f" && cp "$f" _site/ || true` for each file so the build
-     never fails if an asset is temporarily missing. Also add
-     `test -d .well-known && cp -a .well-known _site/ || true` for the
-     security contact file, `test -d methodology && cp -a methodology _site/ || true`
-     for the full scoring page, `test -d guides && cp -a guides _site/ || true`
-     for the guides section, and
-     `test -d documentation && cp -a documentation _site/ || true` for the
-     documentation page.
-
-   The UI prefers the cache over the public lookups (fresh within 48h) and
-   marks reports `via cached report`. The lookup path is `appBase() + "/cache/"`
-   so GitHub Pages resolves `/CyberBuddy/cache/<host>.json`.
+   Cached reports provide full server-side HTTP evidence for the fixed demo
+   list without relaying a visitor's input. The UI prefers a fresh published
+   report (within 48 hours), marks it `via published report`, and resolves it
+   from `appBase() + "/cache/"` so project Pages hosting works correctly.
 2. **Optional hosted API (`api/`).** Deploy the `api/` folder (Vercel free
    tier: `vercel --prod`), then set `API_BASE` in `js/app.js` to the
    deployment URL. The frontend health check finds it and the same Python
@@ -349,16 +344,18 @@ contextual. The [JWT guide](guides/jwt/) is paired with the tool. See
 
 ## Evidence and export
 
-Every tool renders a self-contained **report card** — target, final URL, HTTP
-status, UTC timestamp, verdict, per-finding evidence, and a provenance strip
-naming the tool, engine and time so a cropped screenshot is still
-self-identifying.
+The four HTTP scanners render self-contained **report cards** — target, final
+URL, HTTP status, UTC timestamp, verdict, per-finding evidence, and a
+provenance strip naming the tool, engine and time so a cropped screenshot is
+still self-identifying. DNS renders a domain-posture report with record
+evidence and resolver provenance. The two local utilities export their own
+purpose-built artifacts rather than pretending to have scanned a target.
 
 **Evidence mode** (on by default, toggle under the scan bar) collapses the page
 chrome once results render, so the whole card fits one viewport and an OS
 snipping tool captures it in a single shot.
 
-The **Export** menu offers:
+On the four HTTP scanners and the DNS analyzer, the shared **Export** menu offers:
 
 | Option | What you get | Availability |
 | --- | --- | --- |
@@ -368,6 +365,11 @@ The **Export** menu offers:
 | Copy / download JSON | Versioned `cyberbuddy-report/v1` envelope for automation | everywhere |
 | Download CSV | Spreadsheet-safe metadata and findings (formula injection neutralized) | everywhere |
 | Download standalone HTML | Script-free, printable and portable report | everywhere |
+
+Here, “everywhere” means each of those five reporting tools. CSRF instead
+exports the generated PoC HTML and a Markdown assessment; JWT offers explicit
+copy/download actions for its analysis, test tokens, variants, and generated
+keys.
 
 A cross-origin iframe **cannot** be rasterised in JavaScript: canvas pixels would
 be tainted, and `html2canvas` does not render iframes. CyberBuddy therefore does
@@ -410,6 +412,10 @@ Top-level navigation remains blocked.
 ## Notes
 
 - Keyboard: `/` focuses the URL field, `t` toggles theme, `?` opens shortcuts.
+  JWT key selectors also implement Arrow, Home, and End tab navigation. If
+  JavaScript is unavailable, reference content and a static global navigation
+  remain usable while a visible notice identifies scanners, utilities, theme,
+  and export controls as unavailable.
   Scoring notes live on the hub under the
   [How CyberBuddy scores](https://amitpal-cyberbuddy.github.io/CyberBuddy/#methodology) section,
   with the full page at the [methodology page](https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/).
@@ -418,9 +424,12 @@ Top-level navigation remains blocked.
   `script-src 'self'` with no `'unsafe-inline'`, plus `Permissions-Policy`,
   COOP/COEP/CORP and `frame-ancestors 'self'`. The remaining 5 points are the
   plain-HTTP transport warning on a loopback bind.
-- The scan APIs refuse cross-origin browser requests (Origin / Referer check)
-  and never fetch cloud-metadata or link-local addresses. Treat a `0.0.0.0`
-  bind as an explicit choice, not the default.
+- The local scan APIs reject cross-origin browser requests and DNS-rebinding
+  `Host` values. Every request must include the non-simple
+  `X-Requested-With: CyberBuddy` opt-in header (the UI does this), and
+  `Origin`/`Referer` must be same-origin when present. This also blocks
+  drive-by rebinding against an intentional `0.0.0.0`/LAN bind. The scanners
+  never fetch cloud-metadata or link-local addresses.
 - **DNS rebinding is guarded at connect time.** `validate_target()` resolves a
   hostname to decide whether it is allowed, but urllib resolves again when it
   actually connects — a hostile resolver can answer public for the check and
@@ -460,6 +469,21 @@ consequences for a tool that grades response headers:
 
 - Asset cache-busting (`?v=…`) is stamped with the commit SHA by the Pages
   workflow — do not hand-maintain those strings.
+
+## Contributing and security
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow
+the [Code of Conduct](CODE_OF_CONDUCT.md), and run the complete release gate
+before opening a pull request (requires Git, Python 3.10+, and Node.js; CI uses
+Node 20):
+
+```bash
+python3 tools/verify.py
+```
+
+Please report vulnerabilities in CyberBuddy itself privately according to
+[SECURITY.md](SECURITY.md), not in a public issue. Never attach live tokens,
+credentials, private target URLs, or customer data to an issue or pull request.
 
 ## License
 
