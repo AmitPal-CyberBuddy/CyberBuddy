@@ -1174,9 +1174,18 @@
     "given_name", "family_name", "phone_number", "sid", "nonce", "at_hash",
     "c_hash", "azp", "act", "cnf"];
 
+  /* Registered claim timestamps render in IST (Asia/Kolkata, UTC+5:30) so a
+     pasted report does not depend on the reader's timezone. */
+  var IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+  function fmtIst(ms) {
+    return new Date(ms + IST_OFFSET_MS).toISOString()
+      .replace("T", " ").replace(/\.\d{3}Z$/, " IST");
+  }
+
   function fmtClaimTime(v) {
     if (typeof v !== "number" || !isFinite(v)) return String(v);
-    try { return new Date(v * 1000).toISOString().replace(".000Z", "Z") + " (" + v + ")"; }
+    try { return fmtIst(v * 1000) + " (" + v + ")"; }
     catch (e) { return String(v); }
   }
 
