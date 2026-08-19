@@ -636,6 +636,16 @@ input[aria-invalid="true"] { border-color: var(--high); box-shadow: 0 0 0 3px va
   font-size: 0.74rem; font-family: var(--font-mono); font-weight: 600;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); margin: 0 0 14px;
 }
+.card-title .inline-url {
+  font-size: 0.72rem; font-weight: 400; text-transform: none;
+  letter-spacing: 0; color: var(--ink-2);
+  margin-left: 8px; vertical-align: middle;
+  max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline;
+}
+.card-title .inline-url::before {
+  content: "— "; color: var(--faint);
+}
 
 /* Tool cards */
 /* auto-fit/minmax: cards reflow to fill the container at every device class

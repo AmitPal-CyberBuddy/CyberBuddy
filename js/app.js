@@ -1432,11 +1432,16 @@ function fmtStamp(d) {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-/* Reports get an unambiguous UTC stamp — a screenshot pasted into an
-   assessment should not depend on the reader guessing the tester's zone. */
+/* Reports get an unambiguous timestamp — screenshot pasted into an
+   assessment should not depend on the reader guessing the tester's zone.
+   Uses IST (Asia/Kolkata) by default for readability in Indian contexts. */
 function fmtStampUtc(d) {
   d = d || new Date();
-  return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  // Use IST (UTC+5:30) for display consistency
+  const istOffset = 5.5 * 60; // IST is UTC+5:30 in minutes
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const ist = new Date(utc + (istOffset * 60000));
+  return ist.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " IST");
 }
 
 /* ---------- Score gauge ------------------------------------------------
