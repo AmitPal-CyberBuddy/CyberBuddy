@@ -65,9 +65,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260819b" />
-  <script src="../../js/app.js?v=20260819b" defer></script>
-  <script src="../../js/boot.js?v=20260819b" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260819c" />
+  <script src="../../js/app.js?v=20260819c" defer></script>
+  <script src="../../js/boot.js?v=20260819c" defer></script>
 </head>
 <body data-page="/tools/clickjacking/" data-init="initClickjacking">
 <noscript>
@@ -165,7 +165,7 @@
 
       <div class="poc-grid poc-stack">
         <article class="card inset-card poc-frame-card">
-          <h3 class="card-title">Live frame test · visual confirmation</h3>
+          <h3 class="card-title">Live frame test · visual confirmation <span id="liveFrameUrl" class="inline-url"></span></h3>
           <p class="note">A rendered UI confirms the page is frameable in this browser. A blank pane indicates framing is blocked by <code>X-Frame-Options</code> or CSP <code>frame-ancestors</code>.</p>
           <div id="stage" class="stage">
             <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
@@ -217,6 +217,6 @@
 
 </main>
 
-<script src="../../js/tool.clickjacking.js?v=20260819b" defer></script>
+<script src="../../js/tool.clickjacking.js?v=20260819c" defer></script>
 </body>
 </html>

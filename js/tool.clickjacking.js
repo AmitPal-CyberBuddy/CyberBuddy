@@ -42,13 +42,28 @@
   }
 
   function setVerdict(risk, text, opts) {
-    $("verdict").textContent = risk;
-    $("verdict").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-    bump($("verdict"));
+    // When protection is ENABLED (risk=low), integrate the verdict to avoid
+    // showing "Clickjacking protection: ENABLED" with a separate "LOW" badge.
+    // The protection text already conveys the status clearly.
+    const r = (risk || "").toLowerCase();
+    const p = protectionLabel(risk, opts);
+
+    // Show verdict badge only when not showing "ENABLED" for low risk,
+    // or when the verdict is "FRAME ONLY" / unknown (needs visual check)
+    const showVerdictBadge = r !== "low" && r !== "frame only";
+
+    if (showVerdictBadge) {
+      $("verdict").textContent = risk;
+      $("verdict").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : r);
+      $("verdict").style.display = "";
+      bump($("verdict"));
+    } else {
+      $("verdict").style.display = "none";
+    }
+
     $("summary").textContent = text;
     $("verdictBanner").className = "verdict-banner " +
-      (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-    const p = protectionLabel(risk, opts);
+      (risk === "FRAME ONLY" ? "unknown" : r);
     $("protection").textContent = p.text;
     $("protection").className = "protection-line " + p.cls;
   }
@@ -72,6 +87,14 @@
     $("mEngine").textContent = sourceLabel(data || { _source: "browser" });
     $("mMethod").textContent = "GET · read-only";
     $("mDuration").textContent = data && data._duration_ms != null ? data._duration_ms + " ms" : "—";
+    // Also update the inline URL in the Live frame test title
+    $("liveFrameUrl").textContent = url;
+    // When protection is enabled (risk=low), hide the source chip to reduce
+    // visual clutter — the protection status is the primary signal.
+    const risk = data && data.risk ? data.risk.toLowerCase() : "unknown";
+    if (risk === "low") {
+      $("sourceChip").classList.add("hidden");
+    }
   }
 
   function renderRows(list, url) {
