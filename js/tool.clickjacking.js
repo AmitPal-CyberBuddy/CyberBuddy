@@ -6,6 +6,7 @@
 (function () {
   let cbLastData = null;
   let frameLoaded = false;
+  let confirmTimer = null;
   let frameObservation = {
     event: "pending",
     rendered: null,
@@ -30,24 +31,37 @@
     if (cbLastData) attachFrameEvidence(cbLastData);
   }
 
-  function protectionLabel(risk) {
+  function protectionLabel(risk, opts) {
     const r = (risk || "").toLowerCase();
-    if (r === "low") return { text: "Clickjacking protection: ENABLED", cls: "low" };
-    if (r === "medium") return { text: "Clickjacking protection: PARTIAL", cls: "medium" };
-    if (r === "high") return { text: "Clickjacking protection: NOT ENABLED", cls: "high" };
+    const visual = !!(opts && opts.confirmation === "manual");
+    const byVisual = visual ? " (by visual confirmation)" : "";
+    if (r === "low") return { text: "Clickjacking protection: ENABLED" + byVisual, cls: "low" };
+    if (r === "medium") return { text: "Clickjacking protection: PARTIAL" + byVisual, cls: "medium" };
+    if (r === "high") return { text: "Clickjacking protection: NOT ENABLED" + byVisual, cls: "high" };
     return { text: "Clickjacking protection: MANUAL CHECK", cls: "unknown" };
   }
 
-  function setVerdict(risk, text) {
+  function setVerdict(risk, text, opts) {
     $("verdict").textContent = risk;
     $("verdict").className = "risk " + (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
     bump($("verdict"));
     $("summary").textContent = text;
     $("verdictBanner").className = "verdict-banner " +
       (risk === "FRAME ONLY" ? "unknown" : risk.toLowerCase());
-    const p = protectionLabel(risk);
+    const p = protectionLabel(risk, opts);
     $("protection").textContent = p.text;
     $("protection").className = "protection-line " + p.cls;
+  }
+
+  function clearVisualConfirm() {
+    if (confirmTimer) {
+      clearTimeout(confirmTimer);
+      confirmTimer = null;
+    }
+    const wrap = $("visualConfirm");
+    if (!wrap) return;
+    wrap.classList.add("hidden");
+    wrap.innerHTML = "";
   }
 
   function fillMeta(url, data) {
@@ -66,8 +80,6 @@
       findingRowHtml(f, { copy: true, index: i })
     ).join("");
     bindFindingCopy(tbody, list || [], "Clickjacking Validator", url);
-    const posture = $("posture");
-    if (posture) posture.innerHTML = postureHtml(list);
   }
 
   function finish(data, toolTitle) {
@@ -84,6 +96,7 @@
     $("stage").classList.remove("poc");
     $("pocControls").classList.add("hidden");
     $("togglePoc").textContent = "Show PoC overlay";
+    clearVisualConfirm();
     frameLoaded = false;
     frameObservation = {
       event: "pending",
@@ -149,9 +162,13 @@
 
     fillMeta(url, data);
     setVerdict((data.risk || "unknown").toUpperCase(), data.summary ||
-      "If you can see the real site in the frame, it is clickjackable.");
+      "If you can see the real site in the frame, it is clickjackable.",
+      { confirmation: data.confirmation });
     renderRows(data.findings, url);
     $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
+    if ((data.risk || "unknown") === "unknown") {
+      askVisualConfirmation(url, data);
+    }
     finish(data);
   }
 
@@ -167,13 +184,15 @@
   /* Header data unavailable → ask the analyst what the frame shows. */
   function askVisualConfirmation(url, base) {
     // Give the frame a moment to settle before guessing.
-    setTimeout(() => {
+    if (confirmTimer) clearTimeout(confirmTimer);
+    confirmTimer = setTimeout(() => {
+      confirmTimer = null;
       const suggestion = frameLikelyBlocked($("frame"), frameLoaded) ? "blocked" : "framed";
       renderConfirmPrompt("visualConfirm", suggestion, (verdict) => {
         frameObservation.rendered = verdict === "framed";
         const data = attestedClickjacking(Object.assign({ url: url }, base), verdict);
         fillMeta(url, data);
-        setVerdict(data.risk.toUpperCase(), data.summary);
+        setVerdict(data.risk.toUpperCase(), data.summary, { confirmation: data.confirmation });
         renderRows(data.findings, url);
         finish(data);
       });
