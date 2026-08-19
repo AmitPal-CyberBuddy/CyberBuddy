@@ -65,9 +65,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260816f" />
-  <script src="../../js/app.js?v=20260816f" defer></script>
-  <script src="../../js/boot.js?v=20260816f" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260819b" />
+  <script src="../../js/app.js?v=20260819b" defer></script>
+  <script src="../../js/boot.js?v=20260819b" defer></script>
 </head>
 <body data-page="/tools/clickjacking/" data-init="initClickjacking">
 <noscript>
@@ -120,34 +120,38 @@
         </div>
       </div>
 
-      <div class="meta-grid">
-        <div class="meta-item">
-          <span class="meta-label">Target</span>
-          <span id="mTarget" class="meta-value mono">—</span>
+      <div class="meta-block">
+        <div class="meta-urls">
+          <div class="meta-item">
+            <span class="meta-label">Target</span>
+            <span id="mTarget" class="meta-value mono">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label" title="Where the target redirected, if it did">Final URL</span>
+            <span id="mFinal" class="meta-value mono">—</span>
+          </div>
         </div>
-        <div class="meta-item">
-          <span class="meta-label" title="Where the target redirected, if it did">Final URL</span>
-          <span id="mFinal" class="meta-value mono">—</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label" title="HTTP response code from the target">HTTP status</span>
-          <span id="mStatus" class="meta-value mono">—</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">Scanned</span>
-          <span id="mStamp" class="meta-value mono">—</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label" title="Which engine produced this result — hover the source chip for details">Engine</span>
-          <span id="mEngine" class="meta-value mono">—</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">Method</span>
-          <span id="mMethod" class="meta-value mono">GET · read-only</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">Duration</span>
-          <span id="mDuration" class="meta-value mono">—</span>
+        <div class="meta-facts">
+          <div class="meta-item">
+            <span class="meta-label" title="HTTP response code from the target">HTTP status</span>
+            <span id="mStatus" class="meta-value mono">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Scanned</span>
+            <span id="mStamp" class="meta-value mono">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label" title="Which engine produced this result — hover the source chip for details">Engine</span>
+            <span id="mEngine" class="meta-value mono">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Method</span>
+            <span id="mMethod" class="meta-value mono">GET · read-only</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Duration</span>
+            <span id="mDuration" class="meta-value mono">—</span>
+          </div>
         </div>
       </div>
 
@@ -155,11 +159,11 @@
         <div class="verdict-main">
           <p id="protection" class="protection-line">Run a scan to assess clickjacking protection.</p>
           <p id="summary" class="verdict-text">If the site UI is visible in the frame, treat it as clickjackable.</p>
-          <div id="posture" class="posture-strip" aria-label="Finding rollup"></div>
+          <div id="visualConfirm" class="hidden"></div>
         </div>
       </div>
 
-      <div class="poc-grid">
+      <div class="poc-grid poc-stack">
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation</h3>
           <p class="note">A rendered UI confirms the page is frameable in this browser. A blank pane indicates framing is blocked by <code>X-Frame-Options</code> or CSP <code>frame-ancestors</code>.</p>
@@ -185,7 +189,6 @@
           </div>
           <p class="stage-note">Decoy overlay demonstrates click passthrough with <code>pointer-events: none</code>.</p>
           <p id="frameStatus" class="stage-note"></p>
-          <div id="visualConfirm" class="hidden"></div>
         </article>
 
         <article class="card inset-card">
@@ -214,6 +217,6 @@
 
 </main>
 
-<script src="../../js/tool.clickjacking.js?v=20260816f" defer></script>
+<script src="../../js/tool.clickjacking.js?v=20260819b" defer></script>
 </body>
 </html>

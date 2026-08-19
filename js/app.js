@@ -5059,19 +5059,20 @@ function renderConfirmPrompt(hostId, suggestion, onChoose) {
   wrap.classList.remove("hidden");
   wrap.innerHTML =
     '<div class="confirm-prompt" role="group" aria-label="Visual confirmation">' +
-    "<p><strong>Header values are unavailable from this host.</strong> " +
-    "The frame above is still valid evidence — tell CyberBuddy what you see " +
-    "and it will record your observation in the report.</p>" +
+    "<p><strong>Look at the live frame below.</strong> " +
+    "Header values are unavailable from this host — record whether the real " +
+    "page rendered so this result can be updated.</p>" +
     '<div class="confirm-actions">' +
     '<button type="button" class="btn btn-ghost' + sug("framed") + '" data-verdict="framed">' +
-    "The real site is rendered → framing allowed</button>" +
+    "Page rendered</button>" +
     '<button type="button" class="btn btn-ghost' + sug("blocked") + '" data-verdict="blocked">' +
-    "Blank / refused → framing blocked</button>" +
+    "Page not rendered</button>" +
     "</div>" +
     '<span class="confirm-hint">Recorded as <strong>analyst-attested</strong>, not as a ' +
-    "measured header value. Note: a few sites render blank because they need " +
-    "third-party cookies or storage, or run frame-busting scripts — not because " +
-    "of framing headers. Confirm manually if unsure." +
+    "measured header value. A rendered page means framing is allowed in this " +
+    "browser; a blank pane usually means framing is blocked. A few sites look " +
+    "blank because they need third-party cookies or run frame-busting scripts " +
+    "— confirm manually if unsure." +
     (suggestion
       ? " Highlighted button is CyberBuddy's guess from the frame's load behaviour."
       : "") +

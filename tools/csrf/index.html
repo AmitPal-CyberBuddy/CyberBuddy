@@ -65,10 +65,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260816f" />
-  <script src="../../js/app.js?v=20260816f" defer></script>
-  <script src="../../js/tool.csrf.js?v=20260816f" defer></script>
-  <script src="../../js/boot.js?v=20260816f" defer></script>
+  <link rel="stylesheet" href="../../css/app.css?v=20260819b" />
+  <script src="../../js/app.js?v=20260819b" defer></script>
+  <script src="../../js/tool.csrf.js?v=20260819b" defer></script>
+  <script src="../../js/boot.js?v=20260819b" defer></script>
 </head>
 <body data-page="/tools/csrf/" data-init="initCsrf">
 <noscript>
@@ -152,13 +152,17 @@
         </div>
       </div>
 
-      <div class="meta-grid">
-        <div class="meta-item"><span class="meta-label">Method</span><span id="mMethod" class="meta-value mono">—</span></div>
-        <div class="meta-item"><span class="meta-label">URL</span><span id="mUrl" class="meta-value mono">—</span></div>
-        <div class="meta-item"><span class="meta-label">Content-Type</span><span id="mContentType" class="meta-value mono">—</span></div>
-        <div class="meta-item"><span class="meta-label" title="Based only on browser mechanics — never a vulnerability verdict">Reproducibility</span><span id="mRepro" class="meta-value mono">—</span></div>
-        <div class="meta-item"><span class="meta-label">Parameters</span><span id="mParams" class="meta-value mono">—</span></div>
-        <div class="meta-item"><span class="meta-label" title="Likely CSRF-token fields detected — include or exclude them below">Likely tokens</span><span id="mTokens" class="meta-value mono">—</span></div>
+      <div class="meta-block">
+        <div class="meta-urls meta-urls-single">
+          <div class="meta-item"><span class="meta-label">URL</span><span id="mUrl" class="meta-value mono">—</span></div>
+        </div>
+        <div class="meta-facts">
+          <div class="meta-item"><span class="meta-label">Method</span><span id="mMethod" class="meta-value mono">—</span></div>
+          <div class="meta-item"><span class="meta-label">Content-Type</span><span id="mContentType" class="meta-value mono">—</span></div>
+          <div class="meta-item"><span class="meta-label" title="Based only on browser mechanics — never a vulnerability verdict">Reproducibility</span><span id="mRepro" class="meta-value mono">—</span></div>
+          <div class="meta-item"><span class="meta-label">Parameters</span><span id="mParams" class="meta-value mono">—</span></div>
+          <div class="meta-item"><span class="meta-label" title="Likely CSRF-token fields detected — include or exclude them below">Likely tokens</span><span id="mTokens" class="meta-value mono">—</span></div>
+        </div>
       </div>
 
       <div id="verdictBanner" role="status" aria-live="polite" class="verdict-banner unknown">
