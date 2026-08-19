@@ -345,7 +345,7 @@ contextual. The [JWT guide](guides/jwt/) is paired with the tool. See
 ## Evidence and export
 
 The four HTTP scanners render self-contained **report cards** — target, final
-URL, HTTP status, UTC timestamp, verdict, per-finding evidence, and a
+URL, HTTP status, IST timestamp, verdict, per-finding evidence, and a
 provenance strip naming the tool, engine and time so a cropped screenshot is
 still self-identifying. DNS renders a domain-posture report with record
 evidence and resolver provenance. The two local utilities export their own

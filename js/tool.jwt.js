@@ -51,7 +51,11 @@
 
   function fmtTime(n) {
     if (typeof n !== "number") return "—";
-    try { return new Date(n * 1000).toISOString().replace(/\.\d+Z$/, "Z"); }
+    try {
+      // IST (Asia/Kolkata) is UTC+5:30.
+      var ist = new Date(n * 1000 + (5 * 60 + 30) * 60 * 1000);
+      return ist.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " IST");
+    }
     catch (e) { return String(n); }
   }
 

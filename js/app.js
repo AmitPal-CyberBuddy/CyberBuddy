@@ -1427,20 +1427,16 @@ function pushDomainParam(domain) {
   history.replaceState(null, "", next);
 }
 
-function fmtStamp(d) {
-  d = d || new Date();
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-/* Reports get an unambiguous timestamp — screenshot pasted into an
+/* Reports get an unambiguous timestamp — a screenshot pasted into an
    assessment should not depend on the reader guessing the tester's zone.
-   Uses IST (Asia/Kolkata) by default for readability in Indian contexts. */
+   Every rendered timestamp is IST (Asia/Kolkata, UTC+5:30). */
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000; // IST is UTC+5:30
+
 function fmtStampUtc(d) {
   d = d || new Date();
-  // Use IST (UTC+5:30) for display consistency
-  const istOffset = 5.5 * 60; // IST is UTC+5:30 in minutes
-  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-  const ist = new Date(utc + (istOffset * 60000));
+  // Add the fixed IST offset to the UTC epoch so the result is correct no
+  // matter which timezone the viewer's browser happens to be in.
+  const ist = new Date(d.getTime() + IST_OFFSET_MS);
   return ist.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " IST");
 }
 
@@ -1769,7 +1765,8 @@ function safeSlug(url) {
 }
 
 function stampName(prefix, url, ext) {
-  const t = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+  const t = new Date(new Date().getTime() + IST_OFFSET_MS)
+    .toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
   return prefix + "-" + safeSlug(url) + "-" + t + "." + ext;
 }
 
@@ -2294,7 +2291,7 @@ function reportExportEnvelope(data) {
   return {
     schema_version: "cyberbuddy-report/v1",
     tool: reportToolTitle(data),
-    generated_at: new Date().toISOString(),
+    generated_at: fmtStampUtc(),
     authorized_testing_only: true,
     assessment: reportSafeCopy(data)
   };
@@ -2417,7 +2414,7 @@ function toCsv(data) {
     final_url: redactUrlCredentials(data.final_url || data.url),
     http_status: data.status_code != null ? data.status_code : "",
     risk: reportRiskLabel(data), grade: data.grade || "", score: data.score ?? "",
-    source: sourceLabel(data), generated: new Date().toISOString(), summary: data.summary || ""
+    source: sourceLabel(data), generated: fmtStampUtc(), summary: data.summary || ""
   };
   Object.keys(meta).forEach((key) => rows.push(["metadata", key, "", "", meta[key], "", ""]));
   reportRows(data).forEach((item) => rows.push([
@@ -2449,7 +2446,7 @@ function toStandaloneHtml(data) {
     (data._pasted ? "—" : safe(redactUrlCredentials(data.final_url || data.url))) + "</dd><dt>HTTP status</dt><dd>" +
     safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
     safe(reportRiskLabel(data)) + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
-    "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(new Date().toISOString()) +
+    "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(fmtStampUtc()) +
     "</dd></dl><h2>Summary</h2><p>" + safe(data.summary || "No summary provided.") + "</p>" + policy +
     "<h2>Findings</h2><table><thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Assessment</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>" +
     findings + "</tbody></table></body></html>";
@@ -4402,7 +4399,7 @@ function suiteResults(suite) {
 function suiteExportEnvelope(suite) {
   return {
     schema: "cyberbuddy-suite-report/v1",
-    generated_at: new Date().toISOString(),
+    generated_at: fmtStampUtc(),
     target: redactUrlCredentials(suite.url),
     tools: suiteResults(suite).map((item) => ({ tool: item.tool, report: reportExportEnvelope(item.report) }))
   };
