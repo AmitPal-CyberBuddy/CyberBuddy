@@ -47,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="css/app.css?v=20260819c" />
+  <link rel="stylesheet" href="css/app.css?v=20260820a" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -70,9 +70,9 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260819c" defer></script>
-  <script src="js/hub.js?v=20260819c" defer></script>
-  <script src="js/boot.js?v=20260819c" defer></script>
+  <script src="js/app.js?v=20260820a" defer></script>
+  <script src="js/hub.js?v=20260820a" defer></script>
+  <script src="js/boot.js?v=20260820a" defer></script>
 </head>
 <body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
 <noscript>
@@ -95,7 +95,7 @@
       <span class="line">Every check your</span>
       <span class="line">report needs.</span>
     </h1>
-    <p class="lead reveal" style="--d: .14s; margin-top: 16px;">
+    <p class="lead reveal" style="--d: .14s; margin-top: 12px;">
       Clickjacking, security headers, CSP, CORS, DNS posture, CSRF PoC generation,
       and JWT testing — assessed against OWASP-aligned methodology with raw evidence
       you can screenshot. Authorized testing only; network checks are non-destructive.
@@ -155,7 +155,7 @@
       <div id="suiteResults" class="suite-results hidden" aria-live="polite"></div>
     </div>
 
-    <div class="grid-2 reveal" style="margin-top: 36px; --d: .28s;">
+    <div class="grid-2 reveal" style="margin-top: 28px; --d: .28s;">
       <div class="card console-card corner-card">
         <div class="radar" aria-hidden="true"></div>
         <p class="card-title" style="margin-bottom: 12px;">Sample assessment · example.com <span class="scan-tag cached">demo · cached</span></p>
@@ -185,20 +185,16 @@
     <article class="card scope-card reveal" style="--d: .05s;">
       <p class="card-title">What CyberBuddy does</p>
       <ul class="scope-list does">
-        <li><strong>Non-destructive HTTP checks</strong> — a GET baseline plus analyst-selected HEAD, OPTIONS, and preflight simulation for CORS</li>
-        <li><strong>Header inspection</strong> — the raw value behind every assessed finding</li>
-        <li><strong>DNS posture analysis</strong> — public records through a resolver, never the target's servers</li>
-        <li><strong>CORS analysis</strong> — cross-origin access posture with explicit method coverage</li>
-        <li><strong>Framing analysis</strong> — live clickjacking proof</li>
-        <li><strong>CSRF PoC generation</strong> — standalone HTML from a pasted request, fully local and inert inside CyberBuddy</li>
-        <li><strong>JWT analysis &amp; verification</strong> — local decode, claim inspection, crypto verification, prioritized VAPT test suggestions &amp; payloads, variant generation and bounded secret testing</li>
-        <li><strong>Evidence collection</strong> — screenshot-ready report cards</li>
+        <li><strong>Non-destructive assessment</strong> — read-only checks that inspect a target without changing it</li>
+        <li><strong>Evidence behind every verdict</strong> — findings show the raw header, record, or response they were based on</li>
+        <li><strong>Local-first by design</strong> — pasted requests, tokens, and keys are processed in your browser; nothing leaves without consent</li>
+        <li><strong>Report-ready output</strong> — screenshot-friendly evidence cards and multi-format exports for your documentation</li>
       </ul>
     </article>
     <article class="card scope-card reveal" style="--d: .12s;">
       <p class="card-title">What it does not do</p>
       <ul class="scope-list doesnot">
-        <li><strong>Automatic exploitation</strong> — generated PoCs and JWT test artifacts stay inert until you deliberately export and use them</li>
+        <li><strong>Automatic exploitation</strong> — generated PoCs and test artifacts stay inert until you deliberately export and use them</li>
         <li><strong>Login attacks</strong> — no credential submission, spraying, or authentication bypass automation</li>
         <li><strong>State-changing HTTP requests</strong> — CyberBuddy never sends POST, PUT, PATCH, or DELETE to a target</li>
         <li><strong>Credential collection</strong> — tokens, keys and requests processed locally never leave your browser</li>

@@ -4640,8 +4640,10 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         landing = (ROOT / "index.html").read_text(encoding="utf-8")
         self.assertIn("JWT Security Workbench", methodology)
         self.assertIn("JWT verification", methodology)
+        # Landing page: the workbench card and the checks ticker keep the JWT
+        # promise visible (the scope section is key-point copy, not per-tool).
         self.assertIn("JWT Security Workbench", landing)
-        self.assertIn("JWT analysis &amp; verification", landing)
+        self.assertIn("JWT decode &amp; verify", landing)
 
 
 class JwtVaptTests(unittest.TestCase):
@@ -5064,10 +5066,16 @@ class NavAndScrollContractTests(unittest.TestCase):
     def test_fragment_links_clear_the_sticky_header(self):
         css = self._css()
         self.assertIn("scroll-padding-top", css)
-        html_rule = re.search(r"html \{[^}]*scroll-padding-top:\s*(\d+)px", css, flags=re.S)
+        # The html rule consumes the --scroll-offset token (a smaller phone
+        # override re-defines the token inside the 760px media query).
+        html_rule = re.search(
+            r"html \{[^}]*scroll-padding-top:\s*var\(--scroll-offset\)", css, flags=re.S
+        )
         self.assertTrue(html_rule, "html rule must carry scroll-padding-top")
-        # Header is ~60px tall; padding must exceed it.
-        self.assertGreaterEqual(int(html_rule.group(1)), 61)
+        # Header is ~60px tall; the token's base value must exceed it.
+        token = re.search(r"--scroll-offset:\s*(\d+)px", css)
+        self.assertTrue(token, "--scroll-offset token must be defined in px")
+        self.assertGreaterEqual(int(token.group(1)), 61)
         # Result regions that are programmatically scrolled to get margins.
         self.assertRegex(css, r"#results,\s*#suiteResults\s*\{\s*scroll-margin-top:")
 
