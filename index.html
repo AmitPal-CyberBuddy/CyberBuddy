@@ -47,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="css/app.css?v=20260820a" />
+  <link rel="stylesheet" href="css/app.css?v=20260826b" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -70,9 +70,9 @@
       }
     }
   </script>
-  <script src="js/app.js?v=20260820a" defer></script>
-  <script src="js/hub.js?v=20260820a" defer></script>
-  <script src="js/boot.js?v=20260820a" defer></script>
+  <script src="js/app.js?v=20260826b" defer></script>
+  <script src="js/hub.js?v=20260826b" defer></script>
+  <script src="js/boot.js?v=20260826b" defer></script>
 </head>
 <body data-page="/" data-init="renderToolCards renderBlog initStats initSuite renderRecentScans typeConsole">
 <noscript>
@@ -470,28 +470,8 @@
   </p>
 
   <div class="section-head reveal">
-    <h2>Architecture</h2>
-    <span class="count">ui · engines · evidence</span>
-    <a class="catalog-link" href="documentation/">System documentation &amp; CLI →</a>
-  </div>
-  <div class="arch reveal" style="--d: .06s;">
-    <div class="arch-node arch-ui"><strong>Hub + tool pages</strong><span>this UI — no build step, no framework</span></div>
-    <div class="arch-down" aria-hidden="true">↓</div>
-    <div class="arch-split">
-      <div class="arch-node arch-engine"><strong>Browser engine</strong><span>same graders run in your browser on GitHub Pages</span></div>
-      <div class="arch-node arch-engine"><strong>Hosted API</strong><span>python server.py / api — same scoring, server-side</span></div>
-    </div>
-    <div class="arch-down" aria-hidden="true">↓</div>
-    <div class="arch-node"><strong>Security engines</strong><span>clickjacking · security headers · CSP · CORS</span></div>
-    <div class="arch-down" aria-hidden="true">↓</div>
-    <div class="arch-node"><strong>Evidence engine</strong><span>the raw header value behind every finding</span></div>
-    <div class="arch-down" aria-hidden="true">↓</div>
-    <div class="arch-node arch-score"><strong>Score &amp; report</strong><span>grade A–F · severity · export · print</span></div>
-  </div>
-
-  <div class="section-head reveal">
     <h2>From the blog</h2>
-    <span class="count">cybersecurity notes · new posts land here</span>
+    <span class="count">write-ups I publish as I find them</span>
     <a class="catalog-link" href="guides/">Short guides on this site →</a>
   </div>
 
@@ -519,10 +499,11 @@
   </div>
 
   <div class="blog-grid" id="blogGrid">
-    <!-- Static fallbacks for the two posts; renderBlog() replaces this
-         content when JavaScript runs. -->
+    <!-- Static fallbacks for the two sample posts; renderBlog() replaces this
+         content when JavaScript runs. The CORS write-up lives on the CORS
+         guide. Medium is the complete list. -->
     <a class="blog-post" href="https://amitpxl.medium.com/http-request-smuggling-vs-http-request-pipelining-why-theyre-often-confused-44ffe6e528eb" target="_blank" rel="noopener noreferrer">
-      <div class="blog-post-tags"><span class="blog-badge">Newest</span><span class="tool-tag">HTTP</span><span class="tool-tag">Smuggling</span><span class="tool-tag">Burp</span></div>
+      <div class="blog-post-tags"><span class="tool-tag">HTTP</span><span class="tool-tag">Smuggling</span><span class="tool-tag">Burp</span></div>
       <h3>HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused</h3>
       <p class="blog-excerpt">Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.</p>
       <div class="blog-post-foot"><span class="blog-date">Jun 19, 2026</span><span class="blog-open">Read on Medium →</span></div>

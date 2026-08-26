@@ -517,6 +517,72 @@ console.log(JSON.stringify({
         self.assertIn("GET only", result.summary)
 
 
+class CorsBrowserPocTests(unittest.TestCase):
+    """Local CORS browser HTML PoC — not a scanner feature.
+
+    The generator lives in js/tool.cors.js as CyberBuddyCorsPoc (no DOM, no
+    network). A reflected ACAO header is server behaviour; the downloaded
+    page is a TEST ARTIFACT the analyst hosts on an origin they control.
+    """
+
+    def _run_poc(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (ROOT / "js" / "tool.cors.js").read_text(encoding="utf-8") + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_rejects_empty_non_http_and_credentials(self):
+        out = self._run_poc(r'''
+const C = globalThis.CyberBuddyCorsPoc;
+const rows = {};
+["", "javascript:alert(1)", "data:text/html,x", "https://user:pass@example.com/"].forEach((url, i) => {
+  rows[i] = C.generatePocHtml({ url: url });
+});
+console.log(JSON.stringify(rows));
+''')
+        for key, row in out.items():
+            self.assertFalse(row["ok"], row)
+
+    def test_generated_html_is_a_manual_test_artifact(self):
+        out = self._run_poc(r'''
+const C = globalThis.CyberBuddyCorsPoc;
+const gen = C.generatePocHtml({ url: "https://api.example.com/account?x=</script><script>alert(1)" });
+console.log(JSON.stringify(gen));
+''')
+        self.assertTrue(out["ok"], out)
+        html = out["html"]
+        self.assertIn("TEST ARTIFACT", html)
+        self.assertIn("not a finding", html.lower())
+        self.assertIn("Authorized testing only", html)
+        self.assertIn("credentials: \"include\"", html)
+        self.assertIn('method: "GET"', html)
+        self.assertIn("Run credentialed GET", html)
+        self.assertNotIn("</script><script>", html)
+        self.assertIn("%3C/script%3E", html)
+        self.assertLess(html.index('addEventListener("click"'), html.index("fetch("))
+        self.assertNotIn("onload=", html.lower())
+        self.assertEqual(out["filename"], "cyberbuddy-cors-poc.html")
+
+    def test_hosted_page_has_local_poc_builder_not_acrh_input(self):
+        page = (ROOT / "tools" / "cors" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "js" / "tool.cors.js").read_text(encoding="utf-8")
+        self.assertNotIn("corsPreflightHeaders", page)
+        self.assertNotIn("corsPreflightHeaders", js)
+        self.assertIn("corsPocBuild", page)
+        self.assertIn("TEST ARTIFACT", page)
+        self.assertIn("--preflight-headers", page)
+
 
 class CspTests(unittest.TestCase):
     def test_default_src_star_is_weak(self):
@@ -1607,6 +1673,32 @@ class HostedSiteTests(unittest.TestCase):
         self.assertIn("/tools/clickjacking/", sitemap)
         self.assertIn("/tools/csp/", sitemap)
 
+    def test_hub_blog_is_a_sample_not_the_full_catalog(self):
+        """From the blog is first-person visitor copy. The hub shows the two
+        posts that have no matching guide; the CORS write-up lives on the
+        CORS guide. Medium is the complete list. No Newest badge — it would
+        go stale the moment another post ships."""
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("const BLOG_POSTS")
+        block = app[start:app.index("];", start)]
+        cors = ("https://amitpxl.medium.com/cors-misconfiguration-when-"
+                "reflecting-the-origin-is-not-the-whole-story-956e2e6e18bc")
+        smuggling = "http-request-smuggling-vs-http-request-pipelining"
+        crypto = "how-i-broke-encrypted-requests-by-reading-frontend-javascript"
+        self.assertNotIn(cors, block)
+        self.assertNotIn(cors, hub)
+        self.assertIn(smuggling, block)
+        self.assertIn(crypto, block)
+        self.assertIn(smuggling, hub)
+        self.assertIn(crypto, hub)
+        self.assertNotIn("Newest", block)
+        self.assertNotIn("blog-badge", hub)
+        self.assertIn("write-ups I publish as I find them", hub)
+        self.assertNotIn("new posts land here", hub)
+        self.assertIn("View all articles on Medium", hub)
+        self.assertNotIn("cybersecurity notes", hub.split("From the blog", 1)[1].split("Shape what's next", 1)[0])
+
     def test_github_pages_first_tools_are_next_up(self):
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
@@ -2408,24 +2500,18 @@ class ResponsiveLayoutTests(unittest.TestCase):
         # glyphs only make sense in the single-column phone stack.
         self.assertIn(".pd-arrow { display: none; }", self.rules)
         self.assertIn(".pd-arrow { display: block; text-align: center; }", block)
-
-    def test_arch_diagram_uses_full_container_width(self):
-        """The architecture rows shared the same 560px choke point."""
-        self.assertIn("width: 100%", self._rule(".arch-node {"))
-        self.assertIn("width: 100%", self._rule(".arch-split {"))
-        # No rule may reintroduce the narrow centered-column cap.
+        # No rule may reintroduce the narrow centered-column cap that used
+        # to pinch both the pipeline and the (now-removed) architecture diagram.
         self.assertNotIn("min(560px", self.rules)
 
-    def test_pipeline_and_arch_arrows_are_decorative(self):
-        """The ↓ glyphs duplicate the numbered steps / row order, so they
-        must not be announced by screen readers."""
+    def test_pipeline_arrows_are_decorative(self):
+        """The ↓ glyphs duplicate the numbered steps, so they must not be
+        announced by screen readers."""
         hub = (ROOT / "index.html").read_text(encoding="utf-8")
-        for cls in ("pd-arrow", "arch-down"):
-            glyphs = hub.count('<div class="%s" aria-hidden="true">↓' % cls)
-            bare = hub.count('<div class="%s">↓' % cls)
-            with self.subTest(cls=cls):
-                self.assertGreater(glyphs, 0)
-                self.assertEqual(bare, 0)
+        glyphs = hub.count('<div class="pd-arrow" aria-hidden="true">↓')
+        bare = hub.count('<div class="pd-arrow">↓')
+        self.assertGreater(glyphs, 0)
+        self.assertEqual(bare, 0)
 
 
 class FluidResponsiveSystemTests(unittest.TestCase):
@@ -3383,14 +3469,22 @@ class GuidesTests(unittest.TestCase):
                 self.assertIn('href="../../guides/%s/"' % slug, page)
 
     def test_guides_never_sell_the_blog_as_a_per_tool_deep_dive(self):
-        """Only two Medium posts exist (request smuggling vs pipelining, and
-        client-side encryption). Neither matches a guide topic, so pointing a
-        guide's "Go deeper" at the profile root promises a write-up that is
-        not there. A blog link belongs in a guide only when a post on that
-        exact topic exists."""
+        """A blog link belongs in a guide only when a post on that exact
+        topic exists, and never as a substitute for the primary Go deeper
+        references. The CORS write-up has shipped; it may appear in its own
+        subsection. Every other guide still has no matching post."""
+        cors_post = (
+            "https://amitpxl.medium.com/cors-misconfiguration-when-reflecting-"
+            "the-origin-is-not-the-whole-story-956e2e6e18bc"
+        )
         for name, page in self._pages():
             with self.subTest(page=name):
-                self.assertNotIn("medium.com", page)
+                if name == "cors":
+                    self.assertIn(cors_post, page)
+                    deeper = page[page.index("Go deeper"):]
+                    self.assertNotIn("medium.com", deeper)
+                else:
+                    self.assertNotIn("medium.com", page)
 
     def test_guides_go_deeper_via_real_primary_references(self):
         """The "Go deeper" block must cite sources that actually document the

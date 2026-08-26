@@ -114,26 +114,18 @@ async function runScan(page, path) {
         const box = label.getBoundingClientRect();
         return { top: box.top, bottom: box.bottom, right: box.right };
       });
-      const input = document.getElementById("corsPreflightHeaders");
-      const inputBox = input.getBoundingClientRect();
       return {
         grid: getComputedStyle(picker).display,
         labels,
-        inputDisabled: input.disabled,
-        inputFullWidth: Math.abs(inputBox.width - pickerBox.width) < 2,
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
       };
     });
-    await page.click("#corsPreflightPost");
-    const enabled = await page.$eval("#corsPreflightHeaders", (input) => !input.disabled);
-    const vertical = before.labels.length === 4 &&
+    const vertical = before.labels.length === 3 &&
       before.labels[1].top >= before.labels[0].bottom - 1 &&
-      before.labels[2].top >= before.labels[1].bottom - 1 &&
-      before.labels[3].top >= before.labels[2].bottom - 1;
+      before.labels[2].top >= before.labels[1].bottom - 1;
     const labelsFit = before.labels.every((label) => label.right <= w + 1);
-    r.check(before.grid === "grid" && vertical && labelsFit && before.inputDisabled &&
-      enabled && before.inputFullWidth && before.overflow === 0,
-    `cors-method-picker ${vn} ${JSON.stringify(before)} enabled=${enabled}`);
+    r.check(before.grid === "grid" && vertical && labelsFit && before.overflow === 0,
+    `cors-method-picker ${vn} ${JSON.stringify(before)}`);
     await page.close();
   }
 
