@@ -1,10 +1,113 @@
 /* CyberBuddy — CORS Validator page controller.
    Externalised from an inline <script> so the site can ship a CSP without
-   'unsafe-inline'. Depends on js/app.js. */
+   'unsafe-inline'. Depends on js/app.js.
+
+   CyberBuddyCorsPoc is a pure local HTML generator (no DOM, no network).
+   A reflected ACAO header is server behaviour; the downloaded page is a
+   TEST ARTIFACT you host on an origin you control. It is not a finding. */
 "use strict";
 
+var CyberBuddyCorsPoc = (function () {
+  function escHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* A JS string literal that round-trips `value` and cannot terminate its
+     <script> element: JSON.stringify plus every `<` escaped. */
+  function jsLiteral(value) {
+    return JSON.stringify(String(value == null ? "" : value))
+      .replace(/</g, "\\u003c")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+  }
+
+  function validatePocUrl(raw) {
+    var cleaned = String(raw == null ? "" : raw).trim();
+    if (!cleaned) return { ok: false, error: "Enter a target URL." };
+    var parsed;
+    try { parsed = new URL(cleaned); }
+    catch (_) { return { ok: false, error: "That is not a usable URL." }; }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { ok: false, error: "Only http(s) targets are allowed." };
+    }
+    if (parsed.username || parsed.password) {
+      return { ok: false, error: "Remove the username and password from the URL." };
+    }
+    return { ok: true, url: parsed.href };
+  }
+
+  function generatePocHtml(opts) {
+    opts = opts || {};
+    var checked = validatePocUrl(opts.url);
+    if (!checked.ok) return { ok: false, error: checked.error };
+    var target = checked.url;
+    var html = [
+      "<!DOCTYPE html>",
+      "<html lang=\"en\">",
+      "<head>",
+      "  <meta charset=\"utf-8\">",
+      "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+      "  <title>CORS browser PoC — TEST ARTIFACT</title>",
+      "  <style>",
+      "    body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;color:#172033}",
+      "    .banner{padding:12px 14px;border-left:4px solid #b54708;background:#fff7ed;margin-bottom:20px}",
+      "    button{font:inherit;padding:8px 14px;cursor:pointer}",
+      "    pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:12px;min-height:6em}",
+      "    code{overflow-wrap:anywhere}",
+      "  </style>",
+      "</head>",
+      "<body>",
+      "  <p class=\"banner\"><strong>TEST ARTIFACT — not a finding.</strong> Authorized testing only. A readable response in this page proves this origin can see the body. A blocked fetch is not a pass for every method. Opening this file locally sends Origin: null — that is a different test.</p>",
+      "  <p>Target: <code>" + escHtml(target) + "</code></p>",
+      "  <p>Method: GET · credentials: include</p>",
+      "  <p><button id=\"run\" type=\"button\">Run credentialed GET</button></p>",
+      "  <pre id=\"out\">(not run)</pre>",
+      "  <script>",
+      "    (function () {",
+      "      var target = " + jsLiteral(target) + ";",
+      "      document.getElementById(\"run\").addEventListener(\"click\", function () {",
+      "        var out = document.getElementById(\"out\");",
+      "        out.textContent = \"Running…\";",
+      "        fetch(target, { method: \"GET\", credentials: \"include\", cache: \"no-store\" })",
+      "          .then(function (res) { return res.text().then(function (text) {",
+      "            out.textContent = \"HTTP \" + res.status + \"\\nReadable: yes\\n\\n\" + String(text).slice(0, 8000);",
+      "          }); })",
+      "          .catch(function (err) {",
+      "            out.textContent = \"Blocked or failed: \" + (err && err.message ? err.message : err) +",
+      "              \"\\nThe browser did not expose the response to this origin.\";",
+      "          });",
+      "      });",
+      "    })();",
+      "  </script>",
+      "</body>",
+      "</html>",
+      ""
+    ].join("\n");
+    return {
+      ok: true,
+      url: target,
+      html: html,
+      filename: "cyberbuddy-cors-poc.html"
+    };
+  }
+
+  return {
+    validatePocUrl: validatePocUrl,
+    generatePocHtml: generatePocHtml
+  };
+})();
+
+if (typeof globalThis !== "undefined") {
+  globalThis.CyberBuddyCorsPoc = CyberBuddyCorsPoc;
+}
+
 (function () {
+  if (typeof document === "undefined") return;
+
   let cbLastData = null;
+  let lastPoc = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -58,7 +161,7 @@
       ? "<p class=\"form-hint\">Browser probe — single origin only. Cannot forge Origin, cannot set Access-Control-Request-Method/Headers, cannot inspect automatic preflight. Run <code>python3 server.py</code> for two-origin/null/preflight proof.</p>"
       : "";
     const preflightNote = data.preflight_methods && data.preflight_methods.length
-      ? "<p class=\"form-hint\">Preflight uses OPTIONS + Origin + Access-Control-Request-Method; target must be authorized and may not support every method.</p>"
+      ? "<p class=\"form-hint\">Preflight uses OPTIONS + Origin + Access-Control-Request-Method; target must be authorized and may not support every method. Custom Access-Control-Request-Headers is a Python/CLI option, not a field on this page.</p>"
       : "";
     wrap.innerHTML = '<h3 class="card-title">Method coverage</h3>' +
       browserNote + preflightNote +
@@ -80,13 +183,57 @@
     if ($("corsHead") && $("corsHead").checked) methods.push("HEAD");
     if ($("corsOptions") && $("corsOptions").checked) methods.push("OPTIONS");
     const preflight = [];
-    const preflightHeaders = [];
     if ($("corsPreflightPost") && $("corsPreflightPost").checked) preflight.push("POST");
-    const hdrInput = $("corsPreflightHeaders");
-    if (hdrInput && hdrInput.value.trim()) {
-      hdrInput.value.split(",").forEach((h) => { const t = h.trim(); if (t) preflightHeaders.push(t); });
+    return { methods: methods, preflight: preflight, preflight_headers: [] };
+  }
+
+  function setPocStatus(text, isError) {
+    const el = $("corsPocStatus");
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
     }
-    return { methods: methods, preflight: preflight, preflight_headers: preflightHeaders };
+    el.hidden = false;
+    el.textContent = text;
+    el.classList.toggle("field-error", !!isError);
+  }
+
+  function setPocButtons(enabled) {
+    ["corsPocDownload", "corsPocCopy"].forEach(function (id) {
+      const btn = $(id);
+      if (btn) btn.disabled = !enabled;
+    });
+  }
+
+  function buildPoc() {
+    const url = validateUrlField($("url"));
+    if (!url) {
+      lastPoc = null;
+      setPocButtons(false);
+      setPocStatus("Enter an authorized target URL first.", true);
+      return;
+    }
+    const gen = CyberBuddyCorsPoc.generatePocHtml({ url: url });
+    const source = $("corsPocSource");
+    if (!gen.ok) {
+      lastPoc = null;
+      setPocButtons(false);
+      setPocStatus(gen.error, true);
+      if (source) {
+        source.classList.add("hidden");
+        source.textContent = "(build a PoC to preview it here)";
+      }
+      return;
+    }
+    lastPoc = gen;
+    setPocButtons(true);
+    setPocStatus("Local TEST ARTIFACT ready. Host it on an origin you control — it does not run a request from this page.");
+    if (source) {
+      source.classList.remove("hidden");
+      source.textContent = gen.html;
+    }
   }
 
   async function probe(url) {
@@ -175,16 +322,7 @@
     // Method selection is for authorized testing: the endpoint must exist and may not support every method.
     // Do not invent a PASS for methods not actually tested.
     const head = $("corsHead");
-    const opts = $("corsOptions");
-    const pre = $("corsPreflightPost");
-    const hdr = $("corsPreflightHeaders");
     if (head) head.addEventListener("change", () => { if (head.checked) head.title = "HEAD will be probed with Origin headers"; });
-    if (opts) opts.addEventListener("change", () => {});
-    if (pre) pre.addEventListener("change", () => {
-      if (hdr) hdr.disabled = !pre.checked;
-      if (pre.checked && hdr) hdr.placeholder = "Content-Type, X-Custom-Header";
-    });
-    if (hdr) hdr.disabled = !(pre && pre.checked);
     $("go").addEventListener("click", () => {
       const url = validateUrlField($("url"));
       if (!url) return;
@@ -196,6 +334,25 @@
     $("url").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("go").click();
     });
+
+    const buildBtn = $("corsPocBuild");
+    if (buildBtn) buildBtn.addEventListener("click", buildPoc);
+    const downloadBtn = $("corsPocDownload");
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", () => {
+        if (!lastPoc || !lastPoc.html) return;
+        downloadBlob(new Blob([lastPoc.html], { type: "text/html" }), lastPoc.filename);
+        flashBtn(downloadBtn, true, "HTML saved ✓");
+      });
+    }
+    const copyBtn = $("corsPocCopy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        if (!lastPoc || !lastPoc.html) return;
+        const ok = await copyText(lastPoc.html);
+        flashBtn(copyBtn, ok, "HTML copied ✓");
+      });
+    }
 
     initExportMenu("CORS Validator", () => cbLastData);
     initEvidenceToggle();

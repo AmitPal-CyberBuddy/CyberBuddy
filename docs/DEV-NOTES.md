@@ -460,15 +460,17 @@ should remain shared.
 - **“Go deeper” means real references, never the Medium profile root.**
   Superseded rule (do not reinstate): guides used to link
   `https://amitpxl.medium.com/` as the deep-dive for every topic. There are
-  only two posts (request smuggling vs pipelining; client-side encryption) and
-  neither is about clickjacking, so that link promised a write-up that does not
+  only three posts (CORS misconfiguration vs demonstrated impact; request
+  smuggling vs pipelining; client-side encryption) and neither of the older
+  two is about clickjacking, so that link promised a write-up that does not
   exist. Every guide now closes with primary sources — OWASP WSTG, CWE, the
   OWASP cheat sheet, MDN, the W3C spec, PortSwigger. A blog link may appear in
   a guide **only** when a post on that exact topic is published; the CORS
-  article (“Understanding CORS — from browser security to real world impact”)
-  is in progress, so the CORS guide may add one once it ships, as its own
-  subsection separate from the references. `test_guides_never_sell_the_blog_as_
-  a_per_tool_deep_dive` asserts no `medium.com` in `guides/`. Never invent a
+  write-up has shipped, so `guides/cors/` cites it in its own subsection
+  (“The longer walkthrough”), never inside “Go deeper”.
+  `test_guides_never_sell_the_blog_as_a_per_tool_deep_dive` allows that one
+  matching URL on the CORS guide and still asserts no `medium.com` anywhere
+  else in `guides/`, including the CORS “Go deeper” list. Never invent a
   topic slug — a dead “read more” is worse than no link. Verify every external
   URL resolves before committing (note MDN moved HTTP headers under
   `/Web/HTTP/Reference/Headers/…`; the pre-`/Reference/` paths only redirect).
@@ -897,6 +899,12 @@ and the secret-test worker honest:
   and says `server.py` is required for two-origin/null/preflight proof. Do
   not fake parity where platform capabilities differ; keep identical scoring
   semantics for equivalent observed inputs and document limits honestly.
+  The hosted CORS page therefore has no `Access-Control-Request-Headers`
+  input — that field never reached the browser probe. Keep
+  `preflight_headers` on the Python engine, `/api/cors`, and
+  `--preflight-headers`. The same page can build a **local** browser HTML
+  PoC (`CyberBuddyCorsPoc` in `js/tool.cors.js`): GET + `credentials:
+  include`, no auto-run, labelled TEST ARTIFACT, not a finding.
 - **Implementation shape.** Python: `scan_cors(url, methods=["GET",...], preflight_methods=["POST"], preflight_headers=[...])`
   with `fetch_headers(..., method=...)` and status 405/501 → `unassessed`.
   The result carries `methods`, `preflight_methods`, `preflight_headers`,

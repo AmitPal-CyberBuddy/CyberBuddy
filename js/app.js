@@ -482,10 +482,12 @@ function renderFooter() {
 /* Add a post to BLOG_POSTS and it appears in the hub's "From the blog" grid —
    no HTML edits needed as new write-ups publish. */
 
+/* Hub grid is a sample, not the full catalog — Medium is the complete list.
+   The CORS write-up lives on the CORS guide, not here. No "Newest" badge:
+   that tag would go stale the moment another post ships. */
 const BLOG_POSTS = [
   {
     href: "https://amitpxl.medium.com/http-request-smuggling-vs-http-request-pipelining-why-theyre-often-confused-44ffe6e528eb",
-    badge: "Newest",
     tags: ["HTTP", "Smuggling", "Burp"],
     title: "HTTP Request Smuggling vs HTTP Request Pipelining: Why They're Often Confused",
     excerpt: "Stop screenshotting every double response in Burp Repeater. I walk through how I separate harmless pipelining from actual queue poisoning.",

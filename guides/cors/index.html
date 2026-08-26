@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="../../css/app.css?v=20260820a" />
+  <link rel="stylesheet" href="../../css/app.css?v=20260826b" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -49,8 +49,8 @@
       "author": { "@type": "Person", "name": "Amit Pal" }
     }
   </script>
-  <script src="../../js/app.js?v=20260820a" defer></script>
-  <script src="../../js/boot.js?v=20260820a" defer></script>
+  <script src="../../js/app.js?v=20260826b" defer></script>
+  <script src="../../js/boot.js?v=20260826b" defer></script>
 </head>
 <body data-page="/guides/cors/">
 <noscript>
@@ -152,11 +152,11 @@
   <article class="card reveal">
     <ol>
       <li>Open the <a href="../../tools/cors/">CORS Validator</a> and paste an endpoint you are authorized to test — an API path, not the marketing homepage. The endpoint must be one you own or have permission to test.</li>
-      <li><strong>GET is the baseline read-only probe.</strong> Select additional methods only for that authorized endpoint: <code>HEAD</code> and direct <code>OPTIONS</code> where the endpoint should support them, and a <strong>preflight simulation</strong> (<code>OPTIONS + Origin + Access-Control-Request-Method: POST</code> and optional <code>Access-Control-Request-Headers</code>) — no POST body is ever sent.</li>
+      <li><strong>GET is the baseline read-only probe.</strong> Select additional methods only for that authorized endpoint: <code>HEAD</code> and direct <code>OPTIONS</code> where the endpoint should support them, and a <strong>preflight simulation</strong> (<code>OPTIONS + Origin + Access-Control-Request-Method: POST</code>) — no POST body is ever sent. Custom <code>Access-Control-Request-Headers</code> is a Python/CLI option; browser JavaScript cannot set that header.</li>
       <li>The Python engine sends two <em>different</em> attacker origins and <code>Origin: null</code> <strong>for every selected method</strong>; the hosted fallback can only observe this page's single origin and cannot forge <code>Origin</code>, set <code>Access-Control-Request-Method/Headers</code>, or inspect the browser's automatic preflight — it reports what it actually attempted and says server.py is required for two-origin/null/preflight proof.</li>
       <li>Compare the two <code>Access-Control-Allow-Origin</code> values per method. Both echoed back means arbitrary reflection, and two distinct probes rule out a coincidental allowlist hit. An unsupported method (HTTP 405/501) is reported as <em>not assessed</em>, never as safe.</li>
       <li>Check <code>Access-Control-Allow-Credentials</code> per method. That flag is what turns a permissive policy into readable authenticated data. The report rolls up the <strong>highest primary risk across all successfully assessed methods</strong> and shows a coverage matrix; missing <code>Vary: Origin</code> is a separate finding and never sets the headline.</li>
-      <li>Export the report card — it carries the selected methods, tested vs unassessed list, both probe origins per method, the raw headers, the final URL, the status and the timestamp. Never claim a global “CORS PASS” when only GET was examined — use “No risky CORS behavior observed for GET” and the matrix.</li>
+      <li>Export the report card — it carries the selected methods, tested vs unassessed list, both probe origins per method, the raw headers, the final URL, the status and the timestamp. Never claim a global “CORS PASS” when only GET was examined — use “No risky CORS behavior observed for GET” and the matrix. The tool can also build a local browser HTML PoC. Host that file on an origin you control — a readable body in the victim's browser is the impact proof; a Burp header is not.</li>
     </ol>
     <p>
       The risk ladder is per method: reflection
@@ -187,6 +187,22 @@ Vary: Origin</code></pre>
       <code>Access-Control-Allow-Origin: *</code> is fine. Then re-probe: a
       correctly configured endpoint returns your allowlisted origin regardless
       of what the two probes claimed to be.
+    </p>
+  </article>
+
+  <div class="section-head reveal">
+    <h2>The longer walkthrough</h2>
+  </div>
+  <article class="card reveal">
+    <p>
+      I keep seeing the same reflected Origin screenshot treated as a High.
+      I wrote the investigation behind this guide as its own post — SameSite
+      versus origin, <code>Origin: null</code>, bearer tokens, and why a
+      Burp header is not a browser PoC.
+    </p>
+    <p>
+      <a href="https://amitpxl.medium.com/cors-misconfiguration-when-reflecting-the-origin-is-not-the-whole-story-956e2e6e18bc" target="_blank" rel="noopener noreferrer">CORS Misconfiguration: When Reflecting the Origin Is Not the Whole Story</a>
+      — on Medium.
     </p>
   </article>
 
