@@ -3030,6 +3030,22 @@ function interestingHeaders(headers) {
 
 function gradeHeadersFromMap(url, status, finalUrl, headers, source) {
   headers = headers || {};
+  if (status != null && status >= 400) {
+    const msg = "HTTP status " + status + " received — security headers cannot be assessed from an error or rate-limited response.";
+    const checks = [check("HTTP status", "info", msg, "HTTP " + status, 0)];
+    return {
+      url: url,
+      final_url: finalUrl || url,
+      status_code: status,
+      checks: checks,
+      score: 0,
+      grade: "—",
+      risk: "unknown",
+      summary: msg,
+      headers: interestingHeaders(headers),
+      _source: source || "live"
+    };
+  }
   let isHttps = false;
   try { isHttps = new URL(finalUrl || url).protocol === "https:"; } catch (_) { /* ignore */ }
   const csp = headers["content-security-policy"];
@@ -3378,10 +3394,33 @@ function cspScore(checks) {
 function gradeCspFromMap(url, status, finalUrl, headers, source) {
   const normalized = {};
   Object.keys(headers || {}).forEach((key) => { normalized[String(key).toLowerCase()] = String(headers[key]); });
+  const final = finalUrl || url;
+  if (status != null && status >= 400) {
+    const msg = "HTTP status " + status + " received — Content-Security-Policy cannot be assessed from an error or rate-limited response.";
+    const checks = [cspFinding("HTTP status", "info", msg, "HTTP " + status, "info", "")];
+    return {
+      url: url,
+      final_url: final,
+      status_code: status,
+      checks: checks,
+      risk: "unknown",
+      score: 0,
+      grade: "—",
+      summary: msg,
+      policy: "",
+      report_only_policy: "",
+      directives: {},
+      suggested_policy: SUGGESTED_POLICY,
+      headers: {
+        "content-security-policy": normalized["content-security-policy"] || "",
+        "content-security-policy-report-only": normalized["content-security-policy-report-only"] || ""
+      },
+      _source: source || "live"
+    };
+  }
   const policy = (normalized["content-security-policy"] || "").trim();
   const reportOnly = (normalized["content-security-policy-report-only"] || "").trim();
   const policies = splitCspPolicies(policy);
-  const final = finalUrl || url;
   const checks = [];
   let directives = {};
   let perPolicy = [];
@@ -3569,6 +3608,20 @@ function scoreClickjacking(findings) {
 
 function gradeClickjackingFromMap(url, status, finalUrl, headers, source) {
   headers = headers || {};
+  if (status != null && status >= 400) {
+    const msg = "HTTP status " + status + " received — framing protections cannot be assessed from an error or rate-limited response.";
+    const findings = [{ name: "HTTP status", status: "info", detail: msg, evidence: "HTTP " + status }];
+    return {
+      url: url,
+      final_url: finalUrl || url,
+      status_code: status,
+      findings: findings,
+      risk: "unknown",
+      summary: msg,
+      headers: {},
+      _source: source || "live"
+    };
+  }
   // Clickjacking is specifically about framing — keep the findings to the two
   // framing controls, mirroring the Python engine. (Transport, cookies and
   // Permissions-Policy live in the Security Headers tool.)

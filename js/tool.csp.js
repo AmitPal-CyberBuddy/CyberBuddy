@@ -7,7 +7,7 @@
   function $(id) { return document.getElementById(id); }
 
   function setVerdict(data) {
-    const unreachable = !!data._unreachable;
+    const unreachable = !!data._unreachable || (data.status_code != null && data.status_code >= 400);
     const risk = unreachable ? "unreachable" : (data.risk || "unknown").toLowerCase();
     const grade = data.grade || "";
     const score = data.score != null ? data.score : null;
