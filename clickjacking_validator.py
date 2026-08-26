@@ -476,6 +476,26 @@ def grade_clickjacking_from_map(
     belong to the Security Headers tool.
     """
     headers = headers or {}
+    if status_code is not None and status_code >= 400:
+        msg = f"HTTP status {status_code} received — framing protections cannot be assessed from an error or rate-limited response."
+        findings = [Finding("HTTP status", "info", msg, evidence=f"HTTP {status_code}")]
+        return ScanResult(
+            url=url,
+            final_url=final_url or url,
+            status_code=status_code,
+            findings=findings,
+            risk="unknown",
+            summary=msg,
+            headers={
+                k: headers[k]
+                for k in (
+                    "x-frame-options",
+                    "content-security-policy",
+                    "content-security-policy-report-only",
+                )
+                if k in headers
+            },
+        )
     findings = [
         assess_xfo(headers.get("x-frame-options")),
         assess_frame_ancestors(headers.get("content-security-policy")),

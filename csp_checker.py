@@ -427,6 +427,28 @@ def grade_csp_from_map(
 ) -> CspResult:
     """Audit CSP response headers without making a network request."""
     normalized = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    final = final_url or url
+    if status_code is not None and status_code >= 400:
+        msg = f"HTTP status {status_code} received — Content-Security-Policy cannot be assessed from an error or rate-limited response."
+        checks = [CspCheck("HTTP status", "info", msg, evidence=f"HTTP {status_code}", severity="info")]
+        return CspResult(
+            url=url,
+            final_url=final,
+            status_code=status_code,
+            checks=checks,
+            risk="unknown",
+            score=0,
+            grade="—",
+            summary=msg,
+            policy="",
+            report_only_policy="",
+            directives={},
+            headers={
+                key: normalized[key]
+                for key in ("content-security-policy", "content-security-policy-report-only")
+                if key in normalized
+            },
+        )
     policy = normalized.get("content-security-policy", "").strip()
     report_only = normalized.get("content-security-policy-report-only", "").strip()
     policies = split_policies(policy)

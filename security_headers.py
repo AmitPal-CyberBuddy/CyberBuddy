@@ -457,6 +457,37 @@ def grade_headers_from_map(
     against tests/grader_fixtures.json so the two engines cannot drift.
     """
     headers = headers or {}
+    if status_code is not None and status_code >= 400:
+        msg = f"HTTP status {status_code} received — security headers cannot be assessed from an error or rate-limited response."
+        checks = [Check("HTTP status", "info", msg, evidence=f"HTTP {status_code}")]
+        return HeadersResult(
+            url=url,
+            final_url=final_url or url,
+            status_code=status_code,
+            checks=checks,
+            score=0,
+            grade="—",
+            risk="unknown",
+            summary=msg,
+            headers={
+                k: headers[k]
+                for k in (
+                    "content-security-policy",
+                    "content-security-policy-report-only",
+                    "x-frame-options",
+                    "strict-transport-security",
+                    "x-content-type-options",
+                    "referrer-policy",
+                    "permissions-policy",
+                    "feature-policy",
+                    "cross-origin-opener-policy",
+                    "cross-origin-embedder-policy",
+                    "cross-origin-resource-policy",
+                    "set-cookie",
+                )
+                if k in headers
+            },
+        )
     is_https = urlparse(final_url or url).scheme == "https"
     csp_value = headers.get("content-security-policy")
     fa_ok = frame_ancestors_restricts(csp_value)

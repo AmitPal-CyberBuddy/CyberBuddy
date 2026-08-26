@@ -270,6 +270,22 @@
           "X-Frame-Options": "missing"
         }
       }
+    },
+    {
+      "name": "HTTP 429 rate limit response is unassessed",
+      "url": "https://rate-limited.example",
+      "final_url": "https://rate-limited.example",
+      "status_code": 429,
+      "headers": {},
+      "expect": {
+        "score": 0,
+        "grade": "—",
+        "risk": "unknown",
+        "clickjacking_risk": "unknown",
+        "statuses": {
+          "HTTP status": "info"
+        }
+      }
     }
   ]
 }

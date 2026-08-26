@@ -13,7 +13,7 @@
     $("results").classList.remove("hidden");
     setSourceChip(data);
 
-    const unreachable = !!data._unreachable;
+    const unreachable = !!data._unreachable || (data.status_code != null && data.status_code >= 400);
     const score = data.score != null ? data.score : null;
     const grade = data.grade ? data.grade.toUpperCase() : "—";
     const risk = unreachable ? "UNREACHABLE" : (data.risk || "unknown").toUpperCase();
