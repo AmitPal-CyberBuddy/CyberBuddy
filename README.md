@@ -1,5 +1,3 @@
-![CyberBuddy — Browser Security Assessment Suite](og-cyberbuddy.png)
-
 # CyberBuddy
 
 [![CI](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/ci.yml/badge.svg)](https://github.com/AmitPal-CyberBuddy/CyberBuddy/actions/workflows/ci.yml)
