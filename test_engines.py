@@ -5485,14 +5485,10 @@ class PagesExclusionTests(unittest.TestCase):
     """The published site must never carry repo-internal planning docs.
 
     docs/ROADMAP.md is the session roadmap; docs/DEV-NOTES.md is internal
-    maintainer notes; REVIEW.md and tests/ are working artifacts. The Pages
+    maintainer notes; docs/ and tests/ are working artifacts. The Pages
     workflow copies only the public surface, and a regression guard (here,
     run by CI via `python3 -m unittest test_engines.py`) pins that the
     assemble step never copies them into _site/.
-
-    The workflow already contains both explicit public-surface assembly and
-    the leak guard. docs/pages-workflow-patch.md is a historical record, not
-    an outstanding deployment instruction.
     """
 
     def test_roadmap_doc_exists(self):
@@ -5503,9 +5499,9 @@ class PagesExclusionTests(unittest.TestCase):
         """Return just the `run:` body of the *Assemble static site* step.
 
         Scanning the whole workflow for internal-path tokens is wrong: the
-        leak-guard step legitimately *names* docs/ROADMAP.md, docs/DEV-NOTES.md
-        and REVIEW.md in order to reject them. Only the assemble step decides
-        what gets copied, so only the assemble step is scanned here.
+        leak-guard step legitimately *names* docs/ROADMAP.md and
+        docs/DEV-NOTES.md in order to reject them. Only the assemble step
+        decides what gets copied, so only the assemble step is scanned here.
         """
         text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         lines = text.splitlines()
@@ -5525,15 +5521,14 @@ class PagesExclusionTests(unittest.TestCase):
         return "\n".join(body)
 
     def test_workflow_never_copies_internal_paths(self):
-        """The assemble step must not reference docs/, tests/ or REVIEW.md
-        as copy sources. This is the regression guard: CI runs it on every
-        push, so a future commit that starts copying internal files into
-        _site/ fails here."""
+        """The assemble step must not reference docs/ or tests/ as copy
+        sources. This is the regression guard: CI runs it on every push, so a
+        future commit that starts copying internal files into _site/ fails
+        here."""
         text = self._assemble_step_body()
         for token in (
             "cp -a docs", "cp docs", "cp -r docs",
             "cp -a tests", "cp tests", "cp -r tests",
-            "cp REVIEW.md", "cp -a REVIEW.md",
             "docs/ROADMAP.md", "docs/DEV-NOTES.md",
         ):
             self.assertNotIn(token, text, token)
@@ -5544,7 +5539,7 @@ class PagesExclusionTests(unittest.TestCase):
         text = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
         self.assertIn("Guard internal files stay out of the published site", text)
         guard = text.split("Guard internal files stay out of the published site", 1)[1]
-        for name in ("docs/ROADMAP.md", "docs/DEV-NOTES.md", "REVIEW.md"):
+        for name in ("docs/ROADMAP.md", "docs/DEV-NOTES.md"):
             self.assertIn(name, guard, name)
 
     def test_workflow_publishes_catalog_guides_and_dns(self):
@@ -5552,13 +5547,6 @@ class PagesExclusionTests(unittest.TestCase):
         self.assertIn("cp tools/index.html _site/tools/", workflow)
         self.assertIn("cp -a guides _site/", workflow)
         self.assertIn("tools/dns", workflow)
-
-    def test_historical_patch_doc_has_no_pending_manual_patch(self):
-        patch = (ROOT / "docs" / "pages-workflow-patch.md").read_text(encoding="utf-8")
-        prose = re.sub(r"\s+", " ", patch)
-        self.assertIn("already applied", prose)
-        self.assertIn("no manual patch left", prose)
-        self.assertIn(".github/workflows/pages.yml", prose)
 
 
 class LinkLabelTests(unittest.TestCase):
@@ -5569,10 +5557,10 @@ class LinkLabelTests(unittest.TestCase):
     internal layout into prose. Every link must say what it points at
     ("JWT Workbench"), not where it lives. Three deliberate exceptions are
     pinned by the tests below so the rule cannot silently spread to them:
-    the README's file-tree table rows (the repo path is the row content),
-    llms.txt's bare-URL bullets (a machine index where the URL is the
-    payload), and the methodology page's security.txt disclosure link (the
-    filename is the point of the link, per RFC 9116).
+    README table rows (reference tables may carry repo paths as row
+    content), llms.txt's bare-URL bullets (a machine index where the URL is
+    the payload), and the methodology page's security.txt disclosure link
+    (the filename is the point of the link, per RFC 9116).
     """
 
     #: label forms that echo the destination: root-relative paths, bare
@@ -5609,13 +5597,13 @@ class LinkLabelTests(unittest.TestCase):
                     )
 
     def test_readme_links_name_the_destination(self):
-        """README links (outside the file-tree table rows) do the same."""
+        """README links (outside table rows) do the same."""
         text = (ROOT / "README.md").read_text(encoding="utf-8")
-        text = re.sub(r"```.*?```", "", text, flags=re.S)  # file-tree blocks
+        text = re.sub(r"```.*?```", "", text, flags=re.S)  # fenced code blocks
         link_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
         for line in text.splitlines():
             if line.lstrip().startswith("|"):
-                continue  # file-tree table rows are repo paths by design
+                continue  # reference table rows may be repo paths by design
             for label, _url in link_re.findall(line):
                 label = label.replace("`", "").strip()
                 with self.subTest(label=label):
