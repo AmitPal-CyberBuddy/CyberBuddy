@@ -149,7 +149,7 @@ def check_pages_artifact() -> None:
         pages = list(site.rglob("*.html"))
         if not (site / "index.html").is_file() or not pages:
             raise RuntimeError("assembled site is missing its root page")
-        for forbidden in ("docs", "tests", "REVIEW.md"):
+        for forbidden in ("docs", "tests"):
             if (site / forbidden).exists():
                 raise RuntimeError(f"internal path leaked into assembled site: {forbidden}")
         print(f"[verify] Pages artifact: {len(pages)} HTML pages, local links passed")

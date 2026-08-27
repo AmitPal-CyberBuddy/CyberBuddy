@@ -436,13 +436,18 @@ should remain shared.
   both plus the `/CyberBuddy/tools/` mount. If you add another top-level
   directory page (e.g. `/guides/`), repeat this three-way route coverage.
 - **Internal files must never reach Pages.** `docs/ROADMAP.md` is the session
-  roadmap and is deliberately excluded like `docs/DEV-NOTES.md`, `tests/` and
-  `REVIEW.md`. The CI-side regression guard is stdlib
+  roadmap and is deliberately excluded, as is everything else under `docs/`
+  and `tests/`. The CI-side regression guard is stdlib
   `PagesExclusionTests.test_workflow_never_copies_internal_paths` (it fails if
   any future commit starts copying those paths into `_site/`); the workflow's
   `Guard internal files stay out of the published site` step enforces the same
   boundary during deployment. If you add a new internal doc directory, decide
   its Pages fate in the same commit.
+- **Pending one-line workflow tidy.** The guard loop in `pages.yml` still
+  names the deleted `REVIEW.md`. It is harmless (the check just never fires),
+  but drop that token from the `for f in …` list and the trailing `echo` next
+  time you edit the workflow by hand — an Arena push token cannot touch
+  `.github/workflows/**`.
 - **Catalog static fallback vs JS registry.** `tools/index.html` ships a
   static no-JS fallback *and* `renderToolCatalog()` replaces it from
   `TOOLS_MENU`. This is the same intentional duplication the hub already has;
@@ -502,9 +507,9 @@ should remain shared.
   `../css`, `../js`; `guides/clickjacking/index.html` uses `../../`. Same trap
   as the catalog vs tool pages.
 - **`PagesExclusionTests` scans the assemble step only.** The workflow's leak
-  *guard* step legitimately names `docs/ROADMAP.md`, `docs/DEV-NOTES.md` and
-  `REVIEW.md`, so a whole-file token scan reports a false positive (it did, at
-  branch point `17e66e2`). `_assemble_step_body()` slices the YAML from
+  *guard* step legitimately names `docs/ROADMAP.md` and `docs/DEV-NOTES.md`,
+  so a whole-file token scan reports a false positive (it did, at branch
+  point `17e66e2`). `_assemble_step_body()` slices the YAML from
   `- name: Assemble static site` to the next line indented at or below that
   step's indent; keep new copy lines inside that step or the guard stops
   seeing them.

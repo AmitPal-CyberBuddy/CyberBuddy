@@ -76,20 +76,18 @@ deductions. An NXDOMAIN domain is reported **unknown — never graded**.
 - `test_engines.py` — `DnsEngineTests`, `DnsParityTests`, `DnsSiteTests`,
   plus updates to the alias/route/ticker/guide/category tests.
 - `tests/browser/{layout,dropdown,responsive}.js` — `dns` + `guide-dns` PAGES.
-- `docs/ROADMAP.md` · `docs/DEV-NOTES.md` · `docs/pages-workflow-patch.md` —
-  roadmap item, durable traps, and the unpushable workflow copy line.
+- `docs/ROADMAP.md` · `docs/DEV-NOTES.md` — roadmap item and durable traps.
 
 ## 4. Known follow-up for the maintainer
 
-The arena push token cannot edit `.github/workflows/**`. The one-line
-`tools/dns` copy-line edit is recorded in `docs/pages-workflow-patch.md`:
+_Resolved._ The Pages workflow copy line now includes `tools/dns`:
 
 ```yaml
 cp -a tools/clickjacking tools/headers tools/cors tools/csp tools/csrf tools/jwt tools/dns _site/tools/
 ```
 
-Until that lands, `/tools/dns/` 404s on the hosted Pages site (local
-`server.py` is unaffected). The `guides/` tree is copied whole, so
+Before that landed, `/tools/dns/` 404'd on the hosted Pages site (local
+`server.py` was unaffected). The `guides/` tree is copied whole, so
 `guides/dns/` needs no separate line.
 
 ## 5. Verification
