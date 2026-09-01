@@ -847,10 +847,12 @@ and the secret-test worker honest:
 - **`apiCall` takes a query-key parameter.** `apiCall(path, value, key)`
   builds `?key=value`; `/api/dns` passes `"domain"`. Keep `apiCall`'s
   engine-down early return — it is what avoids a guaranteed HTML 404 on Pages.
-- **DNS is `suite: false`.** The hub Run suite stays the four HTTP tools;
-  `TOOLS = PAGES.slice(1, 5)` in `tests/browser/responsive.js` must keep
-  resolving to exactly those four, so the `dns` page is appended at the end of
-  `PAGES` alongside the JWT entries.
+- **DNS joins the Run suite (`suite: true`, 2026-09).** The hub suite now
+  derives the domain from the URL hostname and feeds it to the DNS grader
+  behind its own DoH consent gate; `TOOLS = PAGES.slice(1, 5)` in
+  `tests/browser/responsive.js` must keep resolving to exactly the four HTTP
+  tool pages, so the `dns` page stays appended at the end of `PAGES` alongside
+  the JWT entries.
 - **DoH evidence differs from wire evidence.** The browser port renders DNSKEY
   as Google returns it (base64) while Python prints a key summary. Scoring
   only tests *presence*, so the parity test compares checks/score/grade — not
