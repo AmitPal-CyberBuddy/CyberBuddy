@@ -261,7 +261,7 @@ const TOOL_CATEGORIES = {
   assess: {
     label: "Assess targets",
     hubLabel: "Assess a target",
-    blurb: "Target-based checks that read a target you point them at — a URL for the HTTP tools, a domain for the DNS analyzer. The four HTTP tools run together in the hub “Run suite”; the DNS analyzer runs standalone.",
+    blurb: "Target-based checks that read a target you point them at — a URL for the HTTP tools, a domain for the DNS analyzer. All five run together in the hub “Run suite”; the DNS analyzer derives the domain from your URL’s hostname.",
     suite: true
   },
   local: {
@@ -327,14 +327,14 @@ const TOOLS_MENU = [
   },
   {
     // Assesses a *domain* via public DNS, never the target's own servers.
-    // category "assess" (it reads an external target) but suite: false —
-    // the hub "Run suite" stays the four HTTP tools; DNS runs standalone.
+    // Joins the hub "Run suite": the domain is derived from the suite URL's
+    // hostname, so one input drives the HTTP tools and the DNS grader.
     href: "/tools/dns/",
     label: "DNS & Domain Security Analyzer",
     status: "live",
     icon: "dns",
     category: "assess",
-    suite: false,
+    suite: true,
     input: "Domain",
     mode: "Reads public DNS (resolver only — never the target's servers)",
     evidence: "0–100 score + A–F grade report card with raw DNS evidence",
@@ -431,7 +431,6 @@ function renderFooter() {
     "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span>" +
     '<span class="footer-engine">Engine: in-browser on Pages · <code>python3 server.py</code> locally</span>' +
     '<span class="footer-contact">' +
-    '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
@@ -618,8 +617,8 @@ function renderToolCatalog() {
     const statusBadge = isPreview
       ? ' <span class="cat-badge cat-preview" title="Development preview — not operational">Preview</span>'
       : "";
-    // Suite membership is per tool now: the four HTTP tools join the hub
-    // "Run suite", while the DNS analyzer is a standalone target check.
+    // Suite membership is per tool: the four HTTP tools and the DNS analyzer
+    // (fed the URL's hostname) join the hub "Run suite".
     const suiteBadge = t.category === "assess"
       ? (t.suite === false
         ? ' <span class="cat-badge cat-local">standalone — not in Run suite</span>'
@@ -4549,9 +4548,14 @@ function initSuite() {
 
     // Ask before anything can reach a third-party relay. Without this the
     // hub silently degraded to "no header data" for every target on the
-    // hosted site, with no way for the analyst to opt in.
-    const consent = await ensureRelayConsent(url);
-    if (consent === "deny") {
+    // hosted site, with no way for the analyst to opt in. Only the four HTTP
+    // tools can ever reach that relay — a DNS-only run reads public resolvers
+    // and passes through its own DoH consent gate below instead.
+    const wants = (key) => active.includes(key);
+    const relayWanted = ["clickjacking", "headers", "cors", "csp"].some(wants);
+    const consent = relayWanted ? await ensureRelayConsent(url) : "skip";
+    const relayDenied = consent === "deny";
+    if (relayDenied && !wants("dns")) {
       setStage("consent", "failed", "declined — header grading skipped");
       out.insertAdjacentHTML("beforeend",
         '<div class="notice"><h3>Relay lookups declined</h3>' +
@@ -4562,17 +4566,28 @@ function initSuite() {
       setLoading(go, false);
       return;
     }
-    setStage("consent", consent === "skip" ? "skipped" : "done",
-      consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
+    if (relayDenied) {
+      // Declining the header relay skips only the HTTP tools. DNS never
+      // touches that relay — it reads public resolvers behind its own
+      // consent gate, so the run can still produce the DNS report.
+      setStage("consent", "failed", "declined — HTTP tools skipped, DNS can still run");
+      setLoading(go, true);
+    } else {
+      setStage("consent", consent === "skip" ? "skipped" : "done",
+        consent === "skip"
+          ? (relayWanted ? "not needed — engine-side fetch" : "not needed — DNS reads public resolvers")
+          : "approved for this session");
+    }
 
-    const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP" };
-    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — non-destructive checks");
-    const wants = (key) => active.includes(key);
+    const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP", dns: "DNS" };
+    const runTool = (key) => wants(key) && !(relayDenied && key !== "dns");
+    const effective = relayDenied ? active.filter((key) => key === "dns") : active;
+    setStage("collect", "active", effective.map((key) => names[key]).join(" · ") + " — non-destructive checks");
     // CSP and Security Headers consume the same response fields. When both
     // are selected, reuse one header read rather than contacting the target twice.
-    const headersTask = wants("headers") || wants("csp")
+    const headersTask = runTool("headers") || runTool("csp")
       ? apiHeaders(url).catch(() => null) : Promise.resolve(null);
-    const cspTask = wants("csp") ? headersTask.then((headersResult) => {
+    const cspTask = runTool("csp") ? headersTask.then((headersResult) => {
       if (headersResult && headersResult.status_code != null && headersResult.headers) {
         const cspResult = gradeCspFromMap(
           url,
@@ -4589,27 +4604,61 @@ function initSuite() {
       }
       return apiCsp(url).catch(() => null);
     }) : Promise.resolve(null);
-    const [cj, headerRead, cr, cp] = await Promise.all([
-      wants("clickjacking") ? apiScan(url).catch(() => null) : null,
+    // The DNS analyzer grades the hostname behind the suite URL — the same
+    // domain you would paste into the standalone tool. IP literals and
+    // localhost have no zone to grade, and lookups still ask DNS consent.
+    const dnsHost = (() => {
+      try {
+        const h = new URL(url).hostname.toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+        if (!h || h === "localhost" || h.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h)) return null;
+        return h;
+      } catch (_) { return null; }
+    })();
+    const dnsTask = runTool("dns") ? (async () => {
+      if (!dnsHost) {
+        return {
+          _unreachable: true,
+          summary: "No DNS posture to grade — the URL points at an IP address or localhost, not a domain."
+        };
+      }
+      const dnsConsent = await ensureDnsConsent(dnsHost);
+      if (dnsConsent === "deny") {
+        return {
+          _unreachable: true,
+          summary: "DNS lookups were declined — no records were queried. Re-run and approve, or use the standalone DNS tool with server.py."
+        };
+      }
+      const res = await apiDns(dnsHost).catch(() => null);
+      // A rate-limited or erroring engine answers {error} without checks —
+      // surface it as a failed lookup instead of an empty card.
+      if (res && res.error && !res.checks) {
+        return { _unreachable: true, summary: "DNS lookup failed — " + res.error };
+      }
+      return res;
+    })() : Promise.resolve(null);
+    const [cj, headerRead, cr, cp, dn] = await Promise.all([
+      runTool("clickjacking") ? apiScan(url).catch(() => null) : null,
       headersTask,
-      wants("cors") ? apiCors(url).catch(() => null) : null,
-      cspTask
+      runTool("cors") ? apiCors(url).catch(() => null) : null,
+      cspTask,
+      dnsTask
     ]);
-    const hd = wants("headers") ? headerRead : null;
+    const hd = runTool("headers") ? headerRead : null;
     setStage("collect", "done");
     setStage("evaluate", "done", "OWASP-aligned checks applied");
 
-    lastSuite = { url: url, active: active, clickjacking: cj, headers: hd, cors: cr, csp: cp };
+    lastSuite = { url: url, active: effective, clickjacking: cj, headers: hd, cors: cr, csp: cp, dns: dn };
     const params = new URLSearchParams(window.location.search);
     params.set("url", url);
     params.set("tools", active.join(","));
     history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
     const base = appBase();
     const cards = [
-      wants("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
-      wants("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
-      wants("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
-      wants("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : ""
+      runTool("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
+      runTool("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
+      runTool("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
+      runTool("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : "",
+      runTool("dns") ? suiteCard("DNS & domain", dn, "checks", base + "/tools/dns/?domain=" + encodeURIComponent(dnsHost || "")) : ""
     ].join("");
     out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) + '<div class="suite-grid">' + cards + "</div>";
     addRecentScan(url, recentScanSummary(lastSuite));
@@ -4724,7 +4773,8 @@ function worstSuiteTool(s) {
     ["Clickjacking", s.clickjacking],
     ["Security Headers", s.headers],
     ["CORS", s.cors],
-    ["CSP", s.csp]
+    ["CSP", s.csp],
+    ["DNS & domain", s.dns]
   ].filter((d) => d[1]);
   if (!ds.length) return null;
   return ds.reduce((w, d) =>
@@ -4736,7 +4786,7 @@ function worstSuiteTool(s) {
    persisting full scan JSON. */
 function recentScanSummary(s) {
   const out = {};
-  ["clickjacking", "cors", "csp"].forEach((k) => {
+  ["clickjacking", "cors", "csp", "dns"].forEach((k) => {
     if (s[k] && s[k].risk) out[k] = { risk: s[k].risk };
   });
   if (s.headers && s.headers.grade) {
@@ -4770,7 +4820,7 @@ function suiteSummaryHtml(s, engineNote) {
       '<text class="gauge-num" x="60" y="58" style="font-size:15px">' + (headersSelected ? "no" : "not") + '</text>' +
       '<text class="gauge-num" x="60" y="76" style="font-size:15px">' + (headersSelected ? "data" : "run") + '</text>' +
       '</svg><span class="gauge-band">headers ' + (headersSelected ? "unavailable" : "not selected") + '</span></div>';
-  const selectedCount = (s.active || []).length || [s.clickjacking, s.headers, s.cors, s.csp].filter(Boolean).length;
+  const selectedCount = (s.active || []).length || [s.clickjacking, s.headers, s.cors, s.csp, s.dns].filter(Boolean).length;
   const verdict = worst
     ? '<span class="risk ' + esc(worst[1].risk || "unknown") + '">' +
       esc((worst[1].risk || "unknown").toUpperCase()) + "</span>" +
@@ -4778,12 +4828,13 @@ function suiteSummaryHtml(s, engineNote) {
       (selectedCount === 1 ? " selected tool — " : " selected tools — ") + esc(worst[0]) + "</span>"
     : '<span class="risk unknown">UNKNOWN</span>' +
       '<span class="suite-summary-worst">no selected tool returned a result</span>';
-  const active = s.active || ["clickjacking", "headers", "cors", "csp"];
+  const active = s.active || ["clickjacking", "headers", "cors", "csp", "dns"];
   const chips =
     (active.includes("clickjacking") ? suiteToolChip("Clickjacking", s.clickjacking, false) : "") +
     (active.includes("headers") ? suiteToolChip("Headers", s.headers, true) : "") +
     (active.includes("cors") ? suiteToolChip("CORS", s.cors, false) : "") +
-    (active.includes("csp") ? suiteToolChip("CSP", s.csp, false) : "");
+    (active.includes("csp") ? suiteToolChip("CSP", s.csp, false) : "") +
+    (active.includes("dns") ? suiteToolChip("DNS", s.dns, true) : "");
   return '<div class="suite-summary">' +
     '<div class="suite-summary-gauge">' + gauge + "</div>" +
     '<div class="suite-summary-body">' +

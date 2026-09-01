@@ -3064,9 +3064,9 @@ class ToolCatalogTests(unittest.TestCase):
         app = self._app()
         self.assertIn('category: "assess"', app)
         self.assertIn('category: "local"', app)
-        # Five target tools assess (the four HTTP tools + the standalone DNS
-        # analyzer); local utilities are the CSRF PoC Generator and the JWT
-        # Security Workbench.
+        # Five target tools assess (the four HTTP tools + the DNS analyzer,
+        # which the hub suite feeds from the URL hostname); local utilities
+        # are the CSRF PoC Generator and the JWT Security Workbench.
         self.assertEqual(app.count('category: "assess"'), 5)
         self.assertEqual(app.count('category: "local"'), 2)
 
@@ -3147,13 +3147,14 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertIn("CSRF PoC Generator", local)
 
     def test_csrf_is_local_and_not_in_the_scan_suite(self):
-        """The generator never joins the hub suite — that stays the four
-        scan tools (apiScan / apiHeaders / apiCors / apiCsp)."""
+        """The generator never joins the hub suite — that stays the five
+        target tools (apiScan / apiHeaders / apiCors / apiCsp / apiDns)."""
         app = self._app()
         start = app.index("function initSuite()")
         body = app[start:app.index("/* ---------- Scan pipeline", start)]
         self.assertIn("apiScan", body)
         self.assertIn("apiCsp", body)
+        self.assertIn("apiDns", body)
         self.assertNotIn("csrf", body.lower())
 
     def test_clickjacking_relay_result_is_an_assessment_not_a_proof(self):
@@ -6292,15 +6293,40 @@ class DnsSiteTests(unittest.TestCase):
     """The DNS tool is wired through the registry, menu, catalog, sitemap,
     manifest, llms.txt and the applied Pages workflow."""
 
-    def test_dns_tool_is_registered_as_standalone_assess(self):
+    def test_dns_tool_joins_the_hub_suite(self):
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
         start = app.index("const TOOLS_MENU")
         end = app.index("const TOOLS_SOON", start)
         menu = app[start:end]
         self.assertIn('href: "/tools/dns/"', menu)
         self.assertIn('category: "assess"', menu)
-        # Standalone: not part of the hub "Run suite".
-        self.assertIn("suite: false", menu)
+        # The DNS analyzer is part of the hub "Run suite": the suite derives
+        # the domain from the URL hostname and feeds it to the DNS grader.
+        self.assertIn("suite: true", menu)
+
+    def test_dns_suite_wiring_derives_domain_from_url(self):
+        """Hub suite contract: the DNS checkbox exists, the button counts five
+        tools, and initSuite derives the hostname (skipping IP literals) before
+        the consent-gated apiDns call."""
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        hub = (ROOT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('value="dns"', hub)
+        self.assertIn("Run 5 tools", hub)
+        start = app.index("function initSuite()")
+        body = app[start:app.index("/* ---------- Scan pipeline", start)]
+        self.assertIn("dnsHost", body)
+        self.assertIn("ensureDnsConsent", body)
+        self.assertIn("apiDns", body)
+        self.assertIn('"DNS & domain"', body)
+        # Hosted-Pages contract: the header-relay gate is only shown when an
+        # HTTP tool is selected (a DNS-only run reads public resolvers), and
+        # declining the relay still lets the DNS half of the suite run.
+        self.assertIn("relayWanted", body)
+        self.assertIn("relayDenied", body)
+        self.assertIn("runTool", body)
+        # The summary, worst-case verdict and stored digest include DNS.
+        self.assertIn('["DNS & domain", s.dns]', app)
+        self.assertIn('suiteToolChip("DNS", s.dns, true)', app)
 
     def test_dns_removed_from_soon_and_har_remains(self):
         app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")

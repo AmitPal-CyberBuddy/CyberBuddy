@@ -4,9 +4,9 @@
 # automated scanners will not discover it until CyberBuddy moves to a
 # custom domain. Kept here so the contact is still findable by humans.
 
-Contact: mailto:amitpal.secure@gmail.com
+Contact: https://github.com/AmitPal-CyberBuddy/CyberBuddy/security/advisories/new
 Expires: 2027-08-14T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://amitpal-cyberbuddy.github.io/CyberBuddy/.well-known/security.txt
 Policy: https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/
-Hiring: mailto:amitpal.secure@gmail.com?subject=CyberBuddy%20security
+Hiring: https://www.linkedin.com/in/amitpal-wb/

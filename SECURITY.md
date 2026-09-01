@@ -10,8 +10,11 @@ Older clones, forks, and third-party deployments may not include current fixes.
 
 ## Report a vulnerability privately
 
-Email **amitpal.secure@gmail.com** with the subject
-`[CyberBuddy security] <short summary>`.
+Use GitHub's **private vulnerability reporting**: open
+[Report a vulnerability](https://github.com/AmitPal-CyberBuddy/CyberBuddy/security/advisories/new)
+from the repository's **Security** tab. If the form is unavailable to you,
+send a private [LinkedIn](https://www.linkedin.com/in/amitpal-wb/) message
+instead.
 
 Please do **not** open a public issue for a suspected vulnerability. Include:
 

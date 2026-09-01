@@ -56,7 +56,8 @@ or acting as an appointed representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported privately to **amitpal.secure@gmail.com** with the subject
+reported privately to the maintainer via a
+[LinkedIn](https://www.linkedin.com/in/amitpal-wb/) direct message, prefixed
 `[CyberBuddy conduct]`. All complaints will be reviewed and investigated
 promptly and fairly. Community leaders will respect the privacy and security of
 the reporter.

@@ -1,6 +1,5 @@
 /* TEAM */
 Developer: Amit Pal
-Contact: amitpal.secure@gmail.com
 LinkedIn: https://www.linkedin.com/in/amitpal-wb/
 Medium: https://amitpxl.medium.com/
 Location: India

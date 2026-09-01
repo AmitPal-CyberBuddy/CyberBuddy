@@ -108,7 +108,7 @@
           <input id="suiteUrl" type="url" placeholder="https://example.com" autocomplete="url" spellcheck="false" aria-describedby="suiteUrlError" />
           <p id="suiteUrlError" class="field-error hidden" role="alert"></p>
         </div>
-        <button id="suiteGo" type="button" class="btn btn-primary">Run 4 tools</button>
+        <button id="suiteGo" type="button" class="btn btn-primary">Run 5 tools</button>
       </div>
       <fieldset class="suite-picker" id="suitePicker">
         <legend>Choose assessment tools</legend>
@@ -116,10 +116,11 @@
         <label><input type="checkbox" name="suiteTool" value="headers" checked /> <span>Security headers</span></label>
         <label><input type="checkbox" name="suiteTool" value="cors" checked /> <span>CORS</span></label>
         <label><input type="checkbox" name="suiteTool" value="csp" checked /> <span>CSP</span></label>
+        <label><input type="checkbox" name="suiteTool" value="dns" checked /> <span>DNS &amp; domain</span></label>
         <button type="button" class="suite-picker-all" id="suiteSelectAll">Select all</button>
       </fieldset>
       <p id="suitePickerError" class="field-error hidden" role="alert"></p>
-      <p class="form-hint">Select one or more checks, then run them together — this suite runs the four URL tools only. The DNS analyzer and the <a href="#local-utilities">local utilities</a> (CSRF PoC Generator, JWT Security Workbench) run standalone on their own pages. Want just one tool? Open it from the cards below — and on the CSP tool you can even paste a <code>Content-Security-Policy</code> header instead of a URL (graded locally, nothing sent). Python engine when available, <a href="#pagesNote">published reports</a> for the demo targets, in-browser graders otherwise — reading cross-origin headers or checking DNS asks your consent first. Press <kbd>?</kbd> for shortcuts. <a href="methodology/#privacy">What leaves your browser →</a></p>
+      <p class="form-hint">Select one or more checks, then run them together — the suite derives the DNS domain from your URL's hostname, so all five target tools run from one input. The <a href="#local-utilities">local utilities</a> (CSRF PoC Generator, JWT Security Workbench) run standalone on their own pages. Want just one tool? Open it from the cards below — and on the CSP tool you can even paste a <code>Content-Security-Policy</code> header instead of a URL (graded locally, nothing sent). Python engine when available, <a href="#pagesNote">published reports</a> for the demo targets, in-browser graders otherwise — reading cross-origin headers or checking DNS asks your consent first. Press <kbd>?</kbd> for shortcuts. <a href="methodology/#privacy">What leaves your browser →</a></p>
       <div class="auth-badge" role="note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
         <span><strong>Authorized testing only.</strong> Read-only assessment engine — scan systems you own or have written permission to test.</span>
@@ -234,8 +235,9 @@
     <div class="category-head reveal">
       <h3 id="assess-tools-heading">Assess a target</h3>
       <p>Target-based checks that read a target you point them at — a URL for the
-        HTTP tools, a domain for the DNS analyzer. The four HTTP tools run together
-        in the hub “Run suite”; the DNS analyzer runs standalone.</p>
+        HTTP tools, a domain for the DNS analyzer. All five run together in the
+        hub “Run suite”; the DNS analyzer derives the domain from your URL's
+        hostname.</p>
     </div>
     <div class="tool-grid" id="assessGrid" aria-label="Target assessment tools">
       <!-- Static fallbacks: replaced by the richer JS cards when scripts run;
@@ -532,8 +534,8 @@
       <p><strong>Next on the bench: HAR Security Analyzer.</strong> A fully local analyzer for captured web and API traffic, decoded in your browser. Ideas, feedback and contributions are welcome while it is being designed.</p>
     </div>
     <div class="contact-cta-actions">
-      <a class="btn btn-primary" href="mailto:amitpal.secure@gmail.com?subject=CyberBuddy%20—%20feedback%20or%20collaboration">
-        Reach out · amitpal.secure@gmail.com
+      <a class="btn btn-primary" href="https://github.com/AmitPal-CyberBuddy/CyberBuddy/issues" target="_blank" rel="noopener noreferrer">
+        Share ideas · GitHub Issues
       </a>
       <a class="btn btn-ghost" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="16" height="16"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
