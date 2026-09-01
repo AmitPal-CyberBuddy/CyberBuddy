@@ -4548,9 +4548,14 @@ function initSuite() {
 
     // Ask before anything can reach a third-party relay. Without this the
     // hub silently degraded to "no header data" for every target on the
-    // hosted site, with no way for the analyst to opt in.
-    const consent = await ensureRelayConsent(url);
-    if (consent === "deny") {
+    // hosted site, with no way for the analyst to opt in. Only the four HTTP
+    // tools can ever reach that relay — a DNS-only run reads public resolvers
+    // and passes through its own DoH consent gate below instead.
+    const wants = (key) => active.includes(key);
+    const relayWanted = ["clickjacking", "headers", "cors", "csp"].some(wants);
+    const consent = relayWanted ? await ensureRelayConsent(url) : "skip";
+    const relayDenied = consent === "deny";
+    if (relayDenied && !wants("dns")) {
       setStage("consent", "failed", "declined — header grading skipped");
       out.insertAdjacentHTML("beforeend",
         '<div class="notice"><h3>Relay lookups declined</h3>' +
@@ -4561,17 +4566,28 @@ function initSuite() {
       setLoading(go, false);
       return;
     }
-    setStage("consent", consent === "skip" ? "skipped" : "done",
-      consent === "skip" ? "not needed — engine-side fetch" : "approved for this session");
+    if (relayDenied) {
+      // Declining the header relay skips only the HTTP tools. DNS never
+      // touches that relay — it reads public resolvers behind its own
+      // consent gate, so the run can still produce the DNS report.
+      setStage("consent", "failed", "declined — HTTP tools skipped, DNS can still run");
+      setLoading(go, true);
+    } else {
+      setStage("consent", consent === "skip" ? "skipped" : "done",
+        consent === "skip"
+          ? (relayWanted ? "not needed — engine-side fetch" : "not needed — DNS reads public resolvers")
+          : "approved for this session");
+    }
 
     const names = { clickjacking: "framing", headers: "headers", cors: "CORS", csp: "CSP", dns: "DNS" };
-    setStage("collect", "active", active.map((key) => names[key]).join(" · ") + " — non-destructive checks");
-    const wants = (key) => active.includes(key);
+    const runTool = (key) => wants(key) && !(relayDenied && key !== "dns");
+    const effective = relayDenied ? active.filter((key) => key === "dns") : active;
+    setStage("collect", "active", effective.map((key) => names[key]).join(" · ") + " — non-destructive checks");
     // CSP and Security Headers consume the same response fields. When both
     // are selected, reuse one header read rather than contacting the target twice.
-    const headersTask = wants("headers") || wants("csp")
+    const headersTask = runTool("headers") || runTool("csp")
       ? apiHeaders(url).catch(() => null) : Promise.resolve(null);
-    const cspTask = wants("csp") ? headersTask.then((headersResult) => {
+    const cspTask = runTool("csp") ? headersTask.then((headersResult) => {
       if (headersResult && headersResult.status_code != null && headersResult.headers) {
         const cspResult = gradeCspFromMap(
           url,
@@ -4598,7 +4614,7 @@ function initSuite() {
         return h;
       } catch (_) { return null; }
     })();
-    const dnsTask = wants("dns") ? (async () => {
+    const dnsTask = runTool("dns") ? (async () => {
       if (!dnsHost) {
         return {
           _unreachable: true,
@@ -4612,31 +4628,37 @@ function initSuite() {
           summary: "DNS lookups were declined — no records were queried. Re-run and approve, or use the standalone DNS tool with server.py."
         };
       }
-      return apiDns(dnsHost).catch(() => null);
+      const res = await apiDns(dnsHost).catch(() => null);
+      // A rate-limited or erroring engine answers {error} without checks —
+      // surface it as a failed lookup instead of an empty card.
+      if (res && res.error && !res.checks) {
+        return { _unreachable: true, summary: "DNS lookup failed — " + res.error };
+      }
+      return res;
     })() : Promise.resolve(null);
     const [cj, headerRead, cr, cp, dn] = await Promise.all([
-      wants("clickjacking") ? apiScan(url).catch(() => null) : null,
+      runTool("clickjacking") ? apiScan(url).catch(() => null) : null,
       headersTask,
-      wants("cors") ? apiCors(url).catch(() => null) : null,
+      runTool("cors") ? apiCors(url).catch(() => null) : null,
       cspTask,
       dnsTask
     ]);
-    const hd = wants("headers") ? headerRead : null;
+    const hd = runTool("headers") ? headerRead : null;
     setStage("collect", "done");
     setStage("evaluate", "done", "OWASP-aligned checks applied");
 
-    lastSuite = { url: url, active: active, clickjacking: cj, headers: hd, cors: cr, csp: cp, dns: dn };
+    lastSuite = { url: url, active: effective, clickjacking: cj, headers: hd, cors: cr, csp: cp, dns: dn };
     const params = new URLSearchParams(window.location.search);
     params.set("url", url);
     params.set("tools", active.join(","));
     history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
     const base = appBase();
     const cards = [
-      wants("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
-      wants("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
-      wants("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
-      wants("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : "",
-      wants("dns") ? suiteCard("DNS & domain", dn, "checks", base + "/tools/dns/?domain=" + encodeURIComponent(dnsHost || "")) : ""
+      runTool("clickjacking") ? suiteCard("Clickjacking", cj, "findings", base + "/tools/clickjacking/?url=" + encodeURIComponent(url)) : "",
+      runTool("headers") ? suiteCard("Headers", hd, "checks", base + "/tools/headers/?url=" + encodeURIComponent(url)) : "",
+      runTool("cors") ? suiteCard("CORS", cr, "checks", base + "/tools/cors/?url=" + encodeURIComponent(url)) : "",
+      runTool("csp") ? suiteCard("CSP", cp, "checks", base + "/tools/csp/?url=" + encodeURIComponent(url)) : "",
+      runTool("dns") ? suiteCard("DNS & domain", dn, "checks", base + "/tools/dns/?domain=" + encodeURIComponent(dnsHost || "")) : ""
     ].join("");
     out.innerHTML = suiteSummaryHtml(lastSuite, engineNote) + '<div class="suite-grid">' + cards + "</div>";
     addRecentScan(url, recentScanSummary(lastSuite));

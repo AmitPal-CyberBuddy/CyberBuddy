@@ -6318,6 +6318,12 @@ class DnsSiteTests(unittest.TestCase):
         self.assertIn("ensureDnsConsent", body)
         self.assertIn("apiDns", body)
         self.assertIn('"DNS & domain"', body)
+        # Hosted-Pages contract: the header-relay gate is only shown when an
+        # HTTP tool is selected (a DNS-only run reads public resolvers), and
+        # declining the relay still lets the DNS half of the suite run.
+        self.assertIn("relayWanted", body)
+        self.assertIn("relayDenied", body)
+        self.assertIn("runTool", body)
         # The summary, worst-case verdict and stored digest include DNS.
         self.assertIn('["DNS & domain", s.dns]', app)
         self.assertIn('suiteToolChip("DNS", s.dns, true)', app)
