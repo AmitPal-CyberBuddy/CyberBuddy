@@ -9,7 +9,7 @@
 - Methodology: https://amitpal-cyberbuddy.github.io/CyberBuddy/methodology/
 - Source: https://github.com/AmitPal-CyberBuddy/CyberBuddy
 - Author: Amit Pal — https://amitpxl.medium.com/ · https://www.linkedin.com/in/amitpal-wb/
-- Contact: amitpal.secure@gmail.com
+- Contact: https://www.linkedin.com/in/amitpal-wb/
 - Disclosure: https://amitpal-cyberbuddy.github.io/CyberBuddy/.well-known/security.txt
 - License: Apache-2.0
 

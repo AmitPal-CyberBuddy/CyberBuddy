@@ -173,6 +173,7 @@ keep the notice and state your changes.
 
 ## Contact
 
-Ideas, feedback or collaboration: **amitpal.secure@gmail.com** ·
+Ideas, feedback or collaboration:
 [LinkedIn](https://www.linkedin.com/in/amitpal-wb/) ·
-[Medium — security write-ups](https://amitpxl.medium.com/)
+[Medium — security write-ups](https://amitpxl.medium.com/) ·
+[open an issue](https://github.com/AmitPal-CyberBuddy/CyberBuddy/issues)

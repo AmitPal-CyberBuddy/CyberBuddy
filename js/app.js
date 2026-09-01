@@ -431,7 +431,6 @@ function renderFooter() {
     "<div><strong>CyberBuddy</strong><span>Browser security assessment suite</span>" +
     '<span class="footer-engine">Engine: in-browser on Pages · <code>python3 server.py</code> locally</span>' +
     '<span class="footer-contact">' +
-    '<a href="mailto:amitpal.secure@gmail.com">amitpal.secure@gmail.com</a>' +
     '<a class="social-link" href="https://www.linkedin.com/in/amitpal-wb/" target="_blank" rel="noopener noreferrer">' +
     ICONS.linkedin + "Connect on LinkedIn</a>" +
     '<a class="social-link" href="https://amitpxl.medium.com/" target="_blank" rel="noopener noreferrer">' +
