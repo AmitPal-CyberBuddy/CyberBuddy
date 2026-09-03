@@ -2081,6 +2081,60 @@ kbd {
 .kbd-help-panel dt { margin: 0; flex: none; }
 .kbd-help-panel dd { margin: 0; color: var(--muted); font-size: 0.88rem; }
 
+/* Manual-copy fallback dialog (showCopyModal): shown when a Copy button's
+   programmatic clipboard write is denied (plain HTTP, cross-origin/sandboxed
+   iframe). The source is pre-selected in a textarea so Ctrl/Cmd+C always
+   recovers it verbatim, tags included. */
+.copy-modal {
+  position: fixed; inset: 0; z-index: 220;
+  display: grid; place-items: center;
+  background: rgba(4, 7, 12, 0.62);
+  backdrop-filter: blur(8px);
+  padding: 24px;
+}
+.copy-modal.hidden { display: none !important; }
+.copy-modal-panel {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex; flex-direction: column;
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  padding: 20px 22px;
+}
+.copy-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 8px;
+}
+.copy-modal-head h3 { margin: 0; font-size: 1.05rem; }
+.copy-modal-close {
+  flex: none; width: 32px; height: 32px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 1.4rem; line-height: 1;
+  cursor: pointer;
+}
+.copy-modal-close:hover { color: var(--ink); background: var(--surface-3); }
+.copy-modal-lead { margin: 0 0 12px; font-size: 0.85rem; color: var(--ink-2); }
+.copy-modal-text {
+  flex: 1 1 auto; min-height: 220px; max-height: 52vh;
+  width: 100%; box-sizing: border-box; resize: vertical;
+  margin: 0 0 14px; padding: 12px;
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem; line-height: 1.5; white-space: pre;
+  color: var(--ink); background: var(--panel-bg);
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  tab-size: 2;
+}
+.copy-modal-text:focus { outline: 2px solid var(--brand, #3ee0c2); outline-offset: 1px; }
+.copy-modal-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+}
+.copy-modal-hint { font-size: 0.78rem; color: var(--muted); }
+@media (max-width: 600px) {
+  .copy-modal { padding: 14px; }
+  .copy-modal-panel { padding: 16px; max-height: calc(100vh - 28px); }
+  .copy-modal-text { min-height: 160px; }
+}
+
 .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 920px) { .method-grid { grid-template-columns: 1fr; } }
 .method-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
