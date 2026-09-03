@@ -2453,24 +2453,178 @@ function toStandaloneHtml(data) {
     findings + "</tbody></table></body></html>";
 }
 
+/* Copy `text` to the clipboard, trying the async Clipboard API first and the
+   legacy execCommand path second (needed on non-secure contexts such as plain
+   HTTP and inside cross-origin/sandboxed iframes where navigator.clipboard is
+   undefined or blocked). Returns true on success.
+
+   When neither programmatic path works — historically the whole reason the
+   CSRF "Copy HTML" button silently dropped the generated source (the PoC is a
+   full HTML document, so a failed copy loses every tag) — callers should fall
+   back to copyTextWithFallback(), which opens a manual-copy dialog so the text
+   is always retrievable rather than swallowed. */
 async function copyText(text) {
+  const value = String(text == null ? "" : text);
+  // 1) Async Clipboard API (secure contexts, modern browsers).
   try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function" &&
+        window.isSecureContext !== false) {
+      await navigator.clipboard.writeText(value);
       return true;
     }
-  } catch (_) { /* fall through */ }
+  } catch (_) { /* fall through to execCommand */ }
+
+  // 2) Legacy execCommand fallback — synchronous, works inside a user gesture
+  //    on plain HTTP and in most embeddings the async API refuses.
   try {
     const ta = document.createElement("textarea");
-    ta.value = text;
+    ta.value = value;
     ta.setAttribute("readonly", "");
+    ta.setAttribute("aria-hidden", "true");
+    // Keep it on-screen (1px) rather than off-canvas: some browsers refuse to
+    // copy a selection inside an element positioned at -9999px, and iOS Safari
+    // skips off-screen nodes entirely.
     ta.style.position = "fixed";
-    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.width = "1px";
+    ta.style.height = "1px";
+    ta.style.padding = "0";
+    ta.style.border = "0";
+    ta.style.outline = "none";
+    ta.style.opacity = "0";
+    const previousFocus = document.activeElement;
     document.body.appendChild(ta);
+    ta.focus();
     ta.select();
-    const ok = document.execCommand("copy");
+    // setSelectionRange is required on iOS for the selection to take.
+    if (ta.setSelectionRange) ta.setSelectionRange(0, value.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (_) {
+      ok = false;
+    }
     document.body.removeChild(ta);
-    return !!ok;
+    if (previousFocus && typeof previousFocus.focus === "function") {
+      try { previousFocus.focus(); } catch (_) { /* ignore */ }
+    }
+    if (ok) return true;
+  } catch (_) { /* fall through */ }
+  return false;
+}
+
+/* Copy `text`, and if every programmatic path fails open a modal containing
+   the full text in a pre-selected <textarea> so the user can press Ctrl/Cmd+C
+   themselves. This guarantees generated source (CSRF PoC HTML, reports) is
+   never silently lost when clipboard access is denied — e.g. inside a
+   cross-origin preview iframe or over HTTP — and it is the safety net behind
+   the Copy buttons. Returns true when the direct copy succeeded, "manual"
+   when the fallback dialog was opened, false if even the dialog could not be
+   rendered. */
+async function copyTextWithFallback(text, title) {
+  const ok = await copyText(text);
+  if (ok) return true;
+  return showCopyModal(text, title) ? "manual" : false;
+}
+
+/* Render the manual-copy dialog. All content is set via textContent/value so
+   the (untrusted, user-generated) text is never parsed as HTML — the dialog
+   shows the raw tags exactly as the Copy button would have placed them on the
+   clipboard. CSP-friendly: no inline handlers or scripts. */
+function showCopyModal(text, title) {
+  try {
+    const value = String(text == null ? "" : text);
+    let overlay = document.getElementById("cbCopyModal");
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement("div");
+    overlay.id = "cbCopyModal";
+    overlay.className = "copy-modal";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "cbCopyModalTitle");
+
+    const panel = document.createElement("div");
+    panel.className = "copy-modal-panel";
+
+    const head = document.createElement("div");
+    head.className = "copy-modal-head";
+    const h = document.createElement("h3");
+    h.id = "cbCopyModalTitle";
+    h.textContent = title || "Copy to clipboard";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "copy-modal-close";
+    close.setAttribute("aria-label", "Close copy dialog");
+    close.textContent = "×";
+    head.appendChild(h);
+    head.appendChild(close);
+
+    const p = document.createElement("p");
+    p.className = "copy-modal-lead";
+    p.textContent = "Automatic copy was blocked by this browser context. Select the text below and press Ctrl+C (or Cmd+C on Mac) to copy it — or use the Download button to save it as a file.";
+
+    const ta = document.createElement("textarea");
+    ta.className = "copy-modal-text";
+    ta.setAttribute("readonly", "");
+    ta.setAttribute("spellcheck", "false");
+    ta.value = value;
+
+    const foot = document.createElement("div");
+    foot.className = "copy-modal-foot";
+    const hint = document.createElement("span");
+    hint.className = "copy-modal-hint";
+    hint.textContent = value.length + " characters — the full source, tags included.";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-primary btn-sm";
+    btn.textContent = "Try copy again";
+    foot.appendChild(hint);
+    foot.appendChild(btn);
+
+    panel.appendChild(head);
+    panel.appendChild(p);
+    panel.appendChild(ta);
+    panel.appendChild(foot);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    let lastFocused = document.activeElement;
+
+    function closeModal() {
+      overlay.classList.add("hidden");
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener("keydown", onKey);
+      if (lastFocused && typeof lastFocused.focus === "function") {
+        try { lastFocused.focus(); } catch (_) { /* ignore */ }
+      }
+    }
+    function selectAll() {
+      ta.focus();
+      ta.select();
+      if (ta.setSelectionRange) {
+        try { ta.setSelectionRange(0, value.length); } catch (_) { /* ignore */ }
+      }
+    }
+    async function retry() {
+      const done = await copyText(value);
+      if (done) closeModal();
+      else selectAll();
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); closeModal(); }
+      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); retry(); }
+    }
+
+    close.addEventListener("click", closeModal);
+    btn.addEventListener("click", retry);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    document.addEventListener("keydown", onKey);
+
+    // Pre-select so Ctrl/Cmd+C works immediately without touching the mouse.
+    setTimeout(selectAll, 0);
+    return true;
   } catch (_) {
     return false;
   }

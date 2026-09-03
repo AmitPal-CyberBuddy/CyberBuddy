@@ -1093,17 +1093,26 @@
       regenerate();
     });
     $("download").addEventListener("click", download);
+    /* Copy goes through copyTextWithFallback: if the clipboard API is denied
+       (plain HTTP, a sandboxed/cross-origin iframe, or a restrictive browser),
+       the generated PoC source -- every <form>/<script> tag included -- is
+       shown in a pre-selected manual-copy dialog instead of being silently
+       dropped. Download remains the always-works escape hatch. */
     $("copyHtml").addEventListener("click", function () {
       var v = lastGen && currentVariant(lastGen);
       if (!v) return;
-      copyText(v.html).then(function (ok) {
-        flashBtn($("copyHtml"), ok, "HTML copied \u2713");
+      copyTextWithFallback(v.html, "Copy PoC HTML").then(function (result) {
+        if (result === true) flashBtn($("copyHtml"), true, "HTML copied \u2713");
+        else if (result === "manual") flashBtn($("copyHtml"), true, "Select & copy below");
+        else flashBtn($("copyHtml"), false);
       });
     });
     $("copyMd").addEventListener("click", function () {
       if (!lastParsed || !lastGen) return;
-      copyText(buildMarkdown(lastParsed, lastGen)).then(function (ok) {
-        flashBtn($("copyMd"), ok, "Markdown copied \u2713");
+      copyTextWithFallback(buildMarkdown(lastParsed, lastGen), "Copy Markdown assessment").then(function (result) {
+        if (result === true) flashBtn($("copyMd"), true, "Markdown copied \u2713");
+        else if (result === "manual") flashBtn($("copyMd"), true, "Select & copy below");
+        else flashBtn($("copyMd"), false);
       });
     });
     $("clear").addEventListener("click", function () {
