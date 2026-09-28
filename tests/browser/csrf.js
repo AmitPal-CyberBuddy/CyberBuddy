@@ -230,7 +230,7 @@ const audit = () => {
     r.check(
       !/AUTO-SUBMIT ENABLED/.test(before) && /Send request/.test(before) &&
       /AUTO-SUBMIT ENABLED/.test(after.source) &&
-      after.source.includes('document.getElementById("csrf-form").submit();') &&
+      after.source.includes('HTMLFormElement.prototype.submit.call(document.getElementById("csrf-form"));') &&
       warnHiddenBefore && after.warnVisible,
       `auto-submit ${JSON.stringify({ warnHiddenBefore, warnVisibleAfter: after.warnVisible })}`
     );

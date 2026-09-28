@@ -22,6 +22,13 @@ const KEY_LISTS = [
   const page = await newPage(browser, { w: 1366, h: 900 });
   await page.goto(BASE + "/tools/jwt/", { waitUntil: "networkidle2" });
 
+  // Decode a local fixture so verification controls are actually visible.
+  await page.$eval("#jwtToken", (el) => {
+    el.value = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.dGVzdA";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.waitForFunction(() => !document.getElementById("jwtDecoded").classList.contains("hidden"));
+
   /* Every claim row exposes two distinct controls with two distinct names. */
   const labels = await page.evaluate(() => {
     const claims = ["Iss", "Sub", "Aud", "Exp", "Nbf", "Iat", "Jti"];
@@ -43,6 +50,7 @@ const KEY_LISTS = [
 
   /* Clicking the visible claim label focuses its value input; it must not
      accidentally toggle the adjacent “set” checkbox. */
+  await page.click("#jwt-tab-edit");
   const helperClick = await page.evaluate(() => {
     const checkbox = document.getElementById("jwtHelpIssUse");
     const label = document.querySelector('label[for="jwtHelpIss"]');
@@ -60,9 +68,10 @@ const KEY_LISTS = [
 
   /* Main panel tabs and all three key-type tablists use one tab stop, update
      aria-selected/hidden, wrap arrows, and support Home/End. */
+  await page.click("#jwt-tab-analyze");
   for (const selector of [".jwt-tablist", ...KEY_LISTS]) {
-    if (selector.includes("edit-key")) await page.click("#jwt-tab-edit");
-    else if (selector.includes("var-key")) await page.click("#jwt-tab-variants");
+    if (selector === KEY_LISTS[1]) await page.click("#jwt-tab-edit");
+    else if (selector === KEY_LISTS[2]) await page.click("#jwt-tab-variants");
     else if (selector.includes("jwt-key-tabs")) await page.click("#jwt-tab-analyze");
     const initial = await page.$eval(selector, (list) => {
       const tabs = [...list.querySelectorAll('[role="tab"]')];

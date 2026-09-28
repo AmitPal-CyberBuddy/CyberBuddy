@@ -58,7 +58,7 @@
     $("mMethod").textContent = "DNS query · resolver only";
     $("mChecks").textContent = String((data.checks || []).length);
     $("mDuration").textContent = data._duration_ms != null ? data._duration_ms + " ms" : "—";
-    $("mScore").textContent = data.score != null ? data.score + " / 100" : "—";
+    $("mScore").textContent = !isError && data.score != null ? data.score + " / 100" : "—";
     $("summary").textContent = data.summary || "";
 
     const flag = $("reportTitleFlag");

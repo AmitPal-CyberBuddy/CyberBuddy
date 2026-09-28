@@ -31,12 +31,6 @@
     "x-real-ip": 1
   };
 
-  var SAFELISTED_CONTENT_TYPES = {
-    "application/x-www-form-urlencoded": 1,
-    "multipart/form-data": 1,
-    "text/plain": 1
-  };
-
   function escHtml(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -81,7 +75,8 @@
 
   function parsePairs(text, plusAsSpace) {
     var out = [];
-    String(text || "").split("&").forEach(function (pair) {
+    if (!text) return out;
+    String(text).split("&").forEach(function (pair) {
       var eq = pair.indexOf("=");
       var name, value;
       if (eq === -1) { name = pair; value = ""; }
@@ -158,7 +153,7 @@
   }
 
   function looksLocal(host) {
-    return /^(localhost|127\.(\d{1,3}\.){3}\d{1,3}|::1|0\.0\.0\.0)$/i.test(String(host || ""));
+    return /^(localhost|127\.(\d{1,3}\.){2}\d{1,3}|::1|0\.0\.0\.0)$/i.test(String(host || ""));
   }
 
   function parseMultipart(body, boundary) {
@@ -168,22 +163,28 @@
       return out;
     }
     var parts = String(body || "").split("--" + boundary);
+    if (parts.length < 3 || !/^--/.test(parts[parts.length - 1])) {
+      out.error = "Multipart body is missing its boundary or closing delimiter.";
+      return out;
+    }
+    var fn;
     for (var p = 1; p < parts.length - 1; p++) {
+      fn = null;
       var chunk = parts[p].replace(/^\r?\n/, "").replace(/\r?\n$/, "");
       var headerEnd = chunk.search(/\r?\n\r?\n/);
       var head = headerEnd === -1 ? chunk : chunk.slice(0, headerEnd);
-      var val = headerEnd === -1 ? "" : chunk.slice(headerEnd).replace(/^\r?\n\r?\n/, "").replace(/\r?\n$/, "");
+      var val = headerEnd === -1 ? "" : chunk.slice(headerEnd).replace(/^\r?\n\r?\n/, "");
       var name = "", filename = "";
       var cd = /content-disposition\s*:\s*form-data\s*;?([\s\S]*)/i.exec(head);
       if (cd) {
         var params = cd[1] || "";
         var nm = /(?:^|;)\s*name\s*=\s*"([^"]*)"/i.exec(params) || /(?:^|;)\s*name\s*=\s*([^;]+)/i.exec(params);
-        var fn = /(?:^|;)\s*filename\s*=\s*"([^"]*)"/i.exec(params) || /(?:^|;)\s*filename\s*=\s*([^;]+)/i.exec(params);
+        fn = /(?:^|;)\s*filename\s*=\s*"([^"]*)"/i.exec(params) || /(?:^|;)\s*filename\s*=\s*([^;]+)/i.exec(params);
         name = nm ? nm[1].trim() : "";
         filename = fn ? fn[1].trim() : "";
       }
       out.params.push({
-        name: name, value: val, file: !!filename, filename: filename, raw: "",
+        name: name, value: val, file: !!fn, filename: filename, raw: "",
         index: out.params.length
       });
     }
@@ -216,7 +217,7 @@
     var method = rl[1].toUpperCase();
     var target = rl[2];
 
-    var headers = {};
+    var headers = Object.create(null);
     var headerOrder = [];
     function appendHeader(name, value) {
       var k = name.toLowerCase();
@@ -249,7 +250,15 @@
       i++;
     }
 
-    var body = lines.slice(i).join("\n");
+    // Header parsing uses normalized lines; slice the original string at the
+    // same line boundary so raw fetch bodies retain CRLF and trailing bytes.
+    var original = String(raw || ""), bodyOffset = 0;
+    for (var lineIndex = 0; lineIndex < i; lineIndex++) {
+      var newline = /\r\n|\r|\n/.exec(original.slice(bodyOffset));
+      if (!newline) { bodyOffset = original.length; break; }
+      bodyOffset += newline.index + newline[0].length;
+    }
+    var body = original.slice(bodyOffset);
 
     // --- Resolve the request URL (absolute-form or origin-form + Host). ---
     var absolute = splitTarget(target);
@@ -322,6 +331,7 @@
       });
       if (!textPlainPairs.length) allPairs = false;
       if (!allPairs) textPlainPairs = [];
+      bodyParams = textPlainPairs;
     }
 
     // --- Custom X-* headers (only these may be replayed by fetch). ---
@@ -362,7 +372,7 @@
 
     var hasFileFields = bodyParams.some(function (p) { return p.file; });
 
-    var url = scheme + "://" + host + (port ? ":" + port : "") + path + (query ? "?" + query : "");
+    var url = scheme + "://" + (host.indexOf(":") !== -1 ? "[" + host + "]" : host) + (port ? ":" + port : "") + path + (query ? "?" + query : "");
 
     return {
       ok: !fatal,
@@ -379,6 +389,7 @@
       headers: headers,
       contentType: ctRaw,
       mediaType: mediaType,
+      multipartBoundary: ctParams.boundary || "",
       body: body,
       queryParams: queryParams,
       bodyParams: bodyParams,
@@ -407,32 +418,30 @@
   function pocDocument(parsed, inner, opts) {
     var auto = !!(opts && opts.autoSubmit);
     var target = (parsed.method || "GET") + " " + (parsed.url || "");
-    var head =
-      "<!DOCTYPE html>\n" +
-      "<html lang=\"en\">\n" +
-      "<head>\n" +
-      "  <meta charset=\"utf-8\" />\n" +
-      "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n" +
-      "  <title>CSRF proof of concept \u2014 CyberBuddy</title>\n" +
-      "  <style>\n" +
-      "    body { font-family: system-ui, sans-serif; margin: 28px; background: #0a0d13; color: #e9eef5; }\n" +
-      "    h1 { font-size: 1.15rem; }\n" +
-      "    code, .target { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; }\n" +
-      "    .target { display: block; margin: 10px 0 18px; padding: 10px 12px; background: #0e121a;\n" +
-      "      border: 1px solid #232a36; border-radius: 8px; word-break: break-all; color: #c5ced8; }\n" +
-      "    button { font: inherit; padding: 9px 16px; border: 0; border-radius: 8px; background: #3ee0c2;\n" +
-      "      color: #04110e; font-weight: 700; cursor: pointer; }\n" +
-      "    .note, .foot { color: #96a2b4; font-size: 0.82rem; }\n" +
-      "    .foot { margin-top: 22px; border-top: 1px solid #232a36; padding-top: 12px; }\n" +
-      "    #status { color: #96a2b4; font-size: 0.82rem; margin-top: 12px; }\n" +
-      "  </style>\n" +
-      "</head>\n" +
-      "<body>\n" +
-      "  <h1>CSRF proof of concept (authorized testing only)</h1>\n" +
-      "  <p class=\"note\">Reproduces the request mechanics below. This page does not prove the " +
-      "target is vulnerable \u2014 the target must also change state, accept the request from a " +
-      "cross-site origin, and rely on the victim's ambient credentials.</p>\n" +
-      "  <span class=\"target\">" + escHtml(target) + "</span>\n";
+    var head = [
+      '<!DOCTYPE html>', '<html lang="en">', '<head>',
+      '<meta charset="utf-8" />',
+      '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+      '<title>CSRF proof of concept — CyberBuddy</title>',
+      '<style>',
+      ':root { color-scheme: light dark; --bg:#f4f7fb; --panel:#fff; --fg:#101828; --muted:#475467; --line:#667085; --accent:#0b756b; --on:#fff; --info:#175cd3; --warn:#93370d; --bad:#b42318; }',
+      '@media(prefers-color-scheme:dark) { :root { --bg:#0a0d13; --panel:#10161f; --fg:#eef3f8; --muted:#b0bccd; --line:#7d8798; --accent:#3ee0c2; --on:#04110e; --info:#9dbbff; --warn:#ffd47c; --bad:#ff9ba5; } }',
+      'body { font:16px/1.6 system-ui,sans-serif; max-width:850px; margin:32px auto; padding:0 20px; background:var(--bg); color:var(--fg); }',
+      'h1 { font-size:1.35rem; } h2 { font-size:1rem; } code,.target { font-family:ui-monospace,monospace; overflow-wrap:anywhere; }',
+      '.target,.note,#status { display:block; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:8px; }',
+      '.foot { color:var(--muted); border-top:1px solid var(--line); padding-top:16px; }',
+      'button { font:inherit; padding:12px 20px; border:2px solid transparent; border-radius:8px; background:var(--accent); color:var(--on); font-weight:700; cursor:pointer; transition:transform .12s; }',
+      'button:active { transform:translateY(2px) scale(.98); } button:focus-visible { outline:3px solid var(--info); outline-offset:3px; }',
+      'button:disabled { cursor:wait; } button[aria-busy="true"]::before { content:""; display:inline-block; width:14px; height:14px; margin-right:10px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .8s linear infinite; }',
+      '#status { border-left:5px solid var(--info); color:var(--info); font-weight:600; }',
+      '#status[data-state="warning"] { color:var(--warn); border-color:var(--warn); } #status[data-state="error"] { color:var(--bad); border-color:var(--bad); }',
+      '@keyframes spin { to { transform:rotate(360deg); } } @media(prefers-reduced-motion:reduce) { *,*::before { animation:none!important; transition:none!important; } }',
+      '</style>', '</head>', '<body>',
+      '<h1>CSRF proof of concept (authorized testing only)</h1>',
+      '<p>Reproduces request mechanics, not a vulnerability verdict. Confirm a state change with an authorized test account.</p>',
+      '<span class="target">' + escHtml(target) + '</span>',
+      '<p class="note"><strong>Variant limitations:</strong> ' + escHtml(opts.variantNote || '') + '</p>'
+    ].join("\n") + "\n";
     var foot =
       "  <p class=\"foot\">Generated by CyberBuddy \u2014 authorized testing only. Open this file " +
       "from a separate attacker-controlled origin against an authorized test account.</p>\n" +
@@ -456,15 +465,18 @@
       }
       return '  <input type="hidden" name="' + escHtml(f.name) + '" value="' + escHtml(f.value) + '" />';
     }).join("\n");
-    var manual = auto ? "" :
-      '  <p><button type="submit">Send request</button></p>\n';
     var inner =
       '<form id="csrf-form" method="' + method + '" action="' + escHtml(action) + '"' + enc + ">\n" +
-      inputs + "\n" + manual +
-      "</form>\n" +
-      (auto
-        ? "<script>document.getElementById(\"csrf-form\").submit();</script>\n"
-        : '<p id="status">Click \u201cSend request\u201d to submit the form.</p>\n');
+      inputs + '\n<p><button id="send" type="submit">Send request</button></p>\n</form>\n' +
+      '<p id="status" role="status" aria-live="polite" aria-atomic="true">Ready — no request submitted yet.</p>\n' +
+      '<section class="note"><h2>How to verify submission</h2><p>This form navigates to the target. A submission attempt does not prove delivery or acceptance. Use DevTools Network (Preserve log), your authorized proxy or server logs, then verify the state change. Cookies depend on SameSite, Secure and browser privacy settings; pasted cookies and authorization are not replayed.</p></section>\n' +
+      '<script>\n' +
+      'function submitting() { var b = document.getElementById("send"); b.disabled = true; b.setAttribute("aria-busy", "true"); b.textContent = "Submitting…"; document.getElementById("status").textContent = "Submission attempted — navigating to target. Confirm delivery in Network or server logs."; }\n' +
+      'document.getElementById("csrf-form").addEventListener("submit", submitting);\n' +
+      'window.addEventListener("pageshow", function () { var b = document.getElementById("send"); b.disabled = false; b.removeAttribute("aria-busy"); b.textContent = "Send request"; });\n' +
+      (auto ? 'document.addEventListener("DOMContentLoaded", function () { submitting(); HTMLFormElement.prototype.submit.call(document.getElementById("csrf-form")); });\n' : '') +
+      '</script>\n';
+    opts = Object.assign({}, opts, { variantNote: note });
     return {
       id: id,
       label: label,
@@ -482,30 +494,44 @@
       return "        " + jsLiteral(k) + ": " + jsLiteral(headersObj[k]);
     }).join(",\n");
     var bodyLine = body == null ? "      body: null" : "      body: " + jsLiteral(body);
-    var script =
-      "<script>\n" +
-      "  window.__send = function () {\n" +
-      "    fetch(" + jsLiteral(parsed.url) + ", {\n" +
-      "      method: " + jsLiteral(method) + ",\n" +
-      "      credentials: \"include\",\n" +
-      "      headers: {\n" +
-      (headerLines ? headerLines + "\n" : "") +
-      "      },\n" +
-      bodyLine + "\n" +
-      "    }).then(function () {\n" +
-      "      document.getElementById(\"status\").textContent = \"Request sent.\";\n" +
-      "    }).catch(function () {\n" +
-      "      document.getElementById(\"status\").textContent = \"Blocked by the browser (CORS/preflight) \u2014 see the note below.\";\n" +
-      "    });\n" +
-      "  };\n" +
-      "  document.getElementById(\"send\").addEventListener(\"click\", window.__send);\n" +
-      "</script>\n";
+    var script = [
+      '<script>',
+      'window.__send = function () {',
+      '  var button = document.getElementById("send"), status = document.getElementById("status");',
+      '  if (button.disabled) return;',
+      '  button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Sending…";',
+      '  status.dataset.state = "pending"; status.textContent = "Sending — waiting for the browser/network. Delivery is not yet confirmed.";',
+      '  var controller = new AbortController();',
+      '  var timer = setTimeout(function () { controller.abort(); }, 15000);',
+      '  Promise.resolve().then(function () { return fetch(' + jsLiteral(parsed.url) + ', {',
+      '      method: ' + jsLiteral(method) + ',',
+      '      credentials: "include", signal: controller.signal,',
+      '      headers: {', headerLines,
+      '      },', bodyLine,
+      '    }); }).then(function (response) {',
+      '      status.dataset.state = response.ok ? "complete" : "error";',
+      '      status.textContent = "Response received — HTTP " + response.status + (response.ok ? ". This does not prove a state change or CSRF; verify the target state." : ". The server returned an error response. Check Network and server logs; do not assume no state change.");',
+      '    }).catch(function (error) {',
+      '      status.dataset.state = "warning";',
+      '      status.textContent = error.name === "AbortError" ? "Timed out after 15 seconds — delivery unknown. Aborting cannot undo a request already sent. See verification notes below." : "No readable response — delivery unknown. The request may have been sent. See verification notes below.";',
+      '    }).finally(function () {',
+      '      clearTimeout(timer); button.disabled = false; button.removeAttribute("aria-busy"); button.textContent = "Send again";',
+      '    });',
+      '};',
+      'document.getElementById("send").addEventListener("click", window.__send);',
+      auto ? 'document.addEventListener("DOMContentLoaded", window.__send);' : '',
+      '</script>'
+    ].join("\n");
     var inner =
-      '<p><button id="send" type="button">Send request</button></p>\n' +
-      script +
-      (auto
-        ? "<script>document.addEventListener(\"DOMContentLoaded\", function () { window.__send(); });</script>\n"
-        : '<p id="status">Click \u201cSend request\u201d to issue the fetch.</p>\n');
+      '<p><button id="send" type="button" aria-describedby="verification-notes">Send request</button></p>\n' +
+      '<p id="status" role="status" aria-live="polite" aria-atomic="true">Ready — no request sent yet.</p>\n' +
+      '<section id="verification-notes" class="note"><h2>Verification notes</h2><ul>' +
+      '<li>A failed fetch does not prove the request was blocked. A simple request may reach the server even when CORS prevents reading its response.</li>' +
+      '<li>For a preflighted request, a rejected OPTIONS preflight prevents the actual request. Network, TLS, mixed-content and browser privacy failures can also prevent access.</li>' +
+      '<li>Use DevTools Network (Preserve log) or an authorized proxy to distinguish OPTIONS from the actual request. Check server logs and the target state before retrying; a retry can repeat a state change.</li>' +
+      '<li>Cookies depend on SameSite, Secure and browser privacy settings. Pasted cookies and authorization are not replayed. A local file has a different origin from a hosted attacker page.</li>' +
+      '</ul></section>\n' + script;
+    opts = Object.assign({}, opts, { variantNote: note });
     return {
       id: id,
       label: label,
@@ -528,11 +554,11 @@
     var excluded = opts.excluded || {};
     var method = parsed.method;
     var variants = [];
-    var limitations = [];
+    var limitations = ["Cookies and authorization from the pasted request are not replayed. Only Content-Type and permitted X-* headers are carried by fetch variants; verify any other omitted headers. Form serialization can re-encode values; compare the actual request in Network."];
     var status = "READY";
     var reason = "";
 
-    var baseUrl = parsed.scheme + "://" + parsed.host + (parsed.port ? ":" + parsed.port : "") + parsed.path;
+    var baseUrl = parsed.scheme + "://" + (parsed.host.indexOf(":") !== -1 ? "[" + parsed.host + "]" : parsed.host) + (parsed.port ? ":" + parsed.port : "") + parsed.path;
 
     var qIncluded = parsed.queryParams.filter(function (p) { return !(p.token && excluded[p.uid]); });
     var bIncluded = parsed.bodyParams.filter(function (p) { return !(p.token && excluded[p.uid]); });
@@ -541,6 +567,24 @@
 
     var queryString = qIncluded.length ? qIncluded.map(function (p) { return p.raw; }).join("&") : "";
     var urlWithQuery = baseUrl + (queryString ? "?" + queryString : "");
+
+    parsed = Object.assign({}, parsed, { url: urlWithQuery });
+    if (parsed.mediaType === "application/x-www-form-urlencoded") {
+      parsed.body = bIncluded.map(function (p) { return p.raw; }).join("&");
+    }
+
+    if (parsed.mediaType === "multipart/form-data" && bIncluded.length !== parsed.bodyParams.length) {
+      var delimiter = "--" + parsed.multipartBoundary;
+      var multipartParts = parsed.body.split(delimiter);
+      parsed.body = multipartParts.filter(function (part, index) {
+        return index === 0 || index === multipartParts.length - 1 ||
+          bIncluded.some(function (field) { return field.index === index - 1; });
+      }).join(delimiter);
+    }
+
+    if (parsed.mediaType === "text/plain" && bIncluded.length !== parsed.bodyParams.length) {
+      parsed.body = bIncluded.map(function (p) { return p.raw; }).join(parsed.body.indexOf("\r\n") !== -1 ? "\r\n" : "\n");
+    }
 
     var activeCustomHeaders = parsed.customHeaders.filter(function (h) { return !excluded[h.uid]; });
     var customHeaderNames = activeCustomHeaders.map(function (h) { return h.name; });
@@ -590,14 +634,28 @@
       return finish(parsed, variants, limitations, status, reason, auto);
     }
 
-    if (method === "GET" && parsed.body) {
+    if ((method === "GET" || method === "HEAD") && parsed.body) {
       status = "NOT DIRECTLY REPRESENTABLE";
-      reason = "A GET request cannot carry a request body in any browser mechanism \u2014 the body would be dropped. Only the URL/query can be reproduced.";
+      reason = "A " + method + " request cannot carry a request body in any browser mechanism \u2014 the body would be dropped. Only the URL/query can be reproduced.";
       limitations.push(reason);
+      if (method === "HEAD") return finish(parsed, variants, limitations, status, reason, auto);
       variants.push(formVariant(parsed, opts, "get-query",
         "GET form (query only \u2014 body omitted)", "GET", baseUrl, null,
         qIncluded.map(function (p) { return { type: "hidden", name: p.name, value: p.value }; }),
         "The body cannot be sent via GET; this form reproduces only the URL and query string.", "limited"));
+      return finish(parsed, variants, limitations, status, reason, auto);
+    }
+
+    // Unsafe bytes/long Content-Type values are not CORS-safelisted, even
+    // when the MIME essence is text/plain.
+    var unsafeContentType = parsed.contentType.length > 128 || /[\x00-\x08\x0a-\x1f\x7f"():<>?@\[\]{}]/.test(parsed.contentType);
+    if (activeCustomHeaders.length || (unsafeContentType && parsed.mediaType === "text/plain")) {
+      status = "LIMITED";
+      reason = "Custom headers or a non-safelisted Content-Type value require fetch() and a successful CORS preflight; a form cannot reproduce them.";
+      limitations.push(reason);
+      variants.push(fetchVariant(parsed, opts, "custom-fetch", "Request with original headers via fetch()",
+        method, headerTokenObjects(), method === "GET" || method === "HEAD" ? null : parsed.body || null,
+        reason, "limited"));
       return finish(parsed, variants, limitations, status, reason, auto);
     }
 
@@ -638,7 +696,7 @@
           variants.push(formVariant(parsed, opts, "json-textplain",
             "JSON as text/plain form (alternative)", "POST", urlWithQuery, "text/plain",
             [{ type: "hidden", name: nm, value: vl }],
-            "A form with enctype=\"text/plain\" serializes this single field as name=value, which equals the exact JSON body. Only works if the server accepts text/plain (or ignores Content-Type). Browser serialization can vary \u2014 verify the bytes.",
+            "A form with enctype=\"text/plain\" serializes this single field as name=value, followed by CRLF. This changes the bytes but can remain valid JSON. Only works if the server accepts text/plain (or ignores Content-Type). Browser serialization can vary \u2014 verify the bytes.",
             "limited"));
         } else {
           limitations.push("The JSON body cannot be split into a text/plain name=value pair, so no JSON-as-text/plain alternative is offered.");
@@ -657,7 +715,7 @@
         if (parsed.textPlainPairs.length) {
           variants.push(formVariant(parsed, opts, "textplain-form",
             "text/plain form (name=value lines)", "POST", urlWithQuery, "text/plain",
-            parsed.textPlainPairs.filter(function (p) { return !(excluded["b:" + p.index] || excluded["q:" + p.index]); })
+            bIncluded
               .map(function (p) { return { type: "hidden", name: p.name, value: p.value }; }),
             "Browsers serialize text/plain forms as name=value lines (CRLF-separated). Use only when the body is exactly that shape; verify the bytes.", "ready"));
         } else {
@@ -721,11 +779,11 @@
       reason = "The body's Content-Type cannot be reproduced by a plain form; a fetch() carries the raw body instead.";
       limitations.push(reason);
       var hdrs = {};
-      if (parsed.contentType && SAFELISTED_CONTENT_TYPES[parsed.mediaType]) hdrs["Content-Type"] = parsed.contentType;
+      if (parsed.contentType) hdrs["Content-Type"] = parsed.contentType;
       activeCustomHeaders.forEach(function (h) { hdrs[h.name] = h.value; });
       variants.push(fetchVariant(parsed, opts, "raw-fetch",
         "Raw body via fetch()", "POST", hdrs, parsed.body,
-        "The raw body is sent unchanged. If no Content-Type is set the browser adds text/plain; the server may reject the altered Content-Type.", "limited"));
+        "The raw body and supplied Content-Type are preserved. Non-safelisted types require a CORS preflight. Without Content-Type, the browser adds text/plain; verify server acceptance.", "limited"));
       return finish(parsed, variants, limitations, status, reason, auto);
     }
 
@@ -773,7 +831,7 @@
 
   function reproLabel(status) {
     if (status === "READY") return "simple request \u00b7 no preflight";
-    if (status === "LIMITED") return "CORS preflight or server leniency required";
+    if (status === "LIMITED") return "preflight, server leniency or manual input required";
     return "no browser mechanism reproduces this";
   }
 
@@ -925,7 +983,8 @@
       return excluded;
     }
 
-    function renderTokens(parsed) {
+    function renderTokens(parsed, excluded) {
+      excluded = excluded || {};
       var panel = $("tokensPanel");
       var list = $("tokenList");
       if (!panel || !list) return;
@@ -937,7 +996,7 @@
       panel.classList.remove("hidden");
       list.innerHTML = parsed.tokens.map(function (t) {
         return '<label class="csrf-token-item" for="tok-' + t.uid.replace(/[^a-z0-9-]/g, "") + '">' +
-          '<input type="checkbox" id="tok-' + t.uid.replace(/[^a-z0-9-]/g, "") + '" data-token-uid="' + escHtml(t.uid) + '" checked />' +
+          '<input type="checkbox" id="tok-' + t.uid.replace(/[^a-z0-9-]/g, "") + '" data-token-uid="' + escHtml(t.uid) + '"' + (excluded[t.uid] ? '' : ' checked') + ' />' +
           "<code>" + escHtml(t.name) + "</code>" +
           '<span class="csrf-token-src">' + escHtml(t.source) + "</span></label>";
       }).join("");
@@ -979,10 +1038,10 @@
     function renderPreview(gen) {
       var pre = $("pocSource");
       var v = currentVariant(gen);
-      if (pre && v) pre.textContent = v.html;
+      if (pre) pre.textContent = v ? v.html : "No executable PoC is available for this request.";
     }
 
-    function render(parsed, gen) {
+    function render(parsed, gen, excluded) {
       $("results").classList.remove("hidden");
       /* Reproducibility, NOT risk. This tool reports whether browser mechanics
          can carry the request; it never judges the target. Using the risk
@@ -1004,7 +1063,7 @@
       var prot = $("protection");
       if (prot) {
         prot.textContent = gen.status === "READY" ? "READY \u2014 reproduced as a simple browser request (no preflight)."
-          : gen.status === "LIMITED" ? "LIMITED \u2014 reproduced but depends on a CORS preflight or server leniency."
+          : gen.status === "LIMITED" ? "LIMITED \u2014 depends on a CORS preflight, server leniency or manual input."
           : "NOT DIRECTLY REPRESENTABLE \u2014 no browser mechanism can reproduce this request.";
         prot.className = "protection-line " + repro;
       }
@@ -1013,7 +1072,7 @@
       var summary = $("summary");
       if (summary) {
         summary.textContent = gen.reason
-          || "A plain HTML form reproduces this request cross-origin, so the browser will send it with the user's cookies. Whether the server accepts it is what your authorized test confirms.";
+          || "A simple browser request can reproduce these mechanics cross-origin. Cookies are included only when SameSite, Secure and browser privacy rules permit. Whether the server accepts it is what your authorized test confirms.";
       }
 
       $("mMethod").textContent = parsed.method;
@@ -1041,24 +1100,27 @@
           "<span>generated locally \u2014 nothing transmitted</span>";
       }
 
-      renderTokens(parsed);
+      $("limitations").innerHTML = gen.limitations.map(function (text) { return "<li>" + escHtml(text) + "</li>"; }).join("");
+      $("limitationsPanel").classList.toggle("hidden", !gen.limitations.length);
+      renderTokens(parsed, excluded);
       renderVariants(gen);
       renderPreview(gen);
 
       ["download", "copyHtml", "copyMd"].forEach(function (id) {
         var btn = $(id);
-        if (btn) btn.disabled = false;
+        if (btn) btn.disabled = id !== "copyMd" && !gen.variants.length;
       });
     }
 
     function regenerate() {
       if (!lastParsed) return;
+      var excluded = tokenState();
       var gen = generatePoc(lastParsed, {
         autoSubmit: $("autoSubmit").checked,
-        excluded: tokenState()
+        excluded: excluded
       });
       lastGen = gen;
-      render(lastParsed, gen);
+      render(lastParsed, gen, excluded);
     }
 
     function generate() {
@@ -1067,6 +1129,8 @@
       if (!parsed.ok) {
         showError(parsed.errors.length ? parsed.errors[0].message : "Could not parse this request.");
         $("results").classList.add("hidden");
+        lastParsed = null; lastGen = null;
+        ["download", "copyHtml", "copyMd"].forEach(function (id) { $(id).disabled = true; });
         return;
       }
       if (parsed.errors.length) {

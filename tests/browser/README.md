@@ -19,7 +19,7 @@ Chromium-family executable and `puppeteer-core`.
 A disposable dependency installation keeps generated files out of Git:
 
 ```bash
-npm install --prefix /tmp/cyberbuddy-browser puppeteer-core
+npm install --prefix /tmp/cyberbuddy-browser puppeteer-core @axe-core/puppeteer pngjs
 export NODE_PATH=/tmp/cyberbuddy-browser/node_modules
 export CB_CHROME=/absolute/path/to/chromium
 ```
@@ -47,7 +47,7 @@ Then run every suite:
 ```bash
 export CB_BASE=http://127.0.0.1:8080
 export CB_TARGET=http://127.0.0.1:8099/
-for suite in layout dropdown overlays relay-gate responsive csrf jwt; do
+for suite in layout dropdown overlays relay-gate responsive csrf jwt tool-results poc-execution site-contrast; do
   node "tests/browser/${suite}.js" || exit 1
 done
 ```
@@ -75,12 +75,54 @@ CB_STRESS=http://127.0.0.1:8098/ node tests/browser/responsive.js
 | `responsive.js` | Seven viewport widths, two themes, all result states, touch targets and hostile long values |
 | `csrf.js` | Generate/reset/copy/download flows, auto-submit warning, inert preview and local-data boundary |
 | `jwt.js` | Nested key-selector tablists, arrow-key focus/selection and distinct claim-control names |
+| `tool-results.js` | All seven tools in both themes: live loopback HTTP scans/exports, offline Python-graded DNS fixtures (including NXDOMAIN), JWT verification, CSRF exclusion persistence and axe text contrast; use `CB_WIDTH=390` for phone coverage |
+| `poc-execution.js` | Standalone CSRF/CORS artifacts executed against temporary local HTTP receivers: readable success/error responses, delivered-but-unreadable POST, rejected preflight, timeout, auto-submit, duplicate-click guard, form navigation and contrast in both themes |
+
+| `site-contrast.js` | Discovers all public HTML pages, tests light/dark at 1366px/390px, real theme toggles, initial screens, disclosures and representative hover/focus/menu states; axe plus rendered background sampling (including gradients, placeholders and control values) |
 
 The stdlib suite separately pins the DOM/controller contracts and expected CSS
 rules. A browser pass complements those checks; it does not replace
 `python3 tools/verify.py`.
 
-## Current audit limitation — 2026-08-18
+## Public-page contrast follow-up — 2026-09-28
+
+`site-contrast.js` requires `pngjs` as well as the browser/axe prerequisites.
+It does not submit scans. It discovers the public pages directly from the
+repository and fails on contrast regressions. A temporary glyph-free screenshot
+samples the rendered gradient/translucent background beneath text; all page
+styles are restored. Positive/negative calibration controls prevent an empty
+sampler from passing silently. Screenshots are processed in memory, not saved.
+
+```bash
+node tests/browser/site-contrast.js
+# Optional focused rerun:
+CB_WIDTHS=390 CB_ROUTES=/,/404.html,/guides/jwt/ node tests/browser/site-contrast.js
+```
+
+Axe's `incomplete` observations are reported, **not counted as passes**. Pixel
+sampling complements those observations, but is not exhaustive accessibility
+certification: it samples three points per text rectangle, skips disabled/faded
+content, and does not evaluate every animation frame, native select popup,
+forced-color setting or browser. The normal screen, not print or no-JS mode, is
+covered. The scope and findings are recorded in the tool-review document.
+
+## Tool-result / PoC review — 2026-09-28
+
+See `docs/TOOL-REVIEW-2026-09-28.md` for the current scoped review, fixes,
+executed tests and remaining coverage gaps. The two new suites additionally
+require `@axe-core/puppeteer`. `poc-execution.js` starts and closes its own two
+loopback servers; it never submits to an external target. `tool-results.js`
+uses `CB_BASE` and `CB_TARGET` as above, and deliberately intercepts DNS API
+responses with Python-graded offline fixtures rather than contacting a public
+resolver. These fixture checks do **not** claim a live public-DNS integration pass.
+
+```bash
+node tests/browser/tool-results.js
+CB_WIDTH=390 node tests/browser/tool-results.js
+node tests/browser/poc-execution.js
+```
+
+## Historical audit limitation — 2026-08-18
 
 The comprehensive launch audit ran all stdlib tests, Node syntax checks,
 structured-data parsing and the assembled-site link/fragment audit. These

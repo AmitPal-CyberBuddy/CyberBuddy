@@ -1580,6 +1580,7 @@ function initEvidenceToggle() {
 function setLoading(btn, loading) {
   if (!btn) return;
   btn.disabled = loading;
+  btn.setAttribute("aria-busy", loading ? "true" : "false");
   btn.classList.toggle("is-loading", loading);
   if (loading) {
     if (!btn.querySelector(".spinner")) {
@@ -2188,6 +2189,20 @@ function initExportMenu(toolName, getData) {
     "</div></details>";
 
   const details = document.getElementById("exportDetails");
+  const panel = details.querySelector(".export-menu-panel");
+  function fitExportPanel() {
+    if (!details.open) return;
+    // Clamp against the actual viewport, not a fixed height allowance: the
+    // toolbar can sit midway down a phone screen after scrolling.
+    panel.style.top = "calc(100% + 8px)";
+    panel.style.maxHeight = Math.max(120, window.innerHeight - 100) + "px";
+    const rect = panel.getBoundingClientRect();
+    const top = Math.max(80, Math.min(rect.top, window.innerHeight - rect.height - 12));
+    panel.style.top = (panel.offsetTop + top - rect.top) + "px";
+  }
+  details.addEventListener("toggle", fitExportPanel);
+  window.addEventListener("resize", fitExportPanel);
+  window.addEventListener("scroll", fitExportPanel, { passive: true });
   wrap.querySelectorAll("[data-act]").forEach((item) => {
     item.addEventListener("click", async () => {
       const act = item.getAttribute("data-act");
