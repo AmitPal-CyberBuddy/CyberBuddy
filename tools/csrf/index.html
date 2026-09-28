@@ -172,6 +172,11 @@
         </div>
       </div>
 
+      <article class="card inset-card hidden" id="limitationsPanel">
+        <h3 class="card-title">Reproducibility limitations</h3>
+        <ul id="limitations" class="scope-list"></ul>
+      </article>
+
       <article class="card inset-card" id="tokensPanel">
         <h3 class="card-title">Likely CSRF-token fields</h3>
         <p class="card note">
@@ -201,7 +206,7 @@
             <li><strong>No effective token</strong> — the target must not reject the request via a CSRF token the PoC cannot supply.</li>
             <li><strong>SameSite cookies</strong> — cookies marked <code>SameSite=Lax/Strict</code> are not attached to most cross-site requests.</li>
             <li><strong>Origin / Referer checks</strong> — the target must not require an Origin or Referer the attacker page cannot produce.</li>
-            <li><strong>Simple request vs preflight</strong> — <code>LIMITED</code> variants need the CORS preflight answered.</li>
+            <li><strong>Simple request vs preflight</strong> — <code>LIMITED</code> variants depend on a successful preflight, server leniency or manual file selection.</li>
             <li><strong>Re-authentication</strong> — sensitive flows that demand a fresh login cannot be crossed.</li>
           </ul>
         </article>

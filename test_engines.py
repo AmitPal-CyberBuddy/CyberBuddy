@@ -2683,6 +2683,60 @@ class ThemeContrastTests(unittest.TestCase):
                     self.assertGreaterEqual(ratio, 4.5,
                                             "%s %s contrast %.2f" % (name, fg, ratio))
 
+    def test_raised_surfaces_and_semantic_badges_meet_aa(self):
+        for name, theme in self._themes().items():
+            paper = self._parse_color(theme["--paper"])[0]
+            for surface_name in ("--surface", "--surface-2", "--surface-3", "--chip-bg", "--panel-bg"):
+                rgb, alpha = self._parse_color(theme[surface_name])
+                surface = self._composite(rgb, alpha, paper)
+                for token in ("--ink", "--ink-2", "--muted", "--faint"):
+                    with self.subTest(theme=name, surface=surface_name, token=token):
+                        self.assertGreaterEqual(self._ratio(self._parse_color(theme[token])[0], surface), 4.5)
+                for token in ("--high", "--med", "--low", "--info", "--grade-d"):
+                    rgb, alpha = self._parse_color(theme[token + "-bg"])
+                    badge = self._composite(rgb, alpha, surface)
+                    with self.subTest(theme=name, surface=surface_name, token=token):
+                        self.assertGreaterEqual(self._ratio(self._parse_color(theme[token])[0], badge), 4.5)
+
+    def test_terminal_panels_keep_dark_palette_in_both_themes(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"(?s)\.pages-cmd\s*\{[^}]*color: var\(--terminal-brand\)")
+        self.assertRegex(css, r"(?s)\.console-card \.scan-tag\.cached\s*\{[^}]*color: var\(--terminal-warning\)")
+        for name, theme in self._themes().items():
+            background = self._parse_color(theme["--terminal"])[0]
+            for token in ("--terminal-brand", "--terminal-muted", "--terminal-warning"):
+                with self.subTest(theme=name, token=token):
+                    self.assertGreaterEqual(self._ratio(self._parse_color(theme[token])[0], background), 4.5)
+
+    def test_landing_gradient_monogram_has_theme_aware_ink(self):
+        css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"(?s)\.blog-monogram\s*\{[^}]*color: var\(--on-brand\)")
+        for name, theme in self._themes().items():
+            ink = self._parse_color(theme["--on-brand"])[0]
+            start = self._parse_color(theme["--brand"])[0]
+            end = self._parse_color(theme["--accent-2"])[0]
+            for step in range(21):
+                background = self._composite(start, step / 20, end)
+                with self.subTest(theme=name, gradient_step=step):
+                    self.assertGreaterEqual(self._ratio(ink, background), 4.5)
+
+    def test_standalone_404_palette_meets_aa(self):
+        css = (ROOT / "css" / "404.css").read_text(encoding="utf-8")
+        def tokens(selector):
+            match = re.search(re.escape(selector) + r"\s*\{([^}]+)\}", css)
+            self.assertIsNotNone(match)
+            return dict(re.findall(r"(--[\w-]+)\s*:\s*([^;]+);", match.group(1)))
+        dark = tokens(":root")
+        for name, theme in (("dark", dark), ("light", {**dark, **tokens('html[data-theme="light"]')})):
+            paper = self._parse_color(theme["--paper"])[0]
+            rgb, alpha = self._parse_color(theme["--card-bg"])
+            card = self._composite(rgb, alpha, paper)
+            for foreground in ("--brand", "--ink", "--muted", "--med"):
+                for background in (paper, card):
+                    with self.subTest(theme=name, foreground=foreground, background=background):
+                        self.assertGreaterEqual(self._ratio(self._parse_color(theme[foreground])[0], background), 4.5)
+        self.assertIn(":focus-visible", css)
+
     def test_on_brand_token_drives_every_brand_background(self):
         """Text painted on --brand backgrounds must track the --on-brand
         token so theme swaps keep button/skip-link/icon text legible."""
@@ -2729,6 +2783,108 @@ class CsrfParserTests(unittest.TestCase):
             os.unlink(path)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_empty_params_ipv6_and_body_bytes(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("POST http://[::1]:8099/t HTTP/1.1\r\nContent-Type: text/plain\r\n\r\na=b\r\nc=d\r\n");
+const empty = C.parseRequest("POST / HTTP/1.1\r\nHost: 127.0.0.1:8099\r\n\r\n");
+console.log(JSON.stringify({url:p.url, body:p.body, html:C.generatePoc(p, {}).variants[0].html,
+  local:empty.url, query:empty.queryParams, bodyParams:empty.bodyParams}));
+''')
+        self.assertEqual(out["url"], "http://[::1]:8099/t")
+        self.assertEqual(out["body"], "a=b\r\nc=d\r\n")
+        self.assertIn('body: "a=b\\r\\nc=d\\r\\n"', out["html"])
+        self.assertEqual(out["local"], "http://127.0.0.1:8099/")
+        self.assertEqual(out["query"], [])
+        self.assertEqual(out["bodyParams"], [])
+
+    def test_fetch_honors_query_and_header_exclusions(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("POST /t?csrf=QUERYSECRET&a=1 HTTP/1.1\nHost: example.com\nContent-Type: text/plain\nX-CSRF-Token: HEADERSECRET\n\nx=y");
+const g = C.generatePoc(p, {});
+const e = C.generatePoc(p, {excluded:{"q:0":true,"h:x-csrf-token":true}});
+console.log(JSON.stringify({status:g.status, html:g.variants[0].html, excluded:e.variants[0].html, excludedStatus:e.status}));
+''')
+        self.assertEqual(out["status"], "LIMITED")
+        self.assertIn('"x-csrf-token": "HEADERSECRET"', out["html"])
+        self.assertEqual(out["excludedStatus"], "READY")
+        self.assertNotIn("QUERYSECRET", out["excluded"])
+        self.assertNotIn("HEADERSECRET", out["excluded"])
+        self.assertIn("https://example.com/t?a=1", out["excluded"])
+
+    def test_plain_body_exclusion_does_not_use_query_indices(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("POST /t?csrf=QUERY HTTP/1.1\nHost: example.com\nContent-Type: text/plain\n\nname=keep\ncsrf_token=BODY");
+const g = C.generatePoc(p, {excluded:{"q:0":true,"b:1":true}});
+console.log(JSON.stringify(g.variants.map(v => v.html)));
+''')
+        for html in out:
+            self.assertNotIn("QUERY", html)
+            self.assertNotIn("BODY", html)
+        self.assertIn('name="name" value="keep"', out[1])
+        self.assertIn('body: "name=keep"', out[0])
+
+    def test_arbitrary_content_type_is_preserved_and_head_body_not_ready(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const raw = C.generatePoc(C.parseRequest("POST /t HTTP/1.1\nHost: example.com\nContent-Type: application/xml\n\n<a/>"),{});
+const head = C.generatePoc(C.parseRequest("HEAD /t HTTP/1.1\nHost: example.com\n\nbody"),{});
+const unsafe = C.generatePoc(C.parseRequest('POST /t HTTP/1.1\nHost: example.com\nContent-Type: text/plain; charset="utf-8"\n\na=b'),{});
+console.log(JSON.stringify({html:raw.variants[0].html, head:head.status, unsafe:unsafe.status}));
+''')
+        self.assertIn('"Content-Type": "application/xml"', out["html"])
+        self.assertEqual(out["head"], "NOT DIRECTLY REPRESENTABLE")
+        self.assertEqual(out["unsafe"], "LIMITED")
+
+    def test_all_fetch_variants_have_feedback_even_with_auto_submit(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("POST /t HTTP/1.1\nHost: example.com\nContent-Type: application/json\n\n{}");
+console.log(JSON.stringify([false,true].map(autoSubmit=>C.generatePoc(p,{autoSubmit}).variants[0].html)));
+''')
+        for html in out:
+            self.assertIn('id="status" role="status"', html)
+            self.assertIn('id="verification-notes"', html)
+            self.assertIn('button.disabled = true', html)
+            self.assertIn('button.disabled = false', html)
+            self.assertIn('response.status', html)
+            self.assertIn('delivery unknown', html)
+            self.assertNotIn('Blocked by the browser', html)
+            self.assertIn('prefers-reduced-motion', html)
+            self.assertIn('prefers-color-scheme:dark', html)
+
+    def test_malformed_multipart_does_not_generate_empty_ready_form(self):
+        out = self._run_csrf(r'''
+console.log(JSON.stringify(CyberBuddyCsrf.parseRequest("POST /t HTTP/1.1\nHost: example.com\nContent-Type: multipart/form-data; boundary=xxx\n\nnot multipart").ok));
+''')
+        self.assertFalse(out)
+
+    def test_multipart_fetch_exclusions_and_significant_newlines(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest('POST /t HTTP/1.1\r\nHost: example.com\r\nContent-Type: multipart/form-data; boundary=xxx\r\nX-Test: present\r\n\r\n--xxx\r\nContent-Disposition: form-data; name="csrf"\r\n\r\nSECRET\r\n--xxx\r\nContent-Disposition: form-data; name="message"\r\n\r\nkeep\r\n\r\n--xxx--\r\n');
+const g = C.generatePoc(p, {excluded:{"b:0":true}});
+console.log(JSON.stringify({value:p.bodyParams[1].value, html:g.variants[0].html, status:g.status}));
+''')
+        self.assertEqual(out["value"], "keep\r\n")
+        self.assertNotIn("SECRET", out["html"])
+        self.assertIn('"x-test": "present"', out["html"])
+        self.assertIn('keep\\r\\n\\r\\n--xxx--', out["html"])
+        self.assertEqual(out["status"], "LIMITED")
+
+    def test_empty_filename_still_requires_manual_file_input(self):
+        out = self._run_csrf(r'''
+const C = CyberBuddyCsrf;
+const p = C.parseRequest('POST /t HTTP/1.1\nHost: example.com\nContent-Type: multipart/form-data; boundary=xxx\n\n--xxx\nContent-Disposition: form-data; name="upload"; filename=""\n\n\n--xxx--\n');
+const g = C.generatePoc(p, {});
+console.log(JSON.stringify({file:p.hasFileFields, status:g.status, html:g.variants[0].html}));
+''')
+        self.assertTrue(out["file"])
+        self.assertEqual(out["status"], "LIMITED")
+        self.assertIn('type="file"', out["html"])
 
     def test_parses_crlf_lf_absolute_and_relative(self):
         out = self._run_csrf(r'''
@@ -2933,7 +3089,7 @@ console.log(JSON.stringify({
         self.assertIn("Send request", out["offHtml"])
         self.assertNotIn("AUTO-SUBMIT ENABLED", out["offHtml"])
         self.assertIn("AUTO-SUBMIT ENABLED", out["onHtml"])
-        self.assertIn('document.getElementById("csrf-form").submit();', out["onHtml"])
+        self.assertIn('HTMLFormElement.prototype.submit.call(document.getElementById("csrf-form"));', out["onHtml"])
         # The auto-submit script is fixed text — no request value concatenated in.
         self.assertNotIn("a=1", out["onHtml"].split("AUTO-SUBMIT ENABLED")[1])
 
