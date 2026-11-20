@@ -140,10 +140,12 @@
       <li>Screenshot or export the report card. It carries the target, final URL, HTTP status, timestamp, and which engine produced the result.</li>
     </ol>
     <p>
-      The risk it prints follows the published rules: permissive
-      <code>frame-ancestors</code> or no effective control is <strong>High</strong>,
-      X-Frame-Options alone is <strong>Medium</strong>, a restrictive
-      <code>frame-ancestors</code> is <strong>Low</strong>. The full table is on
+      The risk it prints follows the published rules: no effective control, or a
+      permissive <code>frame-ancestors</code> — including a scheme source such as
+      <code>https:</code> or a wildcard host such as <code>https://*</code>, which
+      match any origin of that kind — is <strong>High</strong>;
+      X-Frame-Options alone, or a restrictive <code>frame-ancestors</code>, is
+      <strong>Low</strong>. The full table is on
       the <a href="../../methodology/">methodology page</a>.
     </p>
   </article>

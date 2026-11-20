@@ -87,14 +87,12 @@
     $("mEngine").textContent = sourceLabel(data || { _source: "browser" });
     $("mMethod").textContent = "GET · read-only";
     $("mDuration").textContent = data && data._duration_ms != null ? data._duration_ms + " ms" : "—";
-    // Also update the inline URL in the Live frame test title
+    // Also update the inline URL in the live-frame title.
     $("liveFrameUrl").textContent = url;
-    // When protection is enabled (risk=low), hide the source chip to reduce
-    // visual clutter — the protection status is the primary signal.
-    const risk = data && data.risk ? data.risk.toLowerCase() : "unknown";
-    if (risk === "low") {
-      $("sourceChip").classList.add("hidden");
-    }
+    // Provenance is never hidden: the source chip used to be suppressed when
+    // protection was ENABLED (risk=low), which removed the one label that says
+    // *where the header values came from* on exactly the reassuring result an
+    // auditor is most likely to quote. Keep it on every result.
   }
 
   function renderRows(list, url) {
@@ -109,7 +107,11 @@
     cbLastData = attachFrameEvidence(data);
     renderProvenance(data, toolTitle || "Clickjacking Validator");
     const head = $("reportTitleFlag");
-    if (head) head.innerHTML = unverifiedFlag(data);
+    // LIVE / CACHED describes *this* run; "relay data" describes the source.
+    // Both belong on the report: a published CI demo report and a fresh
+    // server.py scan used to render identically here, which is exactly the
+    // ambiguity the LIVE/CACHED promise exists to remove.
+    if (head) head.innerHTML = scanTag(data) + unverifiedFlag(data);
     enterEvidenceMode();
   }
 
@@ -119,6 +121,12 @@
     $("stage").classList.remove("poc");
     $("pocControls").classList.add("hidden");
     $("togglePoc").textContent = "Show PoC overlay";
+    $("togglePoc").disabled = true;
+    $("stage").removeAttribute("data-frame-width");
+    $("stage").style.removeProperty("--frame-w");
+    $("stage").style.removeProperty("--frame-h");
+    $("frame").style.removeProperty("width");
+    $("frame").style.removeProperty("height");
     clearVisualConfirm();
     frameLoaded = false;
     frameObservation = {
@@ -126,22 +134,32 @@
       rendered: null,
       peek: "Frame has not finished loading."
     };
+    const ctx = $("frameContext");
+    if (ctx) { ctx.classList.add("hidden"); ctx.innerHTML = ""; }
     $("frame").src = url;
     $("frameStatus").textContent = "Loading frame…";
     $("stage").classList.add("scanning");
     setLoading($("go"), true);
     fillMeta(url, null);
 
-    // Ask before anything can reach a third-party relay.
+    // Ask before anything can reach a third-party relay — but only when a
+    // relay is actually reachable. A local server.py answers /api/scan itself,
+    // so prompting there asked the analyst to approve a disclosure that never
+    // happens (and a "Decline" skipped the engine, producing a header-less
+    // FRAME ONLY report against a perfectly good local scan).
     const t0 = (window.performance && typeof performance.now === "function")
       ? performance.now() : null;
 
-    const consent = await ensureRelayConsent(url);
+    const relayNeeded = typeof relayGateNeeded === "function"
+      ? await relayGateNeeded(url)
+      : true; // shared helper missing → keep the disclosure, never skip it
+    const consent = relayNeeded ? await ensureRelayConsent(url) : "skip";
     if (consent === "deny") {
       setLoading($("go"), false);
       setSourceChip({ _source: "browser" });
       setVerdict("FRAME ONLY",
         "Relay lookups declined — the frame above is your evidence.");
+      describeFrameContext(url, { url: url, final_url: url });
       renderRows([row0()], url);
       $("headers").textContent = "{}";
       askVisualConfirmation(url, { url: url, headers: {}, _source: "browser" });
@@ -159,6 +177,7 @@
     if (isEngineDown(data) || (data && data.error && !data.findings)) {
       setVerdict("FRAME ONLY",
         "If you can see the real site in the frame, it is clickjackable in this browser.");
+      describeFrameContext(url, { url: url, final_url: url });
       renderRows([{
         name: "Frame test",
         status: "info",
@@ -174,6 +193,7 @@
     if (data && data._unreachable) {
       fillMeta(url, data);
       setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(data));
+      describeFrameContext(url, data);
       $("frameStatus").textContent =
         "Target not reachable — " + unreachableDetail(data) +
         ". The frame above may show the browser's own error page; that is not framing evidence.";
@@ -189,10 +209,51 @@
       { confirmation: data.confirmation });
     renderRows(data.findings, url);
     $("headers").textContent = JSON.stringify(data.headers || {}, null, 2);
+    describeFrameContext(url, data);
     if ((data.risk || "unknown") === "unknown") {
       askVisualConfirmation(url, data);
     }
     finish(data);
+  }
+
+  /* The frame and the grade can describe two different documents, and the
+     origin that framed the page is what decides whether a rendered frame is
+     evidence of exposure or of a working allowlist. Neither was stated, so an
+     analyst reading the screenshot could not tell why the frame appeared. */
+  function describeFrameContext(url, data) {
+    const el = $("frameContext");
+    if (!el) return;
+    const target = redactUrlCredentials(url || "");
+    let framedOrigin = "";
+    try { framedOrigin = new URL(target).origin; } catch (_) { framedOrigin = ""; }
+    const graded = redactUrlCredentials((data && data.final_url) || target);
+    const notes = [];
+
+    if (framedOrigin) {
+      notes.push(
+        "This report was framed by <code>" + esc(window.location.origin) + "</code> — " +
+        "a page the target did not necessarily name. A frame that renders proves " +
+        "framing is allowed <em>for that origin</em>; compare it with the framing " +
+        "control above."
+      );
+    }
+    if (graded && target && graded !== target) {
+      notes.push(
+        "<strong>Redirect drift:</strong> the header grade describes <code>" + esc(graded) +
+        "</code>, but the live frame below loaded <code>" + esc(target) +
+        "</code>. If those are different documents, the frame is not evidence for " +
+        "the graded response — re-run against the final URL."
+      );
+    }
+    if (!notes.length) {
+      el.classList.add("hidden");
+      el.innerHTML = "";
+      return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = notes.map((n, i) =>
+      '<p class="frame-context-line' + (i ? " is-warn" : "") + '">' + n + "</p>"
+    ).join("");
   }
 
   function row0() {
@@ -217,6 +278,7 @@
         fillMeta(url, data);
         setVerdict(data.risk.toUpperCase(), data.summary, { confirmation: data.confirmation });
         renderRows(data.findings, url);
+        describeFrameContext(url, data);
         finish(data);
       });
     }, 1200);
@@ -224,6 +286,9 @@
 
   window.initClickjacking = function initClickjacking() {
     initUrlInput($("url"));
+    // The overlay is meaningless before a frame exists; leaving the button
+    // enabled let it "open" a blank stage with no way to tell why.
+    $("togglePoc").disabled = true;
     $("frame").addEventListener("load", () => {
       frameLoaded = true;
       $("stage").classList.remove("scanning");
@@ -242,6 +307,7 @@
         peek: peek
       };
       syncFrameEvidence();
+      $("togglePoc").disabled = false;
       $("frameStatus").textContent =
         "Frame loaded — peek: " + peek +
         ". If the real site UI is visible, treat it as clickjackable.";
@@ -285,6 +351,48 @@
       $("togglePoc").textContent = on ? "Hide PoC overlay" : "Show PoC overlay";
       syncFrameEvidence();
     });
+
+    // Frame viewport switcher. A desktop page squeezed into a 390px phone
+    // frame only proves the top-left corner; forcing a page width and letting
+    // the stage scroll horizontally is what makes the visual test meaningful on
+    // a small screen. "Fill" is the default and matches the old behaviour.
+    const stage = $("stage");
+    const frameEl = $("frame");
+    function applyFrameWidth(value) {
+      const wide = value && value !== "100%" ? Number(value) : 0;
+      stage.setAttribute("data-frame-width", value || "100%");
+      if (wide) {
+        // Give the stage a stable aspect ratio for that device width, then let
+        // the horizontal scrollbar reach the rest of the page.
+        stage.style.setProperty("--frame-w", wide + "px");
+        stage.style.setProperty("--frame-h", Math.round(wide * 0.62) + "px");
+      } else {
+        stage.style.removeProperty("--frame-w");
+        stage.style.removeProperty("--frame-h");
+      }
+      frameEl.style.width = wide ? wide + "px" : "";
+      frameEl.style.height = wide ? "100%" : "";
+      if (wide) stage.scrollLeft = 0;
+      $("frameStatus").textContent = wide
+        ? "Frame rendered at " + wide + "px wide — scroll horizontally to inspect the full page."
+        : "Frame fills the stage — switch to a device width to see the full page layout.";
+    }
+
+    const frameSizeButtons = Array.prototype.slice.call(
+      document.querySelectorAll(".stage-toolbar [data-frame-width]")
+    );
+    function selectFrameWidth(value) {
+      stage.setAttribute("data-frame-width", value);
+      frameSizeButtons.forEach((b) => {
+        const on = b.getAttribute("data-frame-width") === value;
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      applyFrameWidth(value);
+    }
+    frameSizeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => selectFrameWidth(btn.getAttribute("data-frame-width")));
+    });
+    selectFrameWidth("100%");
 
     $("pocOpacity").addEventListener("input", () => {
       const value = Math.max(5, Math.min(100, Number($("pocOpacity").value) || 72));

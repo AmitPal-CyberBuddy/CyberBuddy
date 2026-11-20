@@ -279,11 +279,194 @@
       "headers": {},
       "expect": {
         "score": 0,
-        "grade": "—",
+        "grade": "\u2014",
         "risk": "unknown",
         "clickjacking_risk": "unknown",
         "statuses": {
           "HTTP status": "info"
+        }
+      }
+    },
+    {
+      "name": "frame-ancestors scheme source is effectively open (CSP3)",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors https:"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "frame-ancestors wildcard host is effectively open (CSP3)",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors https://*"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "frame-ancestors wildcard port is effectively open (CSP3)",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors https://app.example:*"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "duplicate frame-ancestors: the FIRST directive wins per CSP3",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "frame-ancestors *; frame-ancestors 'none'"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "duplicate frame-ancestors: restrictive first stays protected",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "frame-ancestors 'none'; frame-ancestors *"
+      },
+      "expect": {
+        "clickjacking_risk": "low"
+      }
+    },
+    {
+      "name": "frame-ancestors 'none' beside an origin is ignored",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "frame-ancestors 'none' https://partner.example"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "frame-ancestors scheme source cannot be rescued by X-Frame-Options",
+      "url": "https://framing.example",
+      "final_url": "https://framing.example",
+      "status_code": 200,
+      "headers": {
+        "x-frame-options": "DENY",
+        "content-security-policy": "frame-ancestors https:"
+      },
+      "expect": {
+        "clickjacking_risk": "high"
+      }
+    },
+    {
+      "name": "HSTS: whitespace around the equals sign is valid (RFC 6797)",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "strict-transport-security": "max-age = 31536000; includeSubDomains"
+      },
+      "expect": {
+        "statuses": {
+          "Strict-Transport-Security": "ok"
+        }
+      }
+    },
+    {
+      "name": "HSTS: a valued includeSubDomains invalidates the whole field",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "strict-transport-security": "max-age=31536000; includeSubDomains=yes"
+      },
+      "expect": {
+        "statuses": {
+          "Strict-Transport-Security": "weak"
+        }
+      }
+    },
+    {
+      "name": "HSTS: a repeated max-age makes user agents ignore the header",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "strict-transport-security": "max-age=31536000; max-age=0"
+      },
+      "expect": {
+        "statuses": {
+          "Strict-Transport-Security": "weak"
+        }
+      }
+    },
+    {
+      "name": "Referrer-Policy: the LAST recognised value wins (weak last)",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "referrer-policy": "no-referrer, unsafe-url"
+      },
+      "expect": {
+        "statuses": {
+          "Referrer-Policy": "weak"
+        }
+      }
+    },
+    {
+      "name": "Referrer-Policy: the LAST recognised value wins (safe last)",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "referrer-policy": "unsafe-url, no-referrer"
+      },
+      "expect": {
+        "statuses": {
+          "Referrer-Policy": "ok"
+        }
+      }
+    },
+    {
+      "name": "Permissions-Policy: camera=self is not a wildcard",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "permissions-policy": "camera=self, microphone=self"
+      },
+      "expect": {
+        "statuses": {
+          "Permissions-Policy": "ok"
+        }
+      }
+    },
+    {
+      "name": "Permissions-Policy: a typo in a feature name is reported",
+      "url": "https://headers.example",
+      "final_url": "https://headers.example",
+      "status_code": 200,
+      "headers": {
+        "permissions-policy": "camera=self, micrphone=self"
+      },
+      "expect": {
+        "statuses": {
+          "Permissions-Policy": "weak"
         }
       }
     }

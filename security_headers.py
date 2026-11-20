@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 from clickjacking_validator import (
     cookie_flag_notes,
     fetch_headers,
+    first_directive_values,
+    frame_ancestors_any_origin,
     normalize_url,
     parse_csp,
     redact_userinfo,
@@ -150,13 +152,29 @@ def check_csp(value: str | None) -> Check:
 
 
 def frame_ancestors_restricts(csp_value: str | None) -> bool:
-    """True when CSP frame-ancestors is present and not a wildcard."""
+    """True when CSP frame-ancestors is present and actually restricts framing.
+
+    Only a real allowlist counts. ``*`` and the CSP3 wildcard forms
+    (``https:``, ``https://*``, ``host:*``) match any origin that fits the
+    pattern, so they are not protection — treating them as protection made the
+    header tool forgive a missing X-Frame-Options on a page that any site can
+    frame. The first declaration per policy wins, per CSP3.
+    """
     if not csp_value:
         return False
-    sources = parse_csp(csp_value).get("frame-ancestors")
-    if sources is None:
-        return False
-    return "*" not in sources
+    for policy in [p.strip() for p in csp_value.split("\n") if p.strip()]:
+        sources = first_directive_values(policy, "frame-ancestors")
+        if sources is None:
+            continue
+        if not sources or sources == ["'none'"] or sources == ["'self'"]:
+            return True
+        if frame_ancestors_any_origin(sources):
+            continue
+        if "'none'" in sources:
+            # 'none' next to other sources is ignored by browsers.
+            continue
+        return True
+    return False
 
 
 def check_xfo(value: str | None, frame_ancestors_ok: bool) -> Check:
@@ -188,6 +206,62 @@ def check_xfo(value: str | None, frame_ancestors_ok: bool) -> Check:
     )
 
 
+def parse_hsts(value: str) -> dict:
+    """Parse one Strict-Transport-Security field per RFC 6797 §6.1.
+
+    ``max-age`` is ``"max-age" OWS "=" OWS delta-seconds`` — whitespace around
+    the ``=`` is allowed — so a header written ``max-age = 31536000`` is valid
+    and was previously read as ``max-age=0``, i.e. "HSTS disabled" for a site
+    that had it enabled. The whole field is ignored by user agents when
+    ``max-age`` is absent, invalid or repeated, or when an optional directive
+    carries a value (``includeSubDomains=yes``); those cases are reported as a
+    header that does NOT protect, with the reason.
+    """
+    result = {
+        "max_age": None,
+        "include_subdomains": False,
+        "preload": False,
+        "invalid": "",
+        "unknown": [],
+    }
+    if value is None:
+        return result
+    # Multiple HSTS fields: browsers process only the FIRST valid one.
+    fields = [part.strip() for part in str(value).split("\n") if part.strip()]
+    if len(fields) > 1:
+        result["invalid"] = "the response sends more than one Strict-Transport-Security field; browsers process only the first valid one"
+    field = fields[0] if fields else ""
+    directives = [d.strip() for d in field.split(";") if d.strip()]
+    seen_max_age = 0
+    for directive in directives:
+        name, sep, raw = directive.partition("=")
+        name = name.strip().lower()
+        raw = raw.strip()
+        if name == "max-age":
+            seen_max_age += 1
+            if seen_max_age > 1:
+                result["invalid"] = "max-age appears more than once, so user agents ignore the whole header"
+                result["max_age"] = None
+                continue
+            if not re.fullmatch(r"\d+", raw):
+                result["invalid"] = f"max-age value {raw!r} is not a non-negative integer, so user agents ignore the whole header"
+                continue
+            result["max_age"] = int(raw)
+        elif name == "includesubdomains":
+            if sep:
+                result["invalid"] = "includeSubDomains is a valueless directive; giving it a value makes user agents ignore the whole header"
+                continue
+            result["include_subdomains"] = True
+        elif name == "preload":
+            if sep:
+                result["invalid"] = "preload is a valueless directive; giving it a value makes user agents ignore the whole header"
+                continue
+            result["preload"] = True
+        else:
+            result["unknown"].append(name)
+    return result
+
+
 def check_hsts(value: str | None, is_https: bool) -> Check:
     if not is_https:
         return Check(
@@ -201,8 +275,22 @@ def check_hsts(value: str | None, is_https: bool) -> Check:
             "Header not present. HSTS forces HTTPS and prevents SSL-stripping for returning visitors.",
             deduction=WEIGHTS["Strict-Transport-Security"],
         )
-    m = re.search(r"max-age=(\d+)", value, re.I)
-    max_age = int(m.group(1)) if m else 0
+    parsed = parse_hsts(value)
+    if parsed["invalid"]:
+        return Check(
+            "Strict-Transport-Security", "weak",
+            "Present but not enforceable: " + parsed["invalid"] + ".",
+            evidence=value.strip()[:200],
+            deduction=WEIGHTS["Strict-Transport-Security"],
+        )
+    if parsed["max_age"] is None:
+        return Check(
+            "Strict-Transport-Security", "missing",
+            "Present but without a usable max-age directive, so browsers ignore it entirely.",
+            evidence=value.strip()[:200],
+            deduction=WEIGHTS["Strict-Transport-Security"],
+        )
+    max_age = parsed["max_age"]
     if max_age == 0:
         return Check(
             "Strict-Transport-Security", "missing",
@@ -215,15 +303,20 @@ def check_hsts(value: str | None, is_https: bool) -> Check:
             f"max-age={max_age}s is short; browsers need ≥ 15552000s (180 days) for meaningful protection.",
             evidence=value.strip(), deduction=5,
         )
-    if "includesubdomains" not in value.lower():
+    if not parsed["include_subdomains"]:
         return Check(
             "Strict-Transport-Security", "weak",
-            "Max-age is fine but includeSubDomains is missing.",
+            "Max-age is fine but includeSubDomains is missing, so plain-HTTP subdomains stay reachable.",
             evidence=value.strip(), deduction=5,
         )
+    detail = "HSTS present with a strong max-age and includeSubDomains."
+    if parsed["preload"]:
+        detail += " preload is set — confirm the domain actually qualifies for the browser list."
+    if parsed["unknown"]:
+        detail += " Unrecognised directive(s) ignored: " + ", ".join(parsed["unknown"]) + "."
     return Check(
         "Strict-Transport-Security", "ok",
-        "HSTS present with a strong max-age (and includeSubDomains).",
+        detail,
         evidence=value.strip(), deduction=0,
     )
 
@@ -254,6 +347,24 @@ REFERRER_OK = {
 }
 
 
+REFERRER_WEAK = {"unsafe-url", "no-referrer-when-downgrade"}
+
+
+def effective_referrer_policy(value: str | None) -> tuple[str, int]:
+    """Return (effective policy token, count of recognised values).
+
+    Comma-separated values are a deliberate *fallback chain*: a browser uses
+    the **last** policy it recognises. The old check read the first token, so
+    ``no-referrer, unsafe-url`` (full URL sent everywhere) passed, while
+    ``unsafe-url, no-referrer`` (nothing sent) failed. Both were backwards.
+    """
+    tokens = [t.strip().lower() for t in str(value or "").split(",") if t.strip()]
+    valid = [t for t in tokens if t in REFERRER_OK or t in REFERRER_WEAK]
+    if not valid:
+        return (tokens[-1] if tokens else "", len(tokens))
+    return (valid[-1], len(valid))
+
+
 def check_referrer(value: str | None) -> Check:
     if not value:
         return Check(
@@ -262,24 +373,86 @@ def check_referrer(value: str | None) -> Check:
             "but an explicit policy is clearer and more consistent.",
             deduction=WEIGHTS["Referrer-Policy"],
         )
-    token = value.strip().split(",")[0].strip().lower()
+    token, recognised = effective_referrer_policy(value)
+    chain = ""
+    if len(str(value).split(",")) > 1:
+        chain = (
+            f" (a comma-separated list is a fallback chain and browsers use the last "
+            f"value they understand, so '{token}' is what applies)"
+        )
     if token in REFERRER_OK:
         return Check(
             "Referrer-Policy", "ok",
-            f"{token} — referrer leakage is limited.",
+            f"{token} — referrer leakage is limited" + chain + ".",
             evidence=value.strip(), deduction=0,
         )
-    if token in ("unsafe-url", "no-referrer-when-downgrade"):
+    if token in REFERRER_WEAK:
         return Check(
             "Referrer-Policy", "weak",
-            f"'{token}' can leak full URLs (including query strings) to other origins.",
+            f"'{token}' can leak full URLs (including query strings) to other origins" + chain + ".",
             evidence=value.strip(), deduction=WEIGHTS["Referrer-Policy"],
         )
     return Check(
         "Referrer-Policy", "weak",
-        "Unrecognized policy value.",
+        f"No value in this header is a recognised policy ({recognised} token(s) checked), "
+        "so browsers fall back to their default.",
         evidence=value.strip(), deduction=5,
     )
+
+
+def permissions_issues(value: str) -> tuple[list[str], list[str]]:
+    """Return (wildcard features, unrecognised feature names) for one header.
+
+    Permissions-Policy allows ``feature=(self "https://x")`` *or* a bare
+    ``feature=self``, so ``camera=self`` used to be scored as a wildcard even
+    though it grants only the origin. Meanwhile the real wildcard is
+    ``feature=*`` / ``feature=(*)`` anywhere inside the value. Browsers also
+    ignore features they do not implement, which makes typos silent.
+    """
+    wildcarded: list[str] = []
+    unknown: list[str] = []
+    known = PERMISSIONS_FEATURES
+    for raw in value.split(","):
+        tok = raw.strip()
+        if not tok or "=" not in tok:
+            continue
+        feature, allow = tok.split("=", 1)
+        feature = feature.strip().lower()
+        if feature not in known:
+            unknown.append(feature)
+        # Normalise `( ... )` to its inner token list, then look for a bare *.
+        allow = allow.strip().strip("()")
+        parts = [p.strip().strip('"').lower() for p in allow.split()]
+        if "*" in parts:
+            wildcarded.append(feature)
+    return (wildcarded, unknown)
+
+
+# Feature names defined by the Permissions Policy spec (plus a few shipped
+# browser extensions). Anything outside this set is silently ignored by
+# browsers, i.e. a typo that looks like a restriction.
+PERMISSIONS_FEATURES = frozenset({
+    "accelerometer", "ambient-light-sensor", "attribution-reporting", "autoplay",
+    "battery", "bluetooth", "browsing-topics", "camera", "captured-surface-control",
+    "ch-ua", "ch-ua-arch", "ch-ua-bitness", "ch-ua-full-version",
+    "ch-ua-full-version-list", "ch-ua-mobile", "ch-ua-model", "ch-ua-platform",
+    "ch-ua-platform-version", "clipboard-read", "clipboard-write",
+    "compute-pressure", "conversion-measurement", "cross-origin-isolated",
+    "deferred-fetch", "deferred-fetch-minimal", "digital-credentials-get",
+    "direct-sockets", "display-capture", "document-domain", "encrypted-media",
+    "execution-while-not-rendered", "execution-while-out-of-viewport",
+    "focus-without-user-activation", "fullscreen", "gamepad", "geolocation",
+    "gyroscope", "hid", "identity-credentials-get", "idle-detection",
+    "interest-cohort", "join-ad-interest-group", "keyboard-map", "local-fonts",
+    "magnetometer", "media-playback-while-not-visible", "microphone",
+    "midi", "otp-credentials", "payment", "picture-in-picture",
+    "private-aggregation", "private-state-token-issuance",
+    "private-state-token-redemption", "publickey-credentials-create",
+    "publickey-credentials-get", "run-ad-auction", "screen-wake-lock",
+    "serial", "shared-storage", "shared-storage-select-url", "speaker-selection",
+    "storage-access", "sync-xhr", "top-level-storage-access", "usb",
+    "window-management", "window-placement", "xr-spatial-tracking",
+})
 
 
 def check_permissions(value: str | None) -> Check:
@@ -290,25 +463,28 @@ def check_permissions(value: str | None) -> Check:
             "(camera, microphone, geolocation). Optional hardening.",
             deduction=WEIGHTS["Permissions-Policy"],
         )
-    wildcarded = []
-    for tok in value.split(","):
-        if "=" not in tok:
-            continue
-        feature, allow = tok.split("=", 1)
-        allow = allow.strip().lower()
-        if allow in ("*", "(*)"):
-            wildcarded.append(feature.strip())
+    wildcarded, unknown = permissions_issues(value)
+    notes: list[str] = []
     if wildcarded:
-        return Check(
-            "Permissions-Policy", "weak",
+        notes.append(
             "Feature(s) allowlisted as bare wildcard: "
             + ", ".join(wildcarded)
-            + ". Restrict them to 'self' or an origin allowlist.",
+            + " — restrict them to 'self' or an origin allowlist"
+        )
+    if unknown:
+        notes.append(
+            "Unrecognised feature name(s) ignored by browsers: "
+            + ", ".join(sorted(set(unknown))[:6])
+        )
+    if notes:
+        return Check(
+            "Permissions-Policy", "weak",
+            "; ".join(notes) + ".",
             evidence=value[:300], deduction=5,
         )
     return Check(
         "Permissions-Policy", "ok",
-        "Header present.",
+        "Header present and every feature name is recognised.",
         evidence=value[:300], deduction=0,
     )
 
@@ -385,12 +561,20 @@ def check_corp(value: str | None) -> Check:
     )
 
 
-def check_csp_report_only(value: str | None) -> Check | None:
+def check_csp_report_only(value: str | None, enforced_csp: str | None = None) -> Check | None:
     if not value:
         return None
+    if not enforced_csp:
+        return Check(
+            "CSP-Report-Only", "info",
+            "Only a Report-Only CSP is present. It enforces nothing — violations are "
+            "reported, not blocked — so no policy is actually in force.",
+            evidence=value[:300], deduction=0,
+        )
     return Check(
         "CSP-Report-Only", "info",
-        "Report-Only CSP is present and does not enforce anything — it only reports violations.",
+        "A Report-Only CSP also exists alongside the enforced policy: it reports "
+        "would-be violations and does not block anything.",
         evidence=value[:300], deduction=0,
     )
 
@@ -428,7 +612,7 @@ def risk_for(grade: str) -> str:
     return {"A": "low", "B": "low", "C": "medium", "D": "medium", "F": "high"}[grade]
 
 
-def summarize(grade: str, missing: list[str]) -> str:
+def summarize(grade: str, missing: list[str], checks: list[Check] | None = None) -> str:
     extra = ""
     if missing and grade != "A":
         preview = ", ".join(missing[:4])
@@ -441,7 +625,17 @@ def summarize(grade: str, missing: list[str]) -> str:
         return "Notable gaps — attackers get signal here. Prioritize the missing headers." + extra
     if grade == "D":
         return "Weak posture. Multiple important headers missing or misconfigured." + extra
-    return "Critical posture. Key protections are absent — treat the site as exposed until fixed." + extra
+    # The score is a plain deduction sum, so one response can hit 0 while a
+    # control the site already carries still works. Name what is in place:
+    # "treat the site as exposed" is an overclaim when, for example, HSTS is live.
+    passing = [
+        c.name for c in (checks or [])
+        if c.status in ("ok", "protected") and c.name != "Transport"
+    ]
+    held = ""
+    if passing:
+        held = " Still in place: " + ", ".join(passing[:4]) + ("…" if len(passing) > 4 else "") + "."
+    return "Critical posture. Key protections are absent — treat the site as exposed until fixed." + extra + held
 
 
 def grade_headers_from_map(
@@ -504,7 +698,7 @@ def grade_headers_from_map(
         check_coep(headers.get("cross-origin-embedder-policy")),
         check_corp(headers.get("cross-origin-resource-policy")),
     ]
-    ro = check_csp_report_only(headers.get("content-security-policy-report-only"))
+    ro = check_csp_report_only(headers.get("content-security-policy-report-only"), csp_value)
     if ro:
         checks.append(ro)
     cookie_check = check_cookies(headers.get("set-cookie"))
@@ -541,7 +735,7 @@ def grade_headers_from_map(
         score=score,
         grade=grade,
         risk=risk_for(grade),
-        summary=summarize(grade, missing),
+        summary=summarize(grade, missing, checks),
         headers=interesting,
     )
 

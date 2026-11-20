@@ -259,9 +259,10 @@
         <tr><th scope="col">Condition</th><th scope="col">Risk</th></tr>
       </thead>
       <tbody>
-        <tr><td>CSP <code>frame-ancestors</code> is <code>*</code> (or otherwise too open)</td><td>High — modern browsers honor CSP over XFO</td></tr>
-        <tr><td>Restrictive <code>frame-ancestors</code> is set</td><td>Low</td></tr>
-        <tr><td>Only X-Frame-Options protects the page</td><td>Medium — add frame-ancestors</td></tr>
+        <tr><td>CSP <code>frame-ancestors</code> is <code>*</code>, a scheme source (<code>https:</code>), a wildcard host (<code>https://*</code>) or a wildcard port (<code>host:*</code>)</td><td>High — modern browsers honor CSP over XFO, and every one of those sources matches any origin that fits the pattern</td></tr>
+        <tr><td>A duplicate <code>frame-ancestors</code> repeats inside one policy</td><td>The <b>first</b> declaration wins and the repeat is ignored — reported with its own informational finding</td></tr>
+        <tr><td>Restrictive <code>frame-ancestors</code> is set (<code>'none'</code>, <code>'self'</code> or an explicit origin list)</td><td>Low</td></tr>
+        <tr><td>Only X-Frame-Options protects the page</td><td>Low — framing is prevented; adding <code>frame-ancestors</code> is still recommended defense-in-depth, and the summary says so</td></tr>
         <tr><td>Neither control is effective</td><td>High — likely clickjackable</td></tr>
       </tbody>
     </table>

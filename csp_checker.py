@@ -15,7 +15,13 @@ import sys
 from dataclasses import asdict, dataclass, field
 from urllib.parse import urlparse
 
-from clickjacking_validator import fetch_headers, normalize_url, redact_userinfo, validate_target
+from clickjacking_validator import (
+    fetch_headers,
+    frame_ancestors_any_origin,
+    normalize_url,
+    redact_userinfo,
+    validate_target,
+)
 from security_headers import grade_for
 
 
@@ -135,6 +141,26 @@ def _source_label(name: str, tokens: list[str] | None) -> str:
     return name + (" " + " ".join(tokens) if tokens else " (empty source list)")
 
 
+def _empty_list_note(name: str) -> str:
+    """Describe a directive that is present with no source expressions.
+
+    CSP3's matching algorithm returns "Does Not Match" for every URL when the
+    source list is empty (section 6.7.2.7, step 2), so ``script-src;`` behaves
+    exactly like ``script-src 'none'``. Chrome and Firefox both keep the
+    directive with an empty set rather than discarding it (crbug/WPT and
+    bugzilla 1570722), which makes an empty list fail *closed*. That is a safe
+    outcome but almost always an accident -- a template dropped the list, or a
+    trailing semicolon split it -- so the detail must say what was actually
+    observed instead of calling it "a restrictive source list".
+    """
+    return (
+        f"{name} has no source expressions. Browsers treat an empty source list "
+        "as no match for any URL (the same effect as 'none'), so this fails "
+        "closed - but confirm the empty value was intended: a dropped list or a "
+        "stray trailing semicolon produces exactly this header."
+    )
+
+
 def _issue_check(
     name: str,
     issues: list[tuple[str, str]],
@@ -225,12 +251,17 @@ def _check_scripts(directives: dict[str, list[str]]) -> CspCheck:
         evidence_parts.append(_source_label(eval_from, evaluation))
     if attr_from and attr_from not in {element_from, eval_from}:
         evidence_parts.append(_source_label(attr_from, attributes))
+    ok_detail = (
+        _empty_list_note(element_from)
+        if not element
+        else "Script execution has an explicit restrictive source list."
+    )
     return _issue_check(
         "Script execution",
         issues,
         " · ".join(evidence_parts),
         recommendation,
-        "Script execution has an explicit restrictive source list.",
+        ok_detail,
         info,
     )
 
@@ -272,16 +303,45 @@ def _check_navigation_directive(
             severity=missing_severity, recommendation=recommendation,
         )
     evidence = _source_label(name, tokens)
-    if not tokens or tokens == ["'none'"] or tokens == ["'self'"]:
+    if not tokens:
+        # An empty list is maximally restrictive, not merely "restrictive":
+        # every origin fails to match, so nothing may be embedded / submit.
+        return CspCheck(
+            label, "ok", _empty_list_note(name),
+            evidence=evidence, severity="pass",
+        )
+    if tokens == ["'none'"] or tokens == ["'self'"]:
         return CspCheck(
             label, "ok", f"{name} uses a restrictive source list.",
             evidence=evidence, severity="pass",
         )
     issues: list[tuple[str, str]] = []
+    framing = name == "frame-ancestors"
     if "*" in tokens:
-        issues.append((f"{name} allows *", "high" if name == "frame-ancestors" else "medium"))
+        issues.append((f"{name} allows *", "high" if framing else "medium"))
     if any(token in {"http:", "https:"} for token in tokens):
-        issues.append((f"{name} allows every origin on a URL scheme", "medium"))
+        # A scheme source matches every origin on that scheme. For framing that
+        # is equivalent to `*`, so it must carry the same weight as `*` —
+        # reporting it as merely "medium" while the clickjacking tool calls it
+        # HIGH would make two tools disagree about the same header.
+        issues.append((
+            f"{name} allows every origin on a URL scheme",
+            "high" if framing else "medium",
+        ))
+    if framing:
+        # CSP3 wildcard host (`https://*`) and wildcard port (`host:*`) are just
+        # as open as `*`, but they look like an allowlist.
+        wildcard_sources = [
+            token for token in tokens
+            if token not in {"*", "http:", "https:"} and frame_ancestors_any_origin([token])
+        ]
+        if wildcard_sources and "*" not in tokens:
+            issues.append((
+                f"{name} uses a wildcard host or port ("
+                + " ".join(wildcard_sources)
+                + "), which matches any matching origin",
+                "high",
+            ))
     if "'none'" in tokens and len(tokens) > 1:
         issues.append((f"{name} mixes 'none' with other sources, so 'none' is ignored", "medium"))
     if issues:
@@ -318,7 +378,9 @@ def _check_styles(directives: dict[str, list[str]]) -> CspCheck:
         issues.append(("'none' is mixed with other style sources and is ignored", "low"))
     return _issue_check(
         "Style sources", issues, _source_label(inherited, tokens), recommendation,
-        "Stylesheets have an explicit restrictive source list.",
+        _empty_list_note(inherited)
+        if not tokens
+        else "Stylesheets have an explicit restrictive source list.",
     )
 
 
@@ -456,7 +518,11 @@ def grade_csp_from_map(
     checks: list[CspCheck] = []
 
     if not policies:
-        detail = "No enforced Content-Security-Policy response header was found."
+        detail = (
+            "No enforced Content-Security-Policy response header was found."
+            if final
+            else "The pasted text holds no enforced Content-Security-Policy field."
+        )
         if report_only:
             detail += " A Report-Only policy records violations but does not block them."
         checks.append(CspCheck(
@@ -472,10 +538,22 @@ def grade_csp_from_map(
         # A pasted header (final == "") has no delivery context; the policy's
         # presence is what matters, not whether the page is served over HTTPS.
         delivery_status = "ok" if (not final or urlparse(final).scheme == "https") else "weak"
+        if final:
+            found = (
+                f"Found {len(policies)} enforced CSP response polic"
+                + ("y." if len(policies) == 1 else "ies. Multiple policies combine restrictively.")
+            )
+        else:
+            # A pasted header has no response behind it; do not invent one.
+            found = (
+                f"Found {len(policies)} enforced polic"
+                + ("y in the pasted header." if len(policies) == 1
+                   else "ies in the pasted header. Multiple policies combine restrictively.")
+            )
         checks.append(CspCheck(
             "Enforced response policy",
             delivery_status,
-            f"Found {len(policies)} enforced CSP response polic" + ("y." if len(policies) == 1 else "ies. Multiple policies combine restrictively."),
+            found,
             evidence=policy[:500],
             severity="pass" if delivery_status == "ok" else "high",
             recommendation="Serve the page and its CSP over HTTPS so the policy cannot be stripped in transit." if delivery_status == "weak" else "",
@@ -555,25 +633,111 @@ def grade_csp_from_map(
     )
 
 
+# Directive names a real policy can contain (CSP3 plus the deprecated ones
+# still seen in the wild). Used only to answer "is this text a CSP at all?" —
+# an unknown name inside an otherwise valid policy is still graded normally,
+# because browsers ignore directives they do not implement.
+_PASTED_FIELD_RE = re.compile(
+    r"^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$", re.IGNORECASE
+)
+
+
+KNOWN_CSP_DIRECTIVES = frozenset({
+    "base-uri", "block-all-mixed-content", "child-src", "connect-src",
+    "default-src", "fenced-frame-src", "font-src", "form-action",
+    "frame-ancestors", "frame-src", "img-src", "manifest-src", "media-src",
+    "navigate-to", "object-src", "plugin-types", "prefetch-src", "referrer",
+    "report-to", "report-uri", "require-sri-for", "require-trusted-types-for",
+    "sandbox", "script-src", "script-src-attr", "script-src-elem",
+    "style-src", "style-src-attr", "style-src-elem", "trusted-types",
+    "upgrade-insecure-requests", "worker-src",
+})
+
+
+def looks_like_csp_policy(value: str) -> bool:
+    """True when the text contains at least one directive a CSP can hold.
+
+    Pasting an unrelated header (``Content-Type: text/html``) previously
+    produced a graded report whose only "directive" was ``content-type`` — a
+    confident F for a policy that was never a policy. Requiring one recognised
+    directive name keeps the "that is not a CSP header" message honest without
+    rejecting real policies that contain vendor or typo'd directives.
+    """
+    for raw in (value or "").replace("\r", "").split(";"):
+        for line in raw.split("\n"):
+            segment = line.strip()
+            labelled = _PASTED_FIELD_RE.match(segment)
+            if labelled:
+                segment = labelled.group(2).strip()
+            tokens = segment.split()
+            if tokens and tokens[0].lower() in KNOWN_CSP_DIRECTIVES:
+                return True
+    return False
+
+
+def split_pasted_header_fields(value: str) -> tuple[dict[str, str], list[str]]:
+    """Split pasted header text into ``({name: joined values}, field names)``.
+
+    Analysts paste three different shapes into the CSP box, and only one of
+    them is a single header field:
+
+    * a bare value (``default-src 'self'; script-src 'self'``),
+    * the field as copied from a proxy/devtools dump, which is **wrapped**
+      across lines (``Content-Security-Policy: default-src 'self';`` then a
+      continuation line) — here the label repeats or the continuation has no
+      label at all,
+    * a genuine repeat field (two labelled lines) where both policies apply.
+
+    Treating every line as a separate policy (the previous behaviour) made a
+    wrapped field look like "2 enforced policies" and fed the second half of
+    the value — label included — into the parser, so a correct policy could be
+    reported as several directives with a syntax error. Continuation lines are
+    folded back into the field they belong to; two labelled fields stay two
+    policies because browsers enforce both.
+    """
+    fields: list[tuple[str, list[str]]] = []
+    for raw_line in (value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = _PASTED_FIELD_RE.match(line)
+        if match:
+            fields.append((match.group(1).lower(), [match.group(2).strip()]))
+        elif fields:
+            # Unlabelled continuation of the field above (RFC 9110 folding).
+            fields[-1][1].append(line)
+        else:
+            # Bare value with no header name at all: one field.
+            fields.append(("content-security-policy", [line]))
+
+    headers: dict[str, str] = {}
+    names: list[str] = []
+    for name, parts in fields:
+        # A folded value is one header field, so join with a single space;
+        # the policy grammar treats that space as ordinary whitespace.
+        body = " ".join(part for part in parts if part)
+        if name in headers:
+            # A repeated Content-Security-Policy field is a *second* policy,
+            # not a continuation: the collector joins those with newlines.
+            headers[name] = headers[name] + "\n" + body
+        else:
+            headers[name] = body
+            names.append(name)
+    return headers, names
+
+
 def grade_csp_from_header(value: str) -> CspResult:
     """Audit a pasted Content-Security-Policy header value with no network.
 
     Accepts the raw value with or without a ``Content-Security-Policy:`` (or
-    ``Content-Security-Policy-Report-Only:``) label, mirroring the hosted
-    ``gradeCspFromHeader`` in js/app.js. There is no target, so the result has
-    no URL or HTTP status and skips the transport-delivery checks.
+    ``Content-Security-Policy-Report-Only:``) label, including a wrapped or
+    repeated field, mirroring the hosted ``gradeCspFromHeader`` in js/app.js.
+    There is no target, so the result has no URL or HTTP status and skips the
+    transport-delivery checks.
     """
-    text = (value or "").strip()
-    match = re.match(r"(?is)^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$", text)
-    if match:
-        name, body = match.group(1).lower(), match.group(2).strip()
-    else:
-        name, body = "", text
-    headers: dict[str, str] = {}
-    if name == "content-security-policy-report-only":
-        headers["content-security-policy-report-only"] = body
-    else:
-        headers["content-security-policy"] = body
+    headers, _names = split_pasted_header_fields(value)
+    if not headers:
+        headers["content-security-policy"] = ""
     result = grade_csp_from_map("", None, "", headers)
     result._pasted = True  # type: ignore[attr-defined]
     return result
