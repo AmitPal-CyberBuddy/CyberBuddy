@@ -299,6 +299,70 @@ def assess_xfo(value: str | None) -> Finding:
     )
 
 
+def first_directive_values(policy: str, name: str) -> list[str] | None:
+    """Return the sources of the FIRST ``name`` directive in one policy.
+
+    CSP3 ignores a repeated directive inside a single policy, so the first
+    occurrence is the one the browser enforces. ``parse_csp`` keeps the last,
+    which is fine for the header-level checks (Content-Security-Policy is not
+    repeatable) but wrong for directives, where a duplicate must not be able
+    to flip the verdict.
+    """
+    for part in policy.replace("\r", ";").replace("\n", ";").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        tokens = part.split()
+        if tokens[0].lower() == name:
+            return [t.lower() for t in tokens[1:]]
+    return None
+
+
+def duplicate_directive(policy: str, name: str) -> bool:
+    """True when one policy declares the same directive more than once."""
+    count = 0
+    for part in policy.replace("\r", ";").replace("\n", ";").split(";"):
+        tokens = part.strip().split()
+        if tokens and tokens[0].lower() == name:
+            count += 1
+            if count > 1:
+                return True
+    return False
+
+
+# A scheme source without a host, or a wildcard host/port, matches any origin
+# of that kind in CSP3 — exactly as permissive as `*` for framing purposes.
+_SCHEME_ONLY_RE = re.compile(r"^[a-z][a-z0-9+.-]*:$")
+_WILDCARD_HOST_RE = re.compile(r"^([a-z][a-z0-9+.-]*:)?//\*", re.I)
+_WILDCARD_PORT_RE = re.compile(r":\*$")
+
+
+def frame_ancestors_any_origin(sources: Iterable[str]) -> bool:
+    """True when a frame-ancestors source list permits any origin at all.
+
+    ``*`` is the obvious case. The subtler ones are CSP3 wildcards that look
+    restricted but are not: ``https:`` (any https origin), ``https://*`` (same)
+    and ``host:*`` (any port on that host is still a wildcard port). Treating
+    them as protection is a false negative — the page is frameable by anyone.
+    """
+    for raw in sources:
+        source = (raw or "").strip().lower()
+        if not source:
+            continue
+        if source == "*" or source == "'none'":
+            # 'none' is handled by the caller; only '*' is permissive here.
+            if source == "*":
+                return True
+            continue
+        if _SCHEME_ONLY_RE.match(source):
+            return True
+        if _WILDCARD_HOST_RE.match(source):
+            return True
+        if _WILDCARD_PORT_RE.search(source):
+            return True
+    return False
+
+
 def assess_frame_ancestors(csp_value: str | None) -> Finding:
     if not csp_value:
         return Finding(
@@ -315,38 +379,91 @@ def assess_frame_ancestors(csp_value: str | None) -> Finding:
     has_weak = False
     weak_evidence = ""
     protected_evidence = ""
+    duplicates = False
     for policy in policies:
-        directives = parse_csp(policy)
-        if "frame-ancestors" not in directives:
+        # CSP3: the FIRST frame-ancestors in a policy wins; a repeat is ignored.
+        sources = first_directive_values(policy, "frame-ancestors")
+        if sources is None:
             continue
-        sources = directives["frame-ancestors"]
+        if duplicate_directive(policy, "frame-ancestors"):
+            duplicates = True
         ev = "frame-ancestors " + " ".join(sources)
-        if not sources or sources == ["'none'"]:
+        if not sources:
+            # `frame-ancestors` with no value: CSP3 6.7.2.7 step 2 returns
+            # "Does Not Match" for an empty source list, so nothing may embed
+            # the page. Fails closed — but it is almost always a template or
+            # truncation accident, so say what the header actually contains.
+            has_protected = True
+            protected_evidence = "frame-ancestors (empty source list)"
+        elif sources == ["'none'"]:
             has_protected = True
             protected_evidence = ev
         elif sources == ["'self'"]:
             has_protected = True
             protected_evidence = ev
-        elif "*" in sources:
+        elif "'none'" in sources and len(sources) > 1:
+            # 'none' must be the only source value; on its own it is
+            # restrictive, with siblings it is ignored entirely.
+            has_weak = True
+            weak_evidence = ev
+        elif frame_ancestors_any_origin(sources):
             has_weak = True
             weak_evidence = ev
         else:
             has_protected = True
             protected_evidence = ev
+    if duplicates:
+        # Surface it, but do not let it change the verdict — the browser
+        # silently ignores the repeat, so an analyst must know why a
+        # "permissive then restrictive" pair still frames.
+        duplicate_suffix = (
+            " This policy declares frame-ancestors more than once; browsers "
+            "enforce the first declaration and ignore the rest — remove the "
+            "duplicate so the intent is unambiguous."
+        )
+    else:
+        duplicate_suffix = ""
     if has_protected:
         # Restrictive wins over permissive when multiple policies combine
+        detail = "frame-ancestors allowlist is set. Confirm every listed origin is trusted."
+        if protected_evidence == "frame-ancestors 'none'":
+            detail = "frame-ancestors 'none' forbids all framing (strongest modern control)."
+        elif protected_evidence == "frame-ancestors 'self'":
+            detail = "frame-ancestors 'self' allows only same-origin frames."
+        elif protected_evidence == "frame-ancestors (empty source list)":
+            detail = (
+                "frame-ancestors has no source expressions. Browsers treat an "
+                "empty source list as no match for any ancestor (the same effect "
+                "as 'none'), so framing fails closed - but confirm the empty "
+                "value was intended: a dropped list or a stray trailing "
+                "semicolon produces exactly this header."
+            )
         return Finding(
             name="CSP frame-ancestors",
             status="protected",
-            detail="frame-ancestors allowlist is set. Confirm every listed origin is trusted." if protected_evidence not in ("frame-ancestors 'none'", "frame-ancestors 'self'") else
-                   ("frame-ancestors 'none' forbids all framing (strongest modern control)." if protected_evidence == "frame-ancestors 'none'" else "frame-ancestors 'self' allows only same-origin frames."),
+            detail=detail + duplicate_suffix,
             evidence=protected_evidence or csp_value[:300],
         )
     if has_weak:
+        # Say WHY it is weak: `*` and the CSP3 wildcard forms (https:, https://*,
+        # host:*) look narrower than they are, and the analyst needs the reason.
+        source_list = weak_evidence[len("frame-ancestors "):] if weak_evidence.startswith("frame-ancestors ") else weak_evidence
+        if source_list.strip() == "*":
+            detail = "frame-ancestors * allows any origin to frame the page."
+        elif "*" in source_list.split() and any(
+            token.strip() == "*" for token in source_list.split()
+        ):
+            detail = "frame-ancestors * allows any origin to frame the page."
+        else:
+            detail = (
+                "frame-ancestors " + source_list.strip() +
+                " matches any origin with that scheme, host wildcard or port — "
+                "CSP3 treats it as effectively open, so any site can frame the page."
+            )
         return Finding(
             name="CSP frame-ancestors",
             status="weak",
-            detail="frame-ancestors * allows any origin to frame the page.",
+            detail=detail + duplicate_suffix,
             evidence=weak_evidence,
         )
     # No policy contained frame-ancestors
@@ -356,6 +473,30 @@ def assess_frame_ancestors(csp_value: str | None) -> Finding:
         detail="CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.",
         evidence=csp_value[:300],
     )
+
+
+def duplicate_frame_ancestors_note(csp_value: str | None) -> Finding | None:
+    """Informational finding when one policy repeats frame-ancestors.
+
+    Browsers ignore the repeat, so the report must not silently pick one; the
+    analyst needs to know the header says two different things.
+    """
+    if not csp_value:
+        return None
+    policies = [p.strip() for p in csp_value.split("\n") if p.strip()]
+    for policy in policies:
+        if duplicate_directive(policy, "frame-ancestors"):
+            return Finding(
+                name="CSP duplicate directive",
+                status="info",
+                detail=(
+                    "frame-ancestors is declared more than once in the same policy. "
+                    "Browsers enforce the first declaration and ignore later ones, "
+                    "so the effective framing rule is not the one written last."
+                ),
+                evidence=csp_value[:300],
+            )
+    return None
 
 
 def assess_csp_report_only(value: str | None) -> Finding | None:
@@ -500,6 +641,9 @@ def grade_clickjacking_from_map(
         assess_xfo(headers.get("x-frame-options")),
         assess_frame_ancestors(headers.get("content-security-policy")),
     ]
+    duplicate_csp_note = duplicate_frame_ancestors_note(headers.get("content-security-policy"))
+    if duplicate_csp_note:
+        findings.append(duplicate_csp_note)
     risk, summary = score(findings)
     interesting = {
         k: headers[k]

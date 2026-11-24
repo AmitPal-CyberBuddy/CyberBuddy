@@ -127,23 +127,45 @@ if (typeof globalThis !== "undefined") {
   function $(id) { return document.getElementById(id); }
 
   function setVerdict(risk, text) {
+    // "low" is not a pass when nothing was measured: the Python engine returns
+    // risk "unknown" for an endpoint that answered 4xx to every probe, and the
+    // engine's own "unassessed" verdict must never be rendered as PASS either.
     const r = (risk || "").toLowerCase();
-    const isPass = r === "low" || r === "pass";
-    const displayRisk = isPass ? "PASS" : (risk === "PROBING" ? "PROBING" : (risk || "UNKNOWN").toUpperCase());
+    const probing = risk === "PROBING";
+    const unassessed = r === "unassessed";
+    const isPass = !probing && !unassessed && (r === "low" || r === "pass");
+    const displayRisk = probing ? "PROBING"
+      : unassessed ? "NOT ASSESSED"
+      : isPass ? "PASS"
+      : (risk || "UNKNOWN").toUpperCase();
+    const chipClass = probing || unassessed ? "unknown" : (isPass ? "low" : r);
     $("verdict").textContent = displayRisk;
-    $("verdict").className = "risk " + (risk === "PROBING" ? "unknown" : (isPass ? "low" : r));
+    $("verdict").className = "risk " + chipClass;
+    // A bare word in a coloured chip reads as decoration; name the judgement
+    // and the evidence behind it for assistive tech.
+    $("verdict").setAttribute("role", "img");
+    $("verdict").setAttribute(
+      "aria-label",
+      probing ? "CORS probe: running"
+        : unassessed ? "CORS posture: no method could be assessed"
+        : isPass ? "CORS posture: restrictive for the tested methods"
+        : r === "medium" ? "CORS posture: permissive, review the findings"
+        : r === "high" ? "CORS posture: high risk"
+        : "CORS posture: unable to determine"
+    );
     bump($("verdict"));
     $("summary").textContent = text;
-    $("verdictBanner").className = "verdict-banner " +
-      (risk === "PROBING" ? "unknown" : (isPass ? "low" : r));
+    $("verdictBanner").className = "verdict-banner " + chipClass;
     let label, cls;
-    if (r === "probing") { label = "CORS policy: checking…"; cls = "unknown"; }
+    if (probing) { label = "CORS policy: checking…"; cls = "unknown"; }
+    else if (unassessed) { label = "CORS policy: NOT ASSESSED — no selected method returned a usable response"; cls = "unknown"; }
     else if (isPass) { label = "CORS policy: RESTRICTIVE (PASS) — cross-origin reads are blocked for tested methods"; cls = "low"; }
     else if (r === "medium") { label = "CORS policy: PERMISSIVE — review the findings"; cls = "medium"; }
     else if (r === "high") { label = "CORS policy: HIGH RISK — reflection + credentials; verify browser exposure"; cls = "high"; }
     else { label = "CORS policy: UNABLE TO DETERMINE"; cls = "unknown"; }
     $("protection").textContent = label;
     $("protection").className = "protection-line " + cls;
+    $("protection").setAttribute("role", "status");
   }
 
   function renderChecks(checks, data) {
@@ -169,7 +191,10 @@ if (typeof globalThis !== "undefined") {
       const risk = (mr.risk || "—").toUpperCase();
       const riskCls = (mr.risk || "unknown").toLowerCase();
       const evidence = esc(mr.evidence || (mr.headers && mr.headers["access-control-allow-origin"] ? mr.headers["access-control-allow-origin"] : "—"));
-      const unassessed = mr.unassessed ? " <span class=\"unassessed-badge\">not assessed</span>" : "";
+      const unassessed = mr.unassessed
+        ? '<span class="unassessed-badge">not assessed' +
+          (mr.reason ? " (" + esc(mr.reason) + ")" : "") + "</span>"
+        : "";
       return "<tr><td>" + esc(label) + unassessed + "</td><td>" + esc(mr.kind || "direct") + "</td><td><span class=\"risk " + esc(riskCls) + "\">" + esc(risk) + "</span></td><td>" + esc(status) + "</td><td><code>" + evidence + "</code></td></tr>";
     }).join("");
     const browserNote = data._source === "browser"
@@ -187,8 +212,16 @@ if (typeof globalThis !== "undefined") {
 
   function finish(data) {
     cbLastData = data;
+    const results = $("results");
+    results.classList.remove("hidden");
+    results.removeAttribute("aria-busy");
+    results.classList.remove("is-refreshing");
+    if (data) setSourceChip(data);
     const flag = $("reportTitleFlag");
-    if (flag) flag.innerHTML = unverifiedFlag(data);
+    // LIVE/CACHED describes this run; "relay data" describes this source. The
+    // page only ever rendered the second, so a CI-cached demo report and a
+    // fresh scan looked the same.
+    if (flag) flag.innerHTML = scanTag(data) + unverifiedFlag(data);
     renderProvenance(data, "CORS Validator");
     enterEvidenceMode();
   }
@@ -252,7 +285,15 @@ if (typeof globalThis !== "undefined") {
   }
 
   async function probe(url) {
-    $("results").classList.remove("hidden");
+    const results = $("results");
+    results.classList.remove("hidden");
+    // Re-probing replaced the previous report with no cue it was being
+    // replaced; mark it busy and clear the method-coverage table that belongs
+    // to the *previous* target so a failed probe cannot leave it on screen.
+    if (results.querySelector("#checks tbody tr")) {
+      results.setAttribute("aria-busy", "true");
+      results.classList.add("is-refreshing");
+    }
     setVerdict("PROBING", "Checking " + url + "…");
     $("mTarget").textContent = url;
     $("mStamp").textContent = fmtStampUtc();
@@ -262,10 +303,24 @@ if (typeof globalThis !== "undefined") {
       ? performance.now() : null;
 
     // A direct CORS probe does not use a relay, but the hosted NXDOMAIN
-    // preflight uses public DNS. Reuse the same explicit privacy gate.
-    const consent = await ensureRelayConsent(url);
-    if (consent === "deny") {
+    // preflight uses public DNS. Reuse the same explicit privacy gate — only
+    // when it can actually fire (a local engine and a cached report do not).
+    const relayNeeded = typeof relayGateNeeded === "function"
+      ? await relayGateNeeded(url)
+      : true;
+    const consent = relayNeeded ? await ensureRelayConsent(url) : "skip";
+    const declined = consent === "deny" ||
+      (typeof relayAllowed === "function" && !relayAllowed() &&
+        !(window.__cbEngine && window.__cbEngine.mode === "python"));
+    if (declined) {
+      // The previous target's report must not stay on screen, and the Export
+      // menu must not be able to emit it for a target that was never scanned.
+      cbLastData = null;
+      results.removeAttribute("aria-busy");
+      results.classList.remove("is-refreshing");
       setVerdict("UNKNOWN", "Hosted DNS/header lookups were declined. Run python3 server.py for a local scan.");
+      renderChecks([], null);
+      renderCoverage(null);
       setLoading($("go"), false);
       return;
     }
@@ -279,8 +334,15 @@ if (typeof globalThis !== "undefined") {
 
     const fillMeta = (data) => {
       $("mEngine").textContent = sourceLabel(data || { _source: "none" });
-      // Show actual methods tested, not a static GET
-      const tested = (data && data.tested_methods && data.tested_methods.length) ? data.tested_methods.join(", ") : ((data && data.methods && data.methods.length) ? data.methods.join(", ") : "GET");
+      // Show what was actually tested. If nothing was assessed, say so instead
+      // of silently falling back to the requested methods, which read as if
+      // they had been probed.
+      const testedList = (data && data.tested_methods) || [];
+      const tested = testedList.length
+        ? testedList.join(", ")
+        : (data && data.unassessed_methods && data.unassessed_methods.length
+          ? "not assessed (" + data.unassessed_methods.join(", ") + ")"
+          : ((data && data.methods && data.methods.length) ? data.methods.join(", ") : "GET"));
       const requested = data && data.methods ? data.methods.join(", ") + (data.preflight_methods && data.preflight_methods.length ? " + preflight " + data.preflight_methods.join(", ") : "") : "GET · read-only";
       $("mMethod").textContent = tested || requested;
       // For completeness, also show selected vs tested in title
@@ -296,7 +358,13 @@ if (typeof globalThis !== "undefined") {
     if (engine && engine._unreachable) {
       $("mOrigin").textContent = "engine";
       $("mStatus").textContent = "—";
-      setVerdict("UNREACHABLE", "Target not reachable — " + unreachableDetail(engine));
+      setVerdict("UNKNOWN", "Target not reachable — " + unreachableDetail(engine));
+      $("verdict").textContent = "UNREACHABLE";
+      $("verdict").className = "risk unknown";
+      $("verdict").setAttribute("aria-label", "CORS posture: not assessed, the target could not be reached");
+      $("protection").textContent = "CORS policy: NOT ASSESSED — the target did not respond";
+      $("protection").className = "protection-line unknown";
+      $("verdictBanner").className = "verdict-banner unknown";
       renderChecks(engine.checks, engine);
       renderCoverage(engine);
       fillMeta(engine);
@@ -318,6 +386,14 @@ if (typeof globalThis !== "undefined") {
         return;
       }
       setVerdict((engine.risk || "unknown").toUpperCase(), engine.summary || "");
+      if ((engine.risk || "").toLowerCase() === "unassessed") {
+        // The browser fallback reports this when no fetch produced a readable
+        // response; the chip and the banner must not read PASS.
+        $("verdict").textContent = "NOT ASSESSED";
+        $("verdict").className = "risk unknown";
+        $("verdict").setAttribute("aria-label", "CORS posture: no method could be assessed");
+        $("verdictBanner").className = "verdict-banner unknown";
+      }
       renderChecks(engine.checks, engine);
       renderCoverage(engine);
       fillMeta(engine);
@@ -326,6 +402,21 @@ if (typeof globalThis !== "undefined") {
       return;
     }
 
+    // No engine answered (hosted page with the lookup blocked): keep the last
+    // real report rather than painting an empty PASS over it, but say so.
+    if (isEngineDown(engine)) {
+      fillMeta(null);
+      setLoading($("go"), false);
+      $("summary").textContent =
+        "No CORS result was returned. The lookup may have been blocked or " +
+        "rate-limited. Run python3 server.py locally for a direct probe.";
+      $("verdict").textContent = "UNKNOWN";
+      $("verdict").setAttribute("aria-label", "CORS posture: could not be determined");
+      $("verdict").className = "risk unknown";
+      results.removeAttribute("aria-busy");
+      results.classList.remove("is-refreshing");
+      return;
+    }
     fillMeta(engine);
     renderCoverage(engine);
     setLoading($("go"), false);

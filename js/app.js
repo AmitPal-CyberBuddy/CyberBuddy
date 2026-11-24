@@ -2828,9 +2828,17 @@ function findingRowHtml(c, opts) {
     ? '<button type="button" class="copy-finding" data-i="' + (opts.index || 0) +
       '" title="Copy this finding as report text">Copy finding</button>'
     : "";
+  // The status chip and the severity chip said the same word twice on every
+  // passing row ("protected" + "PASS", "ok" + "PASS"), which is pure noise on
+  // a nine-row table. The status chip already carries the colour and the word
+  // for those states; the severity chip is only added when it says something
+  // the status does not (HIGH on a "weak" row, INFO on an unknown state).
+  const sevRedundant = sev.key === "pass" && (c.status === "ok" || c.status === "protected");
+  const sevChip = sevRedundant ? "" :
+    '<span class="f-severity sev-' + sev.key + '">' + sev.label + "</span>";
   return "<tr class='finding-row'><td class='k'>" + esc(c.name) + "</td><td>" +
     "<div class='f-row-header'><span class='f-status " + esc(c.status) + "'>" + esc(c.status) + "</span>" +
-    '<span class="f-severity sev-' + sev.key + '">' + sev.label + "</span></div>" +
+    sevChip + "</div>" +
     "<div class='f-detail'>" + esc(c.detail) + "</div>" + ev + fix + weight + copy + "</td></tr>";
 }
 
@@ -2910,12 +2918,22 @@ function postureHtml(checks) {
     return (order[a.status] ?? 4) - (order[b.status] ?? 4);
   });
 
+  // The icon carries the status visually; it used to be aria-hidden with no
+  // text equivalent, so a screen reader heard nine bare header names and could
+  // not tell a missing control from a passing one. The word is now in the
+  // accessible name (sr-only) and still hidden from sighted readers.
+  const STATUS_WORD = {
+    missing: "missing", error: "error", weak: "weak",
+    ok: "ok", protected: "protected", info: "informational"
+  };
   const tagsHtml = sortedChecks.map((c) => {
     const cls = tagStatusCls(c.status);
     const icon = tagIcon(c.status);
+    const word = STATUS_WORD[c.status] || "unknown";
     return '<span class="posture-tag ' + cls + '" title="' +
       esc((c.status || "").toUpperCase() + ": " + (c.detail || c.name)) + '">' +
       '<span class="tag-icon" aria-hidden="true">' + icon + "</span>" +
+      '<span class="sr-only">' + esc(word) + ": </span>" +
       esc(c.name) + "</span>";
   }).join("");
 
@@ -3014,11 +3032,22 @@ function checkCsp(value) {
   return check("Content-Security-Policy", "ok", detail, value.slice(0, 300), 0);
 }
 
+/* Only a real allowlist restricts framing. `*`, `https:` (any origin on a
+   scheme), `https://*` and `host:*` all match any origin that fits the pattern,
+   so treating them as protection forgave a missing X-Frame-Options on a page
+   any site could frame. First declaration per policy wins, per CSP3. */
 function frameAncestorsRestricts(csp) {
   if (!csp) return false;
-  const sources = parseCsp(csp)["frame-ancestors"];
-  if (!sources) return false;
-  return sources.indexOf("*") === -1;
+  const policies = String(csp).split("\n").map((p) => p.trim()).filter(Boolean);
+  for (const policy of policies) {
+    const sources = firstDirectiveValues(policy, "frame-ancestors");
+    if (sources === null) continue;
+    if (!sources.length || (sources.length === 1 && (sources[0] === "'none'" || sources[0] === "'self'"))) return true;
+    if (sources.indexOf("'none'") !== -1) continue;
+    if (frameAncestorsAnyOrigin(sources)) continue;
+    return true;
+  }
+  return false;
 }
 
 function checkXfo(value, faOk) {
@@ -3039,6 +3068,56 @@ function checkXfo(value, faOk) {
   return check("X-Frame-Options", "weak", "Unrecognized value; treat as ineffective.", value.trim(), WEIGHTS["X-Frame-Options"]);
 }
 
+/* RFC 6797 §6.1 — keep in step with parse_hsts() in security_headers.py.
+   `max-age` is "max-age" OWS "=" OWS delta-seconds, so `max-age = 31536000`
+   is valid; the old regex missed the spaces and reported a live HSTS policy as
+   max-age=0 ("disabled"). A repeated/invalid max-age or a valued optional
+   directive makes user agents ignore the whole field, and that must be said
+   instead of scoring it as protection. */
+function parseHsts(value) {
+  const out = { maxAge: null, includeSubdomains: false, preload: false, invalid: "", unknown: [] };
+  if (value == null) return out;
+  const fields = String(value).split("\n").map((v) => v.trim()).filter(Boolean);
+  if (fields.length > 1) {
+    out.invalid = "the response sends more than one Strict-Transport-Security field; browsers process only the first valid one";
+  }
+  const field = fields.length ? fields[0] : "";
+  let seenMaxAge = 0;
+  field.split(";").map((d) => d.trim()).filter(Boolean).forEach((directive) => {
+    const eq = directive.indexOf("=");
+    const name = (eq === -1 ? directive : directive.slice(0, eq)).trim().toLowerCase();
+    const raw = eq === -1 ? "" : directive.slice(eq + 1).trim();
+    if (name === "max-age") {
+      seenMaxAge += 1;
+      if (seenMaxAge > 1) {
+        out.invalid = "max-age appears more than once, so user agents ignore the whole header";
+        out.maxAge = null;
+        return;
+      }
+      if (!/^\d+$/.test(raw)) {
+        out.invalid = "max-age value '" + raw + "' is not a non-negative integer, so user agents ignore the whole header";
+        return;
+      }
+      out.maxAge = parseInt(raw, 10);
+    } else if (name === "includesubdomains") {
+      if (eq !== -1) {
+        out.invalid = "includeSubDomains is a valueless directive; giving it a value makes user agents ignore the whole header";
+        return;
+      }
+      out.includeSubdomains = true;
+    } else if (name === "preload") {
+      if (eq !== -1) {
+        out.invalid = "preload is a valueless directive; giving it a value makes user agents ignore the whole header";
+        return;
+      }
+      out.preload = true;
+    } else {
+      out.unknown.push(name);
+    }
+  });
+  return out;
+}
+
 function checkHsts(value, isHttps) {
   if (!isHttps) {
     return check("Strict-Transport-Security", "info", "Only meaningful over HTTPS — no HSTS check on an HTTP target.", "", 0);
@@ -3046,18 +3125,27 @@ function checkHsts(value, isHttps) {
   if (!value) {
     return check("Strict-Transport-Security", "missing", "Header not present. HSTS forces HTTPS and prevents SSL-stripping for returning visitors.", "", WEIGHTS["Strict-Transport-Security"]);
   }
-  const m = /max-age=(\d+)/i.exec(value);
-  const maxAge = m ? parseInt(m[1], 10) : 0;
+  const parsed = parseHsts(value);
+  if (parsed.invalid) {
+    return check("Strict-Transport-Security", "weak", "Present but not enforceable: " + parsed.invalid + ".", value.trim().slice(0, 200), WEIGHTS["Strict-Transport-Security"]);
+  }
+  if (parsed.maxAge === null) {
+    return check("Strict-Transport-Security", "missing", "Present but without a usable max-age directive, so browsers ignore it entirely.", value.trim().slice(0, 200), WEIGHTS["Strict-Transport-Security"]);
+  }
+  const maxAge = parsed.maxAge;
   if (maxAge === 0) {
     return check("Strict-Transport-Security", "missing", "max-age=0 disables HSTS (browsers forget the policy). This is not a protection.", value.trim(), WEIGHTS["Strict-Transport-Security"]);
   }
   if (maxAge < 180 * 86400) {
     return check("Strict-Transport-Security", "weak", "max-age=" + maxAge + "s is short; browsers need ≥ 15552000s (180 days) for meaningful protection.", value.trim(), 5);
   }
-  if (value.toLowerCase().indexOf("includesubdomains") === -1) {
-    return check("Strict-Transport-Security", "weak", "Max-age is fine but includeSubDomains is missing.", value.trim(), 5);
+  if (!parsed.includeSubdomains) {
+    return check("Strict-Transport-Security", "weak", "Max-age is fine but includeSubDomains is missing, so plain-HTTP subdomains stay reachable.", value.trim(), 5);
   }
-  return check("Strict-Transport-Security", "ok", "HSTS present with a strong max-age (and includeSubDomains).", value.trim(), 0);
+  let hstsDetail = "HSTS present with a strong max-age and includeSubDomains.";
+  if (parsed.preload) hstsDetail += " preload is set — confirm the domain actually qualifies for the browser list.";
+  if (parsed.unknown.length) hstsDetail += " Unrecognised directive(s) ignored: " + parsed.unknown.join(", ") + ".";
+  return check("Strict-Transport-Security", "ok", hstsDetail, value.trim(), 0);
 }
 
 function checkNosniff(value) {
@@ -3070,35 +3158,87 @@ function checkNosniff(value) {
   return check("X-Content-Type-Options", "weak", "Only 'nosniff' is meaningful.", value.trim(), WEIGHTS["X-Content-Type-Options"]);
 }
 
+const REFERRER_WEAK = { "unsafe-url": 1, "no-referrer-when-downgrade": 1 };
+
+/* A comma-separated Referrer-Policy is a fallback chain and browsers use the
+   LAST value they recognise. Reading the first token scored
+   "no-referrer, unsafe-url" as safe (full URL sent everywhere) and
+   "unsafe-url, no-referrer" as unsafe (nothing sent) — both backwards. */
+function effectiveReferrerPolicy(value) {
+  const tokens = String(value || "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+  const valid = tokens.filter((t) => REFERRER_OK[t] || REFERRER_WEAK[t]);
+  if (!valid.length) return { token: tokens.length ? tokens[tokens.length - 1] : "", recognised: tokens.length };
+  return { token: valid[valid.length - 1], recognised: valid.length };
+}
+
 function checkReferrer(value) {
   if (!value) {
     return check("Referrer-Policy", "missing", "Header not present. Browsers fall back to 'strict-origin-when-cross-origin', but an explicit policy is clearer and more consistent.", "", WEIGHTS["Referrer-Policy"]);
   }
-  const token = value.trim().split(",")[0].trim().toLowerCase();
+  const eff = effectiveReferrerPolicy(value);
+  const token = eff.token;
+  const chain = String(value).split(",").length > 1
+    ? " (a comma-separated list is a fallback chain and browsers use the last value they understand, so '" + token + "' is what applies)"
+    : "";
   if (REFERRER_OK[token]) {
-    return check("Referrer-Policy", "ok", token + " — referrer leakage is limited.", value.trim(), 0);
+    return check("Referrer-Policy", "ok", token + " — referrer leakage is limited" + chain + ".", value.trim(), 0);
   }
-  if (token === "unsafe-url" || token === "no-referrer-when-downgrade") {
-    return check("Referrer-Policy", "weak", "'" + token + "' can leak full URLs (including query strings) to other origins.", value.trim(), WEIGHTS["Referrer-Policy"]);
+  if (REFERRER_WEAK[token]) {
+    return check("Referrer-Policy", "weak", "'" + token + "' can leak full URLs (including query strings) to other origins" + chain + ".", value.trim(), WEIGHTS["Referrer-Policy"]);
   }
-  return check("Referrer-Policy", "weak", "Unrecognized policy value.", value.trim(), 5);
+  return check("Referrer-Policy", "weak", "No value in this header is a recognised policy (" + eff.recognised + " token(s) checked), so browsers fall back to their default.", value.trim(), 5);
+}
+
+const PERMISSIONS_FEATURES = new Set(("accelerometer ambient-light-sensor attribution-reporting autoplay " +
+  "battery bluetooth browsing-topics camera captured-surface-control ch-ua ch-ua-arch ch-ua-bitness " +
+  "ch-ua-full-version ch-ua-full-version-list ch-ua-mobile ch-ua-model ch-ua-platform " +
+  "ch-ua-platform-version clipboard-read clipboard-write compute-pressure conversion-measurement " +
+  "cross-origin-isolated deferred-fetch deferred-fetch-minimal digital-credentials-get direct-sockets " +
+  "display-capture document-domain encrypted-media execution-while-not-rendered " +
+  "execution-while-out-of-viewport focus-without-user-activation fullscreen gamepad geolocation gyroscope " +
+  "hid identity-credentials-get idle-detection interest-cohort join-ad-interest-group keyboard-map " +
+  "local-fonts magnetometer media-playback-while-not-visible microphone midi otp-credentials payment " +
+  "picture-in-picture private-aggregation private-state-token-issuance private-state-token-redemption " +
+  "publickey-credentials-create publickey-credentials-get run-ad-auction screen-wake-lock serial " +
+  "shared-storage shared-storage-select-url speaker-selection storage-access sync-xhr " +
+  "top-level-storage-access usb window-management window-placement xr-spatial-tracking").split(/\s+/));
+
+/* Permissions-Policy accepts `feature=(self "https://x")` or a bare
+   `feature=self`, so `camera=self` used to be scored as a wildcard although it
+   grants only this origin; the real wildcard is `*` anywhere in the value.
+   Unknown feature names are silently ignored by browsers, so a typo hides. */
+function permissionsIssues(value) {
+  const wildcarded = [];
+  const unknown = [];
+  String(value).split(",").forEach((raw) => {
+    const tok = raw.trim();
+    const eq = tok.indexOf("=");
+    if (!tok || eq === -1) return;
+    const feature = tok.slice(0, eq).trim().toLowerCase();
+    if (!PERMISSIONS_FEATURES.has(feature)) unknown.push(feature);
+    const allow = tok.slice(eq + 1).trim().replace(/^\(/, "").replace(/\)$/, "");
+    const parts = allow.split(/\s+/).map((p) => p.trim().replace(/"/g, "").toLowerCase()).filter(Boolean);
+    if (parts.indexOf("*") !== -1) wildcarded.push(feature);
+  });
+  return { wildcarded: wildcarded, unknown: unknown };
 }
 
 function checkPermissions(value) {
   if (!value) {
     return check("Permissions-Policy", "missing", "Header not present. Recommended for locking down powerful features (camera, microphone, geolocation). Optional hardening.", "", WEIGHTS["Permissions-Policy"]);
   }
-  const wildcarded = [];
-  value.split(",").forEach((tok) => {
-    if (tok.indexOf("=") === -1) return;
-    const parts = tok.split("=");
-    const allow = parts.slice(1).join("=").trim().toLowerCase();
-    if (allow === "*" || allow === "(*)") wildcarded.push(parts[0].trim());
-  });
-  if (wildcarded.length) {
-    return check("Permissions-Policy", "weak", "Feature(s) allowlisted as bare wildcard: " + wildcarded.join(", ") + ". Restrict them to 'self' or an origin allowlist.", value.slice(0, 300), 5);
+  const issues = permissionsIssues(value);
+  const notes = [];
+  if (issues.wildcarded.length) {
+    notes.push("Feature(s) allowlisted as bare wildcard: " + issues.wildcarded.join(", ") + " — restrict them to 'self' or an origin allowlist");
   }
-  return check("Permissions-Policy", "ok", "Header present.", value.slice(0, 300), 0);
+  if (issues.unknown.length) {
+    notes.push("Unrecognised feature name(s) ignored by browsers: " + Array.from(new Set(issues.unknown)).sort().slice(0, 6).join(", "));
+  }
+  if (notes.length) {
+    return check("Permissions-Policy", "weak", notes.join("; ") + ".", value.slice(0, 300), 5);
+  }
+  return check("Permissions-Policy", "ok", "Header present and every feature name is recognised.", value.slice(0, 300), 0);
 }
 
 function checkCoop(value) {
@@ -3174,7 +3314,7 @@ function riskForGrade(grade) {
   return { A: "low", B: "low", C: "medium", D: "medium", F: "high" }[grade] || "unknown";
 }
 
-function summarizeHeaders(grade, missing) {
+function summarizeHeaders(grade, missing, checks) {
   let extra = "";
   if (missing.length && grade !== "A") {
     extra = " Missing: " + missing.slice(0, 4).join(", ") + (missing.length > 4 ? "…" : "") + ".";
@@ -3183,7 +3323,17 @@ function summarizeHeaders(grade, missing) {
   if (grade === "B") return "Good posture with a few gaps. Close them for a bulletproof baseline." + extra;
   if (grade === "C") return "Notable gaps — attackers get signal here. Prioritize the missing headers." + extra;
   if (grade === "D") return "Weak posture. Multiple important headers missing or misconfigured." + extra;
-  return "Critical posture. Key protections are absent — treat the site as exposed until fixed." + extra;
+  // The score is a plain deduction sum, so one response can hit 0 while a
+  // control you already carry still works. Name the ones that are in place:
+  // "treat the site as exposed" is an overclaim when, say, HSTS is live.
+  const passing = (checks || [])
+    .filter((c) => c.status === "ok" || c.status === "protected")
+    .map((c) => c.name)
+    .filter((name) => name !== "Transport");
+  const held = passing.length
+    ? " Still in place: " + passing.slice(0, 4).join(", ") + (passing.length > 4 ? "…" : "") + "."
+    : "";
+  return "Critical posture. Key protections are absent — treat the site as exposed until fixed." + extra + held;
 }
 
 function interestingHeaders(headers) {
@@ -3233,7 +3383,11 @@ function gradeHeadersFromMap(url, status, finalUrl, headers, source) {
     checkCorp(headers["cross-origin-resource-policy"])
   ];
   if (headers["content-security-policy-report-only"]) {
-    checks.push(check("CSP-Report-Only", "info", "Report-Only CSP is present and does not enforce anything — it only reports violations.", headers["content-security-policy-report-only"].slice(0, 300), 0));
+    checks.push(check("CSP-Report-Only", "info",
+      csp
+        ? "A Report-Only CSP also exists alongside the enforced policy: it reports would-be violations and does not block anything."
+        : "Only a Report-Only CSP is present. It enforces nothing — violations are reported, not blocked — so no policy is actually in force.",
+      headers["content-security-policy-report-only"].slice(0, 300), 0));
   }
   const ck = checkCookies(headers["set-cookie"]);
   if (ck) checks.push(ck);
@@ -3248,7 +3402,7 @@ function gradeHeadersFromMap(url, status, finalUrl, headers, source) {
     score: score,
     grade: grade,
     risk: riskForGrade(grade),
-    summary: summarizeHeaders(grade, missing),
+    summary: summarizeHeaders(grade, missing, checks),
     headers: interestingHeaders(headers),
     _source: source || "live"
   };
@@ -3311,6 +3465,17 @@ function cspEffective(directives, names) {
 function cspTrustToken(token) {
   return ["'nonce-", "'sha256-", "'sha384-", "'sha512-"].some((prefix) =>
     String(token).startsWith(prefix));
+}
+
+/* A directive that is present with no source expressions is not "restrictive"
+   in the ordinary sense: CSP3 6.7.2.7 step 2 returns "Does Not Match" for an
+   empty list, so `script-src;` behaves like `script-src 'none'`. Browsers keep
+   the directive with an empty set, so it fails closed — usually by accident. */
+function cspEmptyListNote(name) {
+  return name + " has no source expressions. Browsers treat an empty source list " +
+    "as no match for any URL (the same effect as 'none'), so this fails closed - " +
+    "but confirm the empty value was intended: a dropped list or a stray trailing " +
+    "semicolon produces exactly this header.";
 }
 
 function cspSourceLabel(name, tokens) {
@@ -3393,7 +3558,9 @@ function cspCheckScripts(directives) {
     evidence.push(cspSourceLabel(attributes.from, attributes.tokens));
   }
   return cspIssueFinding("Script execution", issues, evidence.join(" · "), fix,
-    "Script execution has an explicit restrictive source list.", info);
+    element.tokens.length
+      ? "Script execution has an explicit restrictive source list."
+      : cspEmptyListNote(element.from), info);
 }
 
 function cspCheckStyles(directives) {
@@ -3419,7 +3586,9 @@ function cspCheckStyles(directives) {
   }
   return cspIssueFinding("Style sources", issues,
     cspSourceLabel(effective.from, effective.tokens), fix,
-    "Stylesheets have an explicit restrictive source list.");
+    effective.tokens.length
+      ? "Stylesheets have an explicit restrictive source list."
+      : cspEmptyListNote(effective.from));
 }
 
 function cspCheckObject(directives) {
@@ -3445,15 +3614,32 @@ function cspCheckNavigation(directives, name, label, missingSeverity, recommenda
   }
   const tokens = directives[name];
   const evidence = cspSourceLabel(name, tokens);
-  if (!tokens.length || (tokens.length === 1 && (tokens[0] === "'none'" || tokens[0] === "'self'"))) {
+  if (!tokens.length) {
+    // Every origin fails to match an empty list, so this is maximally
+    // restrictive — but say so, rather than implying an ordinary allowlist.
+    return cspFinding(label, "ok", cspEmptyListNote(name), evidence, "pass");
+  }
+  if (tokens.length === 1 && (tokens[0] === "'none'" || tokens[0] === "'self'")) {
     return cspFinding(label, "ok", name + " uses a restrictive source list.", evidence, "pass");
   }
   const issues = [];
   if (tokens.includes("*")) {
     issues.push([name + " allows *", name === "frame-ancestors" ? "high" : "medium"]);
   }
+  const framing = name === "frame-ancestors";
   if (tokens.some((token) => token === "http:" || token === "https:")) {
-    issues.push([name + " allows every origin on a URL scheme", "medium"]);
+    // A scheme source matches every origin on that scheme: for framing that is
+    // equivalent to `*`, and it must carry the same weight so the CSP auditor
+    // and the clickjacking validator never disagree about one header.
+    issues.push([name + " allows every origin on a URL scheme", framing ? "high" : "medium"]);
+  }
+  if (framing) {
+    const wildcardSources = tokens.filter((token) =>
+      token !== "*" && token !== "http:" && token !== "https:" && frameAncestorsAnyOrigin([token]));
+    if (wildcardSources.length && !tokens.includes("*")) {
+      issues.push([name + " uses a wildcard host or port (" + wildcardSources.join(" ") +
+        "), which matches any matching origin", "high"]);
+    }
   }
   if (tokens.includes("'none'") && tokens.length > 1) {
     issues.push([name + " mixes 'none' with other sources, so 'none' is ignored", "medium"]);
@@ -3596,7 +3782,9 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
   let perPolicy = [];
 
   if (!policies.length) {
-    let detail = "No enforced Content-Security-Policy response header was found.";
+    let detail = final
+      ? "No enforced Content-Security-Policy response header was found."
+      : "The pasted text holds no enforced Content-Security-Policy field.";
     if (reportOnly) detail += " A Report-Only policy records violations but does not block them.";
     checks.push(cspFinding("Enforced response policy", "missing", detail, "", "high",
       "Serve an enforced Content-Security-Policy HTTP response header. Start with the suggested policy and tailor sources before deployment."));
@@ -3609,9 +3797,14 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
     // A pasted header (final == "") has no delivery context: the policy's
     // presence is what matters, not whether the page is served over HTTPS.
     const deliveryOk = !final || https;
+    const found = final
+      ? "Found " + policies.length + " enforced CSP response " +
+        (policies.length === 1 ? "policy." : "policies. Multiple policies combine restrictively.")
+      : "Found " + policies.length + " enforced polic" +
+        (policies.length === 1 ? "y in the pasted header."
+          : "ies in the pasted header. Multiple policies combine restrictively.");
     checks.push(cspFinding("Enforced response policy", deliveryOk ? "ok" : "weak",
-      "Found " + policies.length + " enforced CSP response " +
-      (policies.length === 1 ? "policy." : "policies. Multiple policies combine restrictively."),
+      found,
       policy.slice(0, 500), deliveryOk ? "pass" : "high",
       deliveryOk ? "" : "Serve the page and its CSP over HTTPS so the policy cannot be stripped in transit."));
     const duplicates = Array.from(new Set(parsed.flatMap((item) => item.duplicates))).sort();
@@ -3693,18 +3886,67 @@ function gradeCspFromMap(url, status, finalUrl, headers, source) {
 
 /* A pasted CSP header is graded entirely locally — no target is contacted.
    Mirrors ``grade_csp_from_header`` in csp_checker.py. */
-function parseCspHeaderText(raw) {
-  const text = String(raw == null ? "" : raw).trim();
-  const m = /^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$/is.exec(text);
-  if (m) return { name: m[1].toLowerCase(), value: m[2].trim() };
-  return { name: "", value: text };
+/* Mirror of split_pasted_header_fields() in csp_checker.py. A field copied
+   from a proxy/devtools dump is often wrapped, so a labelled line may be
+   followed by continuation lines with no label, and a genuinely repeated
+   field must stay a second policy. Treating every line as its own policy made
+   one wrapped header report as "2 enforced policies" and pushed a stray
+   "Content-Security-Policy:" label into the directive parser. */
+const CSP_PASTED_FIELD_RE = /^(content-security-policy(?:-report-only)?)\s*:\s*(.*)$/i;
+
+/* Mirror of KNOWN_CSP_DIRECTIVES in csp_checker.py. Only answers "is this text
+   a CSP at all?" — an unrecognised directive inside a real policy is graded
+   normally, because browsers ignore directives they do not implement. */
+const KNOWN_CSP_DIRECTIVES = new Set([
+  "base-uri", "block-all-mixed-content", "child-src", "connect-src",
+  "default-src", "fenced-frame-src", "font-src", "form-action",
+  "frame-ancestors", "frame-src", "img-src", "manifest-src", "media-src",
+  "navigate-to", "object-src", "plugin-types", "prefetch-src", "referrer",
+  "report-to", "report-uri", "require-sri-for", "require-trusted-types-for",
+  "sandbox", "script-src", "script-src-attr", "script-src-elem",
+  "style-src", "style-src-attr", "style-src-elem", "trusted-types",
+  "upgrade-insecure-requests", "worker-src"
+]);
+
+function looksLikeCspPolicy(value) {
+  // Strip the header name first: a report-only field is only ever labelled
+  // ("Content-Security-Policy-Report-Only: …"), and the label itself is not a
+  // directive, so testing the raw text rejected every report-only paste.
+  const lines = String(value || "").replace(/\r/g, "").split(";")
+    .reduce((acc, chunk) => acc.concat(chunk.split("\n")), []);
+  return lines.some((line) => {
+    let segment = line.trim();
+    const labelled = CSP_PASTED_FIELD_RE.exec(segment);
+    if (labelled) segment = labelled[2].trim();
+    const tokens = segment.split(/\s+/).filter(Boolean);
+    return tokens.length > 0 && KNOWN_CSP_DIRECTIVES.has(tokens[0].toLowerCase());
+  });
+}
+
+function splitPastedCspFields(raw) {
+  const fields = [];
+  String(raw == null ? "" : raw).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    .split("\n").forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return;
+      const m = CSP_PASTED_FIELD_RE.exec(line);
+      if (m) fields.push({ name: m[1].toLowerCase(), parts: [m[2].trim()] });
+      else if (fields.length) fields[fields.length - 1].parts.push(line);
+      else fields.push({ name: "content-security-policy", parts: [line] });
+    });
+  const headers = {};
+  fields.forEach((field) => {
+    const body = field.parts.filter(Boolean).join(" ");
+    headers[field.name] = Object.prototype.hasOwnProperty.call(headers, field.name)
+      ? headers[field.name] + "\n" + body
+      : body;
+  });
+  return headers;
 }
 
 function gradeCspFromHeader(raw) {
-  const { name, value } = parseCspHeaderText(raw);
-  const headers = {};
-  if (name === "content-security-policy-report-only") headers["content-security-policy-report-only"] = value;
-  else headers["content-security-policy"] = value;
+  const headers = splitPastedCspFields(raw);
+  if (!Object.keys(headers).length) headers["content-security-policy"] = "";
   const result = gradeCspFromMap("", null, "", headers, "pasted");
   result._pasted = true;
   return result;
@@ -3730,6 +3972,48 @@ function assessXfo(value) {
   return { name: "X-Frame-Options", status: "weak", detail: "Unrecognized X-Frame-Options value; treat as ineffective.", evidence: raw };
 }
 
+/* CSP3: the first declaration of a directive in one policy wins; repeats are
+   ignored. Keep that separate from parseCsp(), which keeps the last value and
+   is fine for headers-level checks but can silently flip a framing verdict. */
+function firstDirectiveValues(policy, name) {
+  const parts = String(policy || "").replace(/[\r\n]+/g, ";").split(";");
+  for (let i = 0; i < parts.length; i++) {
+    const tokens = parts[i].trim().split(/\s+/).filter(Boolean);
+    if (tokens.length && tokens[0].toLowerCase() === name) {
+      return tokens.slice(1).map((t) => t.toLowerCase());
+    }
+  }
+  return null;
+}
+
+function duplicateDirective(policy, name) {
+  let seen = 0;
+  const parts = String(policy || "").replace(/[\r\n]+/g, ";").split(";");
+  for (let i = 0; i < parts.length; i++) {
+    const tokens = parts[i].trim().split(/\s+/).filter(Boolean);
+    if (tokens.length && tokens[0].toLowerCase() === name) {
+      seen += 1;
+      if (seen > 1) return true;
+    }
+  }
+  return false;
+}
+
+/* True when a frame-ancestors source matches any origin at all. `*` is the
+   obvious one; `https:`, `https://*` and `host:*` are CSP3 wildcards that look
+   like an allowlist but are just as open for framing. */
+function frameAncestorsAnyOrigin(sources) {
+  return (sources || []).some((raw) => {
+    const source = String(raw || "").trim().toLowerCase();
+    if (!source || source === "'none'") return false;
+    if (source === "*") return true;
+    if (/^[a-z][a-z0-9+.-]*:$/.test(source)) return true;          // https:
+    if (/^([a-z][a-z0-9+.-]*:)?\/\/\*/.test(source)) return true;  // https://*
+    if (/:\*$/.test(source)) return true;                           // host:*
+    return false;
+  });
+}
+
 function assessFrameAncestors(cspValue) {
   if (!cspValue) {
     return { name: "CSP frame-ancestors", status: "missing", detail: "No Content-Security-Policy header. frame-ancestors is the modern clickjacking control.", evidence: "" };
@@ -3738,26 +4022,59 @@ function assessFrameAncestors(cspValue) {
   const list = policies.length ? policies : [cspValue];
   let hasProtected = false, hasWeak = false;
   let weakEv = "", protEv = "";
+  let duplicates = false;
   for (const policy of list) {
-    const d = parseCsp(policy);
-    if (!("frame-ancestors" in d)) continue;
-    const sources = d["frame-ancestors"];
+    const sources = firstDirectiveValues(policy, "frame-ancestors");
+    if (sources === null) continue;
+    if (duplicateDirective(policy, "frame-ancestors")) duplicates = true;
     const ev = "frame-ancestors " + sources.join(" ");
-    if (!sources.length || (sources.length === 1 && sources[0] === "'none'")) { hasProtected = true; protEv = ev; }
+    // An empty source list matches no ancestor (CSP3 6.7.2.7 step 2), so it
+    // fails closed — but it is usually a truncated or templated header, so the
+    // evidence must show that nothing was listed rather than a blank value.
+    if (!sources.length) { hasProtected = true; protEv = "frame-ancestors (empty source list)"; }
+    else if (sources.length === 1 && sources[0] === "'none'") { hasProtected = true; protEv = ev; }
     else if (sources.length === 1 && sources[0] === "'self'") { hasProtected = true; protEv = ev; }
-    else if (sources.indexOf("*") !== -1) { hasWeak = true; weakEv = ev; }
+    else if (sources.indexOf("'none'") !== -1) { hasWeak = true; weakEv = ev; }
+    else if (frameAncestorsAnyOrigin(sources)) { hasWeak = true; weakEv = ev; }
     else { hasProtected = true; protEv = ev; }
   }
+  const duplicateSuffix = duplicates
+    ? " This policy declares frame-ancestors more than once; browsers enforce the first declaration and ignore the rest — remove the duplicate so the intent is unambiguous."
+    : "";
   if (hasProtected) {
     let detail = "frame-ancestors allowlist is set. Confirm every listed origin is trusted.";
     if (protEv === "frame-ancestors 'none'") detail = "frame-ancestors 'none' forbids all framing (strongest modern control).";
     else if (protEv === "frame-ancestors 'self'") detail = "frame-ancestors 'self' allows only same-origin frames.";
-    return { name: "CSP frame-ancestors", status: "protected", detail: detail, evidence: protEv || cspValue.slice(0, 300) };
+    else if (protEv === "frame-ancestors (empty source list)") detail =
+      "frame-ancestors has no source expressions. Browsers treat an empty source list as no " +
+      "match for any ancestor (the same effect as 'none'), so framing fails closed - but " +
+      "confirm the empty value was intended: a dropped list or a stray trailing semicolon " +
+      "produces exactly this header.";
+    return { name: "CSP frame-ancestors", status: "protected", detail: detail + duplicateSuffix, evidence: protEv || cspValue.slice(0, 300) };
   }
   if (hasWeak) {
-    return { name: "CSP frame-ancestors", status: "weak", detail: "frame-ancestors * allows any origin to frame the page.", evidence: weakEv };
+    const sourceList = weakEv.replace(/^frame-ancestors\s*/, "").trim();
+    const detail = sourceList === "*"
+      ? "frame-ancestors * allows any origin to frame the page."
+      : "frame-ancestors " + sourceList + " matches any origin with that scheme, host wildcard or port — CSP3 treats it as effectively open, so any site can frame the page.";
+    return { name: "CSP frame-ancestors", status: "weak", detail: detail + duplicateSuffix, evidence: weakEv };
   }
   return { name: "CSP frame-ancestors", status: "missing", detail: "CSP is present but frame-ancestors is not set. Other CSP directives do not stop framing.", evidence: cspValue.slice(0, 300) };
+}
+
+function duplicateFrameAncestorsNote(cspValue) {
+  if (!cspValue) return null;
+  const policies = cspValue.split("\n").map((p) => p.trim()).filter(Boolean);
+  for (const policy of policies) {
+    if (duplicateDirective(policy, "frame-ancestors")) {
+      return {
+        name: "CSP duplicate directive", status: "info",
+        detail: "frame-ancestors is declared more than once in the same policy. Browsers enforce the first declaration and ignore later ones, so the effective framing rule is not the one written last.",
+        evidence: cspValue.slice(0, 300)
+      };
+    }
+  }
+  return null;
 }
 
 function scoreClickjacking(findings) {
@@ -3799,6 +4116,8 @@ function gradeClickjackingFromMap(url, status, finalUrl, headers, source) {
     assessXfo(headers["x-frame-options"]),
     assessFrameAncestors(headers["content-security-policy"])
   ];
+  const duplicateNote = duplicateFrameAncestorsNote(headers["content-security-policy"]);
+  if (duplicateNote) findings.push(duplicateNote);
   const scored = scoreClickjacking(findings);
   return {
     url: url,
@@ -4064,6 +4383,11 @@ function browserCorsRisk(acao, acac, origin) {
   // A null-origin browser context is uncommon, but when present it can observe
   // the explicit null bypass just like the Python probe.
   if (acao === "null" && origin === "null") return credentials ? "high" : "medium";
+  // Wildcard + credentials is a broken configuration, not an exposure: Fetch's
+  // CORS check refuses ACAO: * for a credentialed request, so the browser never
+  // shows that response. MEDIUM, and never treated as a pass. A concrete echo
+  // stays MEDIUM too — the single-origin probe cannot tell an allowlist entry
+  // from a reflection, so only server.py's two-origin probe may say HIGH.
   return acao === "*" && credentials ? "medium" : "low";
 }
 
@@ -4091,7 +4415,7 @@ async function probeCorsLive(url, opts) {
     const canAttempt = method === "GET" || method === "HEAD" || method === "OPTIONS";
     if (!canAttempt) {
       const c = check(method + ": CORS probe", "info", method + " was not attempted in the browser — use server.py for authorized testing of this method.", "Browser limits: only GET/HEAD/OPTIONS attempted directly", 0);
-      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "unassessed", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
+      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "unknown", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
       unassessed.push(method);
       allChecks.push(c);
       continue;
@@ -4107,17 +4431,25 @@ async function probeCorsLive(url, opts) {
       acac = res.headers.get("access-control-allow-credentials");
       vary = res.headers.get("vary") || "";
     } catch (err) {
-      // CORS block or network failure — treat as blocked for this origin
-      const c = check(method + ": Fetch result", "ok", "The browser blocked the cross-origin read for " + method + ", or the request failed. That usually means this origin is not allowed for this method.", String(err && err.message ? err.message : err), 0);
-      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "low", checks: [c], headers: {}, origins: [origin], unassessed: false });
-      tested.push(method);
+      // A thrown fetch cannot distinguish "CORS refused the read" from
+      // "the request never left" (offline, DNS, TLS). Reporting that as `ok`
+      // / tested let a completely dead probe produce a green PASS; the honest
+      // answer is that nothing was measured.
+      const detail = String(err && err.message ? err.message : err);
+      const c = check(method + ": Fetch result", "info",
+        "The browser did not return a readable response for " + method +
+        ". That is either a CORS refusal or a failed request — from JavaScript alone the two are indistinguishable, so " + method + " was not assessed.",
+        detail || "no response", 0);
+      methodResults.push({ method: method, kind: "direct", status_code: null, risk: "unknown",
+        checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "no readable response" });
+      unassessed.push(method);
       allChecks.push(c);
       continue;
     }
     // Handle unsupported method (405/501) — browser may still get response if CORS allows reading
     if (status === 405 || status === 501) {
       const c = check(method + ": CORS probe", "info", method + " not supported by endpoint (HTTP " + status + ") — CORS for " + method + " was not assessed.", "HTTP " + status, 0);
-      methodResults.push({ method: method, kind: "direct", status_code: status, risk: "unassessed", checks: [c], headers: { "access-control-allow-origin": acao || "", "vary": vary }, origins: [origin], unassessed: true, reason: "HTTP " + status });
+      methodResults.push({ method: method, kind: "direct", status_code: status, risk: "unknown", checks: [c], headers: { "access-control-allow-origin": acao || "", "vary": vary }, origins: [origin], unassessed: true, reason: "HTTP " + status });
       unassessed.push(method);
       allChecks.push(c);
       continue;
@@ -4128,12 +4460,15 @@ async function probeCorsLive(url, opts) {
     const nullReflection = acao === "null" && origin === "null";
     const label = method === "GET" ? null : method;
     const prefix = label ? label + ": " : "";
-    if (!acao) {
+    // `acao === "null"` used to fall into the wildcard branch below and was
+    // reported as "Any website can read this resource … Fine only for fully
+    // public data" — the inverse of the finding. Check it first.
+    if (nullReflection) {
+      checks.push(check(prefix + "Access-Control-Allow-Origin: null", "weak", "This null-origin browser context was allowed via " + method + ". Opaque origins must not be trusted.", "ACAO: null", 0));
+    } else if (!acao) {
       checks.push(check(prefix + "Access-Control-Allow-Origin", "ok", "This origin cannot read the response via " + method + ". Restrictive and safe.", "ACAO: (absent)", 0));
     } else if (acao === "*") {
       checks.push(check(prefix + "Access-Control-Allow-Origin", "info", "Any website can read this resource via " + method + ". Fine only for fully public data.", "ACAO: *", 0));
-    } else if (nullReflection) {
-      checks.push(check(prefix + "Access-Control-Allow-Origin: null", "weak", "This null-origin browser context was allowed via " + method + ". Opaque origins must not be trusted.", "ACAO: null", 0));
     } else if (concreteReflection) {
       checks.push(check(prefix + "Access-Control-Allow-Origin", "weak", "This concrete browser Origin was echoed with credentials via " + method + ". Single-origin probe — arbitrary reflection cannot be ruled out; run python3 server.py for two-origin/null/preflight proof.", "ACAO: " + acao + "   ACAC: true", 0));
     } else {
@@ -4153,14 +4488,17 @@ async function probeCorsLive(url, opts) {
   for (const pre of requestedPreflight) {
     const label = "Preflight " + pre;
     const c = check(label + ": CORS probe", "info", "Preflight for " + pre + " cannot be probed from browser JS — it cannot set Access-Control-Request-Method/Headers or inspect the browser's automatic preflight response. Run python3 server.py for two-origin/null/preflight proof.", "Browser limit: use server.py", 0);
-    methodResults.push({ method: "OPTIONS", kind: "preflight", request_method: pre, request_headers: requestedPreflightHeaders, status_code: null, risk: "unassessed", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
+    methodResults.push({ method: "OPTIONS", kind: "preflight", request_method: pre, request_headers: requestedPreflightHeaders, status_code: null, risk: "unknown", checks: [c], headers: {}, origins: [origin], unassessed: true, reason: "browser limit" });
     unassessed.push("preflight:" + pre);
     allChecks.push(c);
   }
 
   // Determine overall summary with method awareness and browser limits
   let summary = "";
-  let overallRisk = maxRisk;
+  // Nothing measured is not a pass. A hosted probe whose fetch is blocked
+  // from JavaScript cannot tell a CORS refusal from a dead network, so the
+  // only honest headline is "not assessed".
+  let overallRisk = tested.length ? maxRisk : "unassessed";
   // Ensure single-origin concrete reflection with credentials never reads PASS
   // browserCorsRisk already returns medium for that case, so PASS (low) will not happen when reflected with creds.
   if (overallRisk === "high") {
@@ -4173,7 +4511,9 @@ async function probeCorsLive(url, opts) {
     if (tested.length === 1 && tested[0] === "GET" && requestedPreflight.length === 0 && methods.length === 1) {
       summary = "No risky CORS behavior observed for GET via single-origin browser probe. Coverage: GET only; other methods and preflight were not tested in this browser probe — run python3 server.py for two-origin/null/preflight proof.";
     } else if (!tested.length) {
-      summary = "No CORS probe could be assessed in this browser for the selected methods.";
+      summary = "No CORS probe could be assessed in this browser: the requests either failed or " +
+        "the browser refused to expose the response, and JavaScript cannot tell those apart. " +
+        "Run python3 server.py for a measured result.";
     } else {
       summary = "No risky CORS behavior observed for tested methods (" + tested.join(", ") + ") via single-origin browser probe.";
     }

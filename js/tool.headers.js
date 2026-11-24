@@ -11,6 +11,8 @@
   function render(data) {
     cbLastData = data;
     $("results").classList.remove("hidden");
+    $("results").removeAttribute("aria-busy");
+    $("results").classList.remove("is-refreshing");
     setSourceChip(data);
 
     const unreachable = !!data._unreachable || (data.status_code != null && data.status_code >= 400);
@@ -47,7 +49,20 @@
     $("summary").textContent = data.summary || "";
 
     const flag = $("reportTitleFlag");
-    if (flag) flag.innerHTML = unverifiedFlag(data);
+    // LIVE / CACHED (this run) and "relay data" (this source) are different
+    // claims; the page used to render only the second, so a published CI demo
+    // report and a fresh local scan looked identical.
+    if (flag) flag.innerHTML = scanTag(data) + unverifiedFlag(data);
+
+    // A bare letter reads as a stray character to a screen reader. Name what
+    // the box is, the same way the gauge names itself.
+    $("grade").setAttribute("role", "img");
+    $("grade").setAttribute(
+      "aria-label",
+      unreachable || data.grade === "—"
+        ? "No grade — this response could not be assessed"
+        : "Grade " + grade + (score != null ? ", " + score + " out of 100" : "")
+    );
 
     $("posture").innerHTML = postureHtml(data.checks);
 
@@ -64,13 +79,32 @@
 
   async function scan(url) {
     setLoading($("go"), true);
+    // Re-scanning used to leave the previous report on screen with no cue that
+    // it was being replaced; mark it busy and name what is happening.
+    const results = $("results");
+    if (results && !results.classList.contains("hidden")) {
+      results.setAttribute("aria-busy", "true");
+      results.classList.add("is-refreshing");
+    }
+    $("staticNotice").classList.add("hidden");
 
     const t0 = (window.performance && typeof performance.now === "function")
       ? performance.now() : null;
 
-    const consent = await ensureRelayConsent(url);
+    // A local server.py answers /api/headers itself, so asking for relay
+    // consent there demanded approval for a disclosure that never happens.
+    const relayNeeded = typeof relayGateNeeded === "function"
+      ? await relayGateNeeded(url)
+      : true; // shared helper missing → keep the disclosure, never skip it
+    const consent = relayNeeded ? await ensureRelayConsent(url) : "skip";
     if (consent === "deny") {
       setLoading($("go"), false);
+      $("results").removeAttribute("aria-busy");
+      $("results").classList.remove("is-refreshing");
+      // Drop the previous target's report before hiding it. Keeping it in
+      // cbLastData left the Export menu able to emit a Markdown/JSON/PNG
+      // report for a target that is no longer on screen.
+      cbLastData = null;
       $("staticNotice").innerHTML =
         "<h3>Header read declined</h3>" +
         "<p>Third-party relays were declined, so response headers cannot be read " +
@@ -98,10 +132,13 @@
       return;
     }
     if (isEngineDown(data) || (data && data._source === "none")) {
+      $("results").removeAttribute("aria-busy");
+      $("results").classList.remove("is-refreshing");
       if (data && data.checks) {
         $("staticNotice").classList.add("hidden");
         render(data);
       } else {
+        cbLastData = null;
         $("staticNotice").innerHTML =
           "<h3>Could not read headers</h3>" +
           "<p>No header data was returned for this target. It may be unreachable, " +

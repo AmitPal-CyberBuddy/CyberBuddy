@@ -35,7 +35,14 @@ from clickjacking_validator import (
     validate_target,
 )
 from cors_validator import ATTACKER_A, ATTACKER_B, NULL_ORIGIN, scan_cors
-from csp_checker import grade_csp_from_map, parse_policy, split_policies
+from csp_checker import (
+    grade_csp_from_header,
+    grade_csp_from_map,
+    looks_like_csp_policy,
+    parse_policy,
+    split_pasted_header_fields,
+    split_policies,
+)
 from security_headers import (
     check_coep,
     check_cookies,
@@ -238,6 +245,604 @@ class MultipleCspFrameAncestorsTests(unittest.TestCase):
         out = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(out["a"], "protected")
         self.assertEqual(out["b"], "weak")
+
+class FrameAncestorsStrictnessTests(unittest.TestCase):
+    """CSP3 wildcards that look restrictive but are not, and duplicate
+    directives inside one policy.
+
+    Both were false negatives in the Clickjacking Validator: `https:` and
+    `https://*` were scored PROTECTED, and a `*` written before a `'none'`
+    duplicate was also scored PROTECTED because the parser kept the last
+    directive. HIGH-risk pages were reported as protected, which is the one
+    error a security tool must not make.
+    """
+
+    def test_scheme_source_is_not_protection(self):
+        for csp in ("frame-ancestors https:", "frame-ancestors http:"):
+            with self.subTest(csp=csp):
+                self.assertEqual(assess_frame_ancestors(csp).status, "weak")
+
+    def test_wildcard_host_and_port_are_not_protection(self):
+        for csp in (
+            "frame-ancestors https://*",
+            "frame-ancestors http://*",
+            "frame-ancestors https://app.example:*",
+        ):
+            with self.subTest(csp=csp):
+                self.assertEqual(assess_frame_ancestors(csp).status, "weak")
+
+    def test_real_allowlist_is_still_protection(self):
+        for csp in (
+            "frame-ancestors https://trusted.example",
+            "frame-ancestors 'self'",
+            "frame-ancestors 'none'",
+            "frame-ancestors https://a.example https://b.example",
+        ):
+            with self.subTest(csp=csp):
+                self.assertEqual(assess_frame_ancestors(csp).status, "protected")
+
+    def test_first_duplicate_directive_wins(self):
+        self.assertEqual(
+            assess_frame_ancestors("frame-ancestors *; frame-ancestors 'none'").status,
+            "weak",
+        )
+        self.assertEqual(
+            assess_frame_ancestors("frame-ancestors 'none'; frame-ancestors *").status,
+            "protected",
+        )
+
+    def test_duplicate_is_reported_as_its_own_finding(self):
+        from clickjacking_validator import grade_clickjacking_from_map
+
+        result = grade_clickjacking_from_map(
+            "https://t.example", 200, "https://t.example",
+            {"content-security-policy": "frame-ancestors *; frame-ancestors 'none'"},
+        )
+        names = [f.name for f in result.findings]
+        self.assertIn("CSP duplicate directive", names)
+        self.assertEqual(result.risk, "high")
+
+    def test_none_beside_an_origin_is_ignored(self):
+        # CSP3: 'none' must be the only source value, otherwise it is dropped
+        # and the remaining allowlist applies.
+        result = assess_frame_ancestors("frame-ancestors 'none' https://partner.example")
+        self.assertEqual(result.status, "weak")
+
+    def test_csp_auditor_agrees_with_the_clickjacking_tool(self):
+        """One header must not grade two ways across two tools."""
+        from csp_checker import grade_csp_from_map
+
+        for csp, severity in (
+            ("frame-ancestors *", "high"),
+            ("frame-ancestors https:", "high"),
+            ("frame-ancestors https://*", "high"),
+        ):
+            with self.subTest(csp=csp):
+                result = grade_csp_from_map(
+                    "https://t.example", 200, "https://t.example",
+                    {"content-security-policy": csp},
+                )
+                framing = [c for c in result.checks if c.name == "Framing control"][0]
+                self.assertEqual(framing.status, "weak")
+                self.assertEqual(framing.severity, severity)
+
+    def test_headers_tool_does_not_forgive_xfo_for_a_wildcard(self):
+        """The XFO deduction drops only for a genuine framing allowlist."""
+        from security_headers import frame_ancestors_restricts, grade_headers_from_map
+
+        for csp in ("frame-ancestors *", "frame-ancestors https:", "frame-ancestors https://*"):
+            with self.subTest(csp=csp):
+                self.assertFalse(frame_ancestors_restricts(csp))
+        self.assertTrue(frame_ancestors_restricts("frame-ancestors https://trusted.example"))
+
+        weak = grade_headers_from_map(
+            "https://t.example", 200, "https://t.example",
+            {"content-security-policy": "frame-ancestors https:"},
+        )
+        xfo = [c for c in weak.checks if c.name == "X-Frame-Options"][0]
+        self.assertEqual(xfo.deduction, 15)
+
+    def test_js_twin_matches_for_wildcards_and_duplicates(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        harness = r"""
+const cases = [
+  "frame-ancestors https:",
+  "frame-ancestors https://*",
+  "frame-ancestors https://app.example:*",
+  "frame-ancestors *",
+  "frame-ancestors *; frame-ancestors 'none'",
+  "frame-ancestors 'none'; frame-ancestors *",
+  "frame-ancestors 'none'",
+  "frame-ancestors https://trusted.example"
+];
+console.log(JSON.stringify(cases.map((csp) => ({
+  csp: csp,
+  cj: gradeClickjackingFromMap("https://t.example", 200, "https://t.example",
+        {"content-security-policy": csp}, "test").risk,
+  framing: (gradeCspFromMap("https://t.example", 200, "https://t.example",
+        {"content-security-policy": csp}).checks
+        .filter((c) => c.name === "Framing control")[0] || {}).severity,
+  restricts: frameAncestorsRestricts(csp)
+}))));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        got = {row["csp"]: row for row in json.loads(proc.stdout.strip().splitlines()[-1])}
+        self.assertEqual(got["frame-ancestors https:"]["cj"], "high")
+        self.assertEqual(got["frame-ancestors https://*"]["cj"], "high")
+        self.assertEqual(got["frame-ancestors https://app.example:*"]["cj"], "high")
+        self.assertEqual(got["frame-ancestors *; frame-ancestors 'none'"]["cj"], "high")
+        self.assertEqual(got["frame-ancestors 'none'; frame-ancestors *"]["cj"], "low")
+        self.assertEqual(got["frame-ancestors 'none'"]["cj"], "low")
+        self.assertEqual(got["frame-ancestors https://trusted.example"]["cj"], "low")
+        self.assertEqual(got["frame-ancestors https://*"]["framing"], "high")
+        self.assertFalse(got["frame-ancestors https:"]["restricts"])
+        self.assertTrue(got["frame-ancestors https://trusted.example"]["restricts"])
+
+
+class ClickjackingPageContractTests(unittest.TestCase):
+    """Tool 01 UI/UX regressions found in the 2026-11-20 audit."""
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "clickjacking" / "index.html").read_text(encoding="utf-8")
+        self.js = (ROOT / "js" / "tool.clickjacking.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_relay_consent_is_only_asked_when_a_relay_is_reachable(self):
+        self.assertIn("relayGateNeeded(url)", self.js)
+        self.assertNotIn("const consent = await ensureRelayConsent(url);", self.js)
+
+    def test_provenance_is_never_hidden_on_a_low_result(self):
+        # The chip used to be hidden when protection was ENABLED.
+        self.assertNotIn('$("sourceChip").classList.add("hidden")', self.js)
+
+    def test_live_or_cached_tag_is_rendered_in_the_report_head(self):
+        self.assertIn("scanTag(data)", self.js)
+        self.assertIn('id="reportTitleFlag"', self.page)
+
+    def test_frame_status_is_a_live_region(self):
+        status = self.page[self.page.index('id="frameStatus"'):]
+        status = status[:status.index(">")]
+        self.assertIn('role="status"', status)
+        self.assertIn('aria-live="polite"', status)
+
+    def test_stage_height_is_fluid_not_fixed(self):
+        rule = self.css[self.css.index(".stage {"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("clamp(", rule)
+        self.assertNotIn("height: 440px", rule)
+
+    def test_frame_viewport_switcher_exists_and_is_wired(self):
+        self.assertIn('data-frame-width="100%"', self.page)
+        self.assertIn('data-frame-width="390"', self.page)
+        self.assertIn('aria-pressed="true"', self.page)
+        self.assertIn("selectFrameWidth", self.js)
+        self.assertIn(".chip-btn[aria-pressed=\"true\"]", self.css)
+
+    def test_poc_overlay_is_disabled_until_a_frame_loads(self):
+        self.assertIn('$("togglePoc").disabled = true;', self.js)
+        self.assertIn('$("togglePoc").disabled = false;', self.js)
+
+    def test_print_hides_the_viewport_toolbar(self):
+        start = self.css.index("@media print")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn(".stage-toolbar { display: none; }", block)
+
+
+class HeaderParsingStrictnessTests(unittest.TestCase):
+    """Tool 02, 2026-11-20 audit: four header-parsing defects that produced
+    wrong grades. Each one is pinned in Python and against the JS twin via
+    tests/grader_fixtures.json; these assert the reason text as well, because
+    an analyst has to be able to see *why* a header they wrote is not working.
+    """
+
+    # --- HSTS (RFC 6797 §6.1) -------------------------------------------
+    def test_hsts_allows_whitespace_around_the_equals_sign(self):
+        from security_headers import check_hsts
+
+        check = check_hsts("max-age = 31536000; includeSubDomains", True)
+        self.assertEqual(check.status, "ok")
+        self.assertEqual(check.deduction, 0)
+
+    def test_hsts_field_is_ignored_when_a_directive_is_invalid(self):
+        from security_headers import check_hsts
+
+        cases = {
+            "max-age=31536000; includeSubDomains=yes": "valueless",
+            "max-age=31536000; max-age=0": "more than once",
+            "max-age=one-year": "not a non-negative integer",
+            "max-age=31536000; includeSubDomains\nmax-age=0": "more than one",
+        }
+        for value, needle in cases.items():
+            with self.subTest(value=value):
+                check = check_hsts(value, True)
+                self.assertEqual(check.status, "weak")
+                self.assertEqual(check.deduction, 15)
+                self.assertIn(needle, check.detail)
+
+    def test_hsts_without_max_age_is_not_protection(self):
+        from security_headers import check_hsts
+
+        check = check_hsts("includeSubDomains", True)
+        self.assertEqual(check.status, "missing")
+        self.assertIn("ignore it entirely", check.detail)
+
+    def test_hsts_preload_is_mentioned_as_unverified(self):
+        from security_headers import check_hsts
+
+        check = check_hsts("max-age=31536000; includeSubDomains; preload", True)
+        self.assertEqual(check.status, "ok")
+        self.assertIn("preload", check.detail)
+
+    # --- Referrer-Policy -------------------------------------------------
+    def test_referrer_policy_uses_the_last_recognised_value(self):
+        from security_headers import check_referrer
+
+        # A fallback chain: the last value a browser understands is the one
+        # that applies. Reading the first token scored both of these backwards.
+        self.assertEqual(check_referrer("no-referrer, ultra-new-policy").status, "ok")
+        weak = check_referrer("no-referrer, unsafe-url")
+        self.assertEqual(weak.status, "weak")
+        self.assertEqual(weak.deduction, 10)
+        self.assertIn("fallback chain", weak.detail)
+        self.assertEqual(check_referrer("unsafe-url, no-referrer").status, "ok")
+
+    def test_referrer_policy_with_no_recognised_value_says_so(self):
+        from security_headers import check_referrer
+
+        check = check_referrer("totally-made-up")
+        self.assertEqual(check.status, "weak")
+        self.assertIn("recognised policy", check.detail)
+
+    # --- Permissions-Policy ---------------------------------------------
+    def test_permissions_policy_does_not_flag_self_as_a_wildcard(self):
+        from security_headers import check_permissions
+
+        for value in (
+            "camera=self, microphone=self",
+            'camera=(self "https://partner.example"), geolocation=()',
+            "geolocation=()",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(check_permissions(value).status, "ok")
+
+    def test_permissions_policy_finds_the_real_wildcard_forms(self):
+        from security_headers import check_permissions
+
+        for value in ("camera=*", "camera=(*)", "camera=(self *)"):
+            with self.subTest(value=value):
+                check = check_permissions(value)
+                self.assertEqual(check.status, "weak")
+                self.assertIn("wildcard", check.detail)
+
+    def test_permissions_policy_reports_unknown_feature_names(self):
+        from security_headers import check_permissions
+
+        check = check_permissions("camera=self, micrphone=self")
+        self.assertEqual(check.status, "weak")
+        self.assertIn("micrphone", check.detail)
+
+    # --- CSP Report-Only -------------------------------------------------
+    def test_report_only_alone_is_described_as_enforcing_nothing(self):
+        from security_headers import grade_headers_from_map
+
+        result = grade_headers_from_map(
+            "https://t.example", 200, "https://t.example",
+            {"content-security-policy-report-only": "default-src 'self'"},
+        )
+        ro = [c for c in result.checks if c.name == "CSP-Report-Only"][0]
+        self.assertIn("no policy is actually in force", ro.detail)
+        self.assertIn("Content-Security-Policy", [c.name for c in result.checks])
+
+    def test_js_twin_parses_the_same_header_edge_cases(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        harness = r"""
+const cases = [
+  ["Strict-Transport-Security", "max-age = 31536000; includeSubDomains"],
+  ["Strict-Transport-Security", "max-age=31536000; includeSubDomains=yes"],
+  ["Strict-Transport-Security", "max-age=31536000; max-age=0"],
+  ["Strict-Transport-Security", "includeSubDomains"],
+  ["Referrer-Policy", "no-referrer, unsafe-url"],
+  ["Referrer-Policy", "unsafe-url, no-referrer"],
+  ["Permissions-Policy", "camera=self, microphone=self"],
+  ["Permissions-Policy", "camera=(*)"],
+  ["Permissions-Policy", "camera=self, micrphone=self"]
+];
+console.log(JSON.stringify(cases.map((pair) => {
+  const h = {};
+  h[pair[0].toLowerCase()] = pair[1];
+  const r = gradeHeadersFromMap("https://t.example", 200, "https://t.example", h, "test");
+  const name = pair[0] === "Referrer-Policy" ? "Referrer-Policy"
+    : pair[0] === "Permissions-Policy" ? "Permissions-Policy" : "Strict-Transport-Security";
+  const c = r.checks.filter((x) => x.name === name)[0];
+  return { header: pair[0], value: pair[1], status: c.status, deduction: c.deduction };
+})));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        got = json.loads(proc.stdout.strip().splitlines()[-1])
+        by_value = {(g["header"], g["value"]): g for g in got}
+        expect = {
+            ("Strict-Transport-Security", "max-age = 31536000; includeSubDomains"): ("ok", 0),
+            ("Strict-Transport-Security", "max-age=31536000; includeSubDomains=yes"): ("weak", 15),
+            ("Strict-Transport-Security", "max-age=31536000; max-age=0"): ("weak", 15),
+            ("Strict-Transport-Security", "includeSubDomains"): ("missing", 15),
+            ("Referrer-Policy", "no-referrer, unsafe-url"): ("weak", 10),
+            ("Referrer-Policy", "unsafe-url, no-referrer"): ("ok", 0),
+            ("Permissions-Policy", "camera=self, microphone=self"): ("ok", 0),
+            ("Permissions-Policy", "camera=(*)"): ("weak", 5),
+            ("Permissions-Policy", "camera=self, micrphone=self"): ("weak", 5),
+        }
+        for key, (status, deduction) in expect.items():
+            with self.subTest(key=key):
+                self.assertIn(key, by_value)
+                self.assertEqual(by_value[key]["status"], status, key)
+                self.assertEqual(by_value[key]["deduction"], deduction, key)
+
+
+class HeadersPageContractTests(unittest.TestCase):
+    """Tool 02 UI/UX regressions found in the 2026-11-20 audit."""
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "headers" / "index.html").read_text(encoding="utf-8")
+        self.js = (ROOT / "js" / "tool.headers.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_relay_consent_is_only_asked_when_a_relay_is_reachable(self):
+        self.assertIn("relayGateNeeded(url)", self.js)
+        self.assertNotIn("const consent = await ensureRelayConsent(url);", self.js)
+
+    def test_live_or_cached_tag_is_rendered_in_the_report_head(self):
+        self.assertIn("scanTag(data)", self.js)
+
+    def test_grade_badge_is_named_for_assistive_tech(self):
+        self.assertIn('$("grade").setAttribute("role", "img")', self.js)
+        self.assertIn("Grade ", self.js)
+
+    def test_a_rescan_marks_the_previous_report_busy(self):
+        self.assertIn('results.setAttribute("aria-busy", "true")', self.js)
+        self.assertIn("is-refreshing", self.js)
+        self.assertIn('$("results").removeAttribute("aria-busy")', self.js)
+
+    def test_refreshing_state_is_styled_and_prints_at_full_strength(self):
+        self.assertIn(".results.is-refreshing .report-card", self.css)
+        start = self.css.index("@media print")
+        block = self.css[start:self.css.index("@media (max-width: 760px)", start)]
+        self.assertIn(".results.is-refreshing .report-card", block)
+
+    def test_unreachable_grade_has_a_style(self):
+        # The controller has always assigned .grade.unknown; the stylesheet
+        # never defined it, so the badge rendered uncoloured.
+        self.assertIn(".grade.unknown {", self.css)
+
+
+class CspStrictnessTests(unittest.TestCase):
+    """Tool 03 engine regressions found in the 2026-11-20 audit.
+
+    CSP3 section 6.7.2.7 step 2 returns "Does Not Match" for an empty source
+    list, and both Chrome and Firefox keep the directive with an empty set
+    rather than dropping it, so ``frame-ancestors;`` fails closed exactly like
+    ``frame-ancestors 'none'``. The verdict was already right; the *wording*
+    called an accidental empty value "a restrictive source list", which hid a
+    truncated or templated header from the analyst.
+    """
+
+    def _check(self, header, name):
+        result = grade_csp_from_map(
+            "https://example.test", 200, "https://example.test",
+            {"content-security-policy": header},
+        )
+        return next(check for check in result.checks if check.name == name)
+
+    def test_empty_navigation_directive_says_the_list_is_empty(self):
+        for directive, label in (
+            ("frame-ancestors", "Framing control"),
+            ("base-uri", "Base URL control"),
+            ("form-action", "Form submissions"),
+        ):
+            with self.subTest(directive=directive):
+                check = self._check(f"default-src 'self'; {directive}", label)
+                self.assertEqual(check.status, "ok")
+                self.assertEqual(check.severity, "pass")
+                self.assertIn("no source expressions", check.detail)
+                self.assertIn("empty source list", check.evidence)
+                # The old wording implied an ordinary allowlist was present.
+                self.assertNotIn("restrictive source list", check.detail)
+
+    def test_empty_fetch_directives_also_say_the_list_is_empty(self):
+        for header, name in (
+            ("script-src; default-src 'self'", "Script execution"),
+            ("default-src 'self'; style-src", "Style sources"),
+        ):
+            with self.subTest(name=name):
+                check = self._check(header, name)
+                self.assertEqual(check.status, "ok")
+                self.assertIn("no source expressions", check.detail)
+
+    def test_non_empty_restrictive_lists_keep_the_ordinary_wording(self):
+        check = self._check("default-src 'self'; frame-ancestors 'self'", "Framing control")
+        self.assertEqual(check.status, "ok")
+        self.assertIn("restrictive source list", check.detail)
+
+    def test_clickjacking_tool_agrees_about_an_empty_frame_ancestors(self):
+        finding = assess_frame_ancestors("frame-ancestors")
+        self.assertEqual(finding.status, "protected")
+        self.assertIn("empty source list", finding.evidence)
+        self.assertIn("no source expressions", finding.detail)
+
+    def test_pasted_header_keeps_a_wrapped_field_as_one_policy(self):
+        parsed = grade_csp_from_header(
+            "Content-Security-Policy: default-src 'self'; script-src 'self';\n"
+            "  object-src 'none'; frame-ancestors 'none'"
+        )
+        self.assertEqual(len(split_policies(parsed.policy)), 1, parsed.policy)
+        self.assertEqual(parsed.directives.get("frame-ancestors"), ["'none'"])
+        statuses = {check.name: check.status for check in parsed.checks}
+        self.assertEqual(statuses["Policy syntax"], "ok")
+        self.assertIn("1 enforced policy in the pasted header", parsed.checks[0].detail)
+
+    def test_pasted_header_keeps_a_repeated_field_as_two_policies(self):
+        fields, names = split_pasted_header_fields(
+            "Content-Security-Policy: default-src 'self'\n"
+            "Content-Security-Policy: script-src 'self'"
+        )
+        self.assertEqual(names, ["content-security-policy"])
+        self.assertEqual(len(split_policies(fields["content-security-policy"])), 2)
+        parsed = grade_csp_from_header(
+            "Content-Security-Policy: default-src 'self'\n"
+            "Content-Security-Policy: script-src 'self'"
+        )
+        self.assertIn("2 enforced policies in the pasted header", parsed.checks[0].detail)
+
+    def test_pasted_header_never_mentions_a_response(self):
+        parsed = grade_csp_from_header("default-src 'self'")
+        self.assertIn("pasted header", parsed.checks[0].detail)
+        self.assertNotIn("response polic", parsed.checks[0].detail)
+
+    def test_pasted_report_only_field_without_an_enforced_one(self):
+        parsed = grade_csp_from_header("Content-Security-Policy-Report-Only: default-src *")
+        self.assertEqual(parsed.policy, "")
+        self.assertEqual(parsed.report_only_policy, "default-src *")
+        self.assertIn("no enforced Content-Security-Policy field", parsed.checks[0].detail)
+
+    def test_pasted_parsers_match_the_js_twins(self):
+        """Both paste parsers must fold, split and grade pasted text the same way."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+
+        pasted = [
+            "Content-Security-Policy: default-src 'self';\n  script-src 'self'",
+            "Content-Security-Policy: default-src 'self'\n"
+            "Content-Security-Policy: script-src 'self'",
+            "default-src 'self';\nframe-ancestors 'none'",
+            "Content-Security-Policy-Report-Only: default-src *",
+            "default-src 'self'; frame-ancestors",
+            "Content-Type: text/html",
+        ]
+        harness = r"""
+const pasted = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"));
+console.log(JSON.stringify(pasted.map((raw) => {
+  const r = gradeCspFromHeader(raw);
+  return {
+    looks: looksLikeCspPolicy(raw),
+    risk: r.risk,
+    score: r.score,
+    grade: r.grade,
+    details: r.checks.map((c) => c.name + "|" + c.status + "|" + c.severity + "|" + c.detail)
+  };
+})));
+"""
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + harness
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            script_path = Path(tmp) / "paste.js"
+            payload = Path(tmp) / "paste.json"
+            script_path.write_text(script, encoding="utf-8")
+            payload.write_text(json.dumps(pasted), encoding="utf-8")
+            proc = subprocess.run(
+                [node, str(script_path), str(payload)],
+                cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        browser = json.loads(proc.stdout.strip().splitlines()[-1])
+
+        for raw, js_result in zip(pasted, browser):
+            with self.subTest(pasted=raw[:40]):
+                py_result = grade_csp_from_header(raw)
+                self.assertEqual(looks_like_csp_policy(raw), js_result["looks"])
+                self.assertEqual(py_result.risk, js_result["risk"])
+                self.assertEqual(py_result.score, js_result["score"])
+                self.assertEqual(py_result.grade, js_result["grade"])
+                self.assertEqual(
+                    [f"{c.name}|{c.status}|{c.severity}|{c.detail}" for c in py_result.checks],
+                    js_result["details"],
+                )
+
+    def test_paste_detection_rejects_text_that_is_not_a_policy(self):
+        self.assertFalse(looks_like_csp_policy("Content-Type: text/html"))
+        self.assertFalse(looks_like_csp_policy(""))
+        self.assertTrue(looks_like_csp_policy("frame-ancestors"))
+        self.assertTrue(looks_like_csp_policy("Content-Security-Policy-Report-Only: default-src *"))
+
+
+class CspPageContractTests(unittest.TestCase):
+    """Tool 03 UI/UX regressions found in the 2026-11-20 audit."""
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "csp" / "index.html").read_text(encoding="utf-8")
+        self.js = (ROOT / "js" / "tool.csp.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_relay_consent_is_only_asked_when_a_relay_is_reachable(self):
+        self.assertIn("relayGateNeeded(url)", self.js)
+        self.assertNotIn("const consent = await ensureRelayConsent(url);", self.js)
+
+    def test_live_or_cached_tag_is_rendered_in_the_report_head(self):
+        self.assertIn("scanTag(data) + unverifiedFlag(data)", self.js)
+
+    def test_verdict_badge_is_named_for_assistive_tech(self):
+        self.assertIn('$("verdict").setAttribute("role", "img")', self.js)
+        self.assertIn("CSP posture grade ", self.js)
+
+    def test_a_reaudit_marks_the_previous_report_busy(self):
+        self.assertIn('results.setAttribute("aria-busy", "true")', self.js)
+        self.assertIn('$("results").removeAttribute("aria-busy")', self.js)
+
+    def test_paste_mode_hides_the_response_facts_it_cannot_supply(self):
+        self.assertIn('id="statusItem"', self.page)
+        self.assertIn('id="methodItem"', self.page)
+        self.assertIn('$("statusItem").classList.toggle("hidden", pasted)', self.js)
+
+    def test_paste_mode_is_validated_by_directive_presence_not_by_verdict(self):
+        # An empty-but-real policy grades F; that is the answer, not bad input.
+        self.assertIn("looksLikeCspPolicy(raw)", self.js)
+
+    def test_declining_the_relay_clears_the_exportable_report(self):
+        self.assertIn("cbLastData = null;", self.js)
+
 
 class OutcomeRollupTests(unittest.TestCase):
     def _cors_result(self, first_headers, second_headers, null_headers=None):
@@ -515,6 +1120,189 @@ console.log(JSON.stringify({
         self.assertIn("No risky CORS behavior observed for GET", result.summary)
         self.assertNotIn("all tested methods", result.summary.lower())
         self.assertIn("GET only", result.summary)
+
+
+class CorsStrictnessTests(unittest.TestCase):
+    """Tool 03 (CORS) engine regressions found in the 2026-11-20 audit."""
+
+    OK = {"access-control-allow-origin": "https://trusted.example", "vary": "Origin"}
+    REFLECT_A = {"access-control-allow-origin": ATTACKER_A, "vary": "Origin"}
+    REFLECT_B = {"access-control-allow-origin": ATTACKER_B, "vary": "Origin"}
+    NULL_ONLY = {"access-control-allow-origin": "null", "vary": "Origin"}
+
+    def _run(self, responses, **kwargs):
+        with (
+            patch("cors_validator.validate_target"),
+            patch("cors_validator.fetch_headers", side_effect=responses),
+        ):
+            return scan_cors("https://api.example.test/data", **kwargs)
+
+    def _triplet(self, **overrides):
+        responses = [overrides.get("a", {}), overrides.get("b", {}), overrides.get("null", {})]
+        return self._run(
+            [(200, "https://api.example.test/data", h) for h in responses]
+        )
+
+    def test_credentials_are_attributed_to_the_response_that_reflected(self):
+        """ACAC is read per response, not OR-ed across probes."""
+        # No response allows credentials: the reflection is public-data MEDIUM,
+        # and the finding must not claim authenticated reads.
+        plain = self._triplet(a=self.REFLECT_A, b=self.REFLECT_B, null=self.NULL_ONLY)
+        self.assertEqual(plain.risk, "medium")
+        reflected = next(c for c in plain.checks if c.name == "Access-Control-Allow-Origin")
+        self.assertNotIn("authenticated responses", reflected.detail)
+        self.assertIn("public data", reflected.detail)
+        # Only the null probe allows credentials. That is a real finding for the
+        # null origin, but it must not be described as a two-origin reflection
+        # with credentials.
+        null_creds = self._triplet(
+            a=self.REFLECT_A,
+            b=self.REFLECT_B,
+            null={"access-control-allow-origin": "null",
+                  "access-control-allow-credentials": "true", "vary": "Origin"},
+        )
+        self.assertEqual(null_creds.risk, "high")
+        self.assertIn("null Origin", null_creds.summary)
+        reflected = next(c for c in null_creds.checks if c.name == "Access-Control-Allow-Origin")
+        self.assertNotIn("authenticated responses", reflected.detail)
+
+    def test_reflection_with_credentials_on_the_same_response_is_high(self):
+        reflected = dict(self.REFLECT_A, **{"access-control-allow-credentials": "true"})
+        reflected_b = dict(self.REFLECT_B, **{"access-control-allow-credentials": "true"})
+        result = self._triplet(a=reflected, b=reflected_b, null={})
+        self.assertEqual(result.risk, "high")
+        self.assertIn("reflected Origin + credentials", result.summary)
+
+    def test_null_origin_is_not_the_only_finding_when_origins_also_reflect(self):
+        result = self._triplet(
+            a=dict(self.REFLECT_A, **{"access-control-allow-credentials": "true"}),
+            b=dict(self.REFLECT_B, **{"access-control-allow-credentials": "true"}),
+            null=self.NULL_ONLY,
+        )
+        names = [c.name for c in result.checks]
+        self.assertIn("Access-Control-Allow-Origin", names)
+        self.assertIn("Access-Control-Allow-Origin: null", names)
+        self.assertIn("reflected Origin + credentials", result.summary)
+
+    def test_error_status_without_cors_is_not_assessed(self):
+        """A 401 with no ACAO says nothing about the policy — not a pass."""
+        result = self._run([(401, "u", {})] * 3)
+        self.assertEqual(result.risk, "unknown")
+        self.assertEqual(result.tested_methods, [])
+        self.assertEqual(result.unassessed_methods, ["GET"])
+        self.assertIn("HTTP 401", result.summary)
+        self.assertTrue(result.method_results[0]["unassessed"])
+
+    def test_error_status_that_does_carry_cors_is_still_assessed(self):
+        """A 403 that still reflects + allows credentials is real evidence."""
+        reflected_a = dict(self.REFLECT_A, **{"access-control-allow-credentials": "true"})
+        reflected_b = dict(self.REFLECT_B, **{"access-control-allow-credentials": "true"})
+        result = self._run(
+            [(403, "u", reflected_a), (403, "u", reflected_b), (403, "u", {})]
+        )
+        self.assertEqual(result.risk, "high")
+        self.assertEqual(result.tested_methods, ["GET"])
+
+    def test_total_network_failure_is_unknown_not_pass(self):
+        def boom(**kwargs):
+            raise OSError("connection refused")
+
+        result = self._run([boom] * 3)
+        self.assertEqual(result.risk, "unknown")
+        self.assertNotIn("Pass", result.summary)
+
+    def test_preflight_method_matching_uses_tokens(self):
+        """ACAM: POSTPREVIEW does not allow POST; a browser would fail the preflight."""
+        preflight_headers = {
+            "access-control-allow-origin": ATTACKER_A,
+            "access-control-allow-methods": "POSTPREVIEW",
+            "vary": "Origin",
+        }
+        result = self._run(
+            [(200, "u", self.REFLECT_A), (200, "u", self.REFLECT_B), (200, "u", {})]
+            + [(204, "u", preflight_headers)] * 3,
+            methods=["GET"], preflight_methods=["POST"],
+        )
+        check = next(c for c in result.checks if c.name.endswith("Access-Control-Allow-Methods"))
+        self.assertEqual(check.status, "weak")
+        self.assertIn("does not list POST", check.detail)
+
+    def test_preflight_header_matching_accepts_the_wildcard(self):
+        preflight_headers = {
+            "access-control-allow-origin": ATTACKER_A,
+            "access-control-allow-headers": "*",
+            "vary": "Origin",
+        }
+        result = self._run(
+            [(200, "u", self.REFLECT_A), (200, "u", self.REFLECT_B), (200, "u", {})]
+            + [(204, "u", preflight_headers)] * 3,
+            methods=["GET"], preflight_methods=["POST"], preflight_headers=["X-Token"],
+        )
+        check = next(c for c in result.checks if c.name.endswith("Access-Control-Allow-Headers"))
+        self.assertEqual(check.status, "info")
+        self.assertIn("allows requested headers", check.detail)
+
+    def test_preflight_header_matching_rejects_a_longer_token(self):
+        preflight_headers = {
+            "access-control-allow-origin": ATTACKER_A,
+            "access-control-allow-headers": "X-Token-Extra",
+            "vary": "Origin",
+        }
+        result = self._run(
+            [(200, "u", self.REFLECT_A), (200, "u", self.REFLECT_B), (200, "u", {})]
+            + [(204, "u", preflight_headers)] * 3,
+            methods=["GET"], preflight_methods=["POST"], preflight_headers=["X-Token"],
+        )
+        check = next(c for c in result.checks if c.name.endswith("Access-Control-Allow-Headers"))
+        self.assertEqual(check.status, "weak")
+        self.assertIn("missing requested header", check.detail)
+
+    def test_unassessed_rows_use_a_styleable_risk_class(self):
+        def side(url, timeout=15, insecure=False, allow_private=True, extra_headers=None, method="GET"):
+            if method == "HEAD":
+                return (405, "https://api.example.test/data", {})
+            return (200, "https://api.example.test/data", {})
+
+        with patch("cors_validator.validate_target"), patch("cors_validator.fetch_headers", side_effect=side):
+            result = scan_cors("https://api.example.test/data", methods=["GET", "HEAD"])
+        head_row = next(row for row in result.method_results if row["method"] == "HEAD")
+        self.assertTrue(head_row["unassessed"])
+        self.assertEqual(head_row["risk"], "unknown")
+        self.assertIn("HTTP 405", head_row["reason"])
+
+
+class CorsPageContractTests(unittest.TestCase):
+    """Tool 03 (CORS) UI/UX regressions found in the 2026-11-20 audit."""
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "cors" / "index.html").read_text(encoding="utf-8")
+        self.js = (ROOT / "js" / "tool.cors.js").read_text(encoding="utf-8")
+        self.css = (ROOT / "css" / "app.css").read_text(encoding="utf-8")
+
+    def test_relay_consent_is_only_asked_when_a_relay_is_reachable(self):
+        self.assertIn("relayGateNeeded(url)", self.js)
+        self.assertNotIn("const consent = await ensureRelayConsent(url);", self.js)
+
+    def test_live_or_cached_tag_is_rendered_in_the_report_head(self):
+        self.assertIn("scanTag(data) + unverifiedFlag(data)", self.js)
+
+    def test_verdict_badge_is_named_for_assistive_tech(self):
+        self.assertIn('$("verdict").setAttribute("role", "img")', self.js)
+        self.assertIn("CORS posture: restrictive", self.js)
+
+    def test_an_unmeasured_probe_is_never_rendered_as_pass(self):
+        self.assertIn('r === "unassessed"', self.js)
+        self.assertIn("NOT ASSESSED", self.js)
+
+    def test_a_reprobe_marks_the_previous_report_busy(self):
+        self.assertIn('results.setAttribute("aria-busy", "true")', self.js)
+        self.assertIn('results.removeAttribute("aria-busy")', self.js)
+
+    def test_declining_the_relay_clears_the_exportable_report(self):
+        self.assertIn("cbLastData = null;", self.js)
+
+    def test_unassessed_badge_has_a_style(self):
+        self.assertIn(".unassessed-badge {", self.css)
 
 
 class CorsBrowserPocTests(unittest.TestCase):

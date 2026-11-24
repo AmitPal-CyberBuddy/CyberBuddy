@@ -175,6 +175,68 @@
           "Framing control": "ok"
         }
       }
+    },
+    {
+      "name": "empty frame-ancestors blocks framing",
+      "url": "https://empty.example",
+      "final_url": "https://empty.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; frame-ancestors"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Framing control": "ok",
+          "Base URL control": "missing"
+        }
+      }
+    },
+    {
+      "name": "empty base-uri blocks base rewriting",
+      "url": "https://empty.example",
+      "final_url": "https://empty.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; base-uri"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Base URL control": "ok",
+          "Framing control": "missing"
+        }
+      }
+    },
+    {
+      "name": "empty form-action blocks submissions",
+      "url": "https://empty.example",
+      "final_url": "https://empty.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; form-action"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Form submissions": "ok"
+        }
+      }
+    },
+    {
+      "name": "empty script-src blocks all scripts",
+      "url": "https://empty.example",
+      "final_url": "https://empty.example",
+      "status_code": 200,
+      "headers": {
+        "content-security-policy": "script-src; default-src 'self'"
+      },
+      "expect": {
+        "risk": "medium",
+        "statuses": {
+          "Script execution": "ok"
+        }
+      }
     }
   ]
 }

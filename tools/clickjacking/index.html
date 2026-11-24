@@ -159,6 +159,7 @@
         <div class="verdict-main">
           <p id="protection" class="protection-line">Run a scan to assess clickjacking protection.</p>
           <p id="summary" class="verdict-text">If the site UI is visible in the frame, treat it as clickjackable.</p>
+          <div id="frameContext" class="frame-context hidden"></div>
           <div id="visualConfirm" class="hidden"></div>
         </div>
       </div>
@@ -167,7 +168,14 @@
         <article class="card inset-card poc-frame-card">
           <h3 class="card-title">Live frame test · visual confirmation <span id="liveFrameUrl" class="inline-url"></span></h3>
           <p class="note">A rendered UI confirms the page is frameable in this browser. A blank pane indicates framing is blocked by <code>X-Frame-Options</code> or CSP <code>frame-ancestors</code>.</p>
-          <div id="stage" class="stage">
+          <div class="stage-toolbar" role="group" aria-label="Frame viewport width">
+            <span class="stage-toolbar-label" id="frameSizeLabel">Frame viewport</span>
+            <button type="button" class="chip-btn" data-frame-width="100%" aria-pressed="true">Fill</button>
+            <button type="button" class="chip-btn" data-frame-width="1280" aria-pressed="false">Desktop 1280</button>
+            <button type="button" class="chip-btn" data-frame-width="768" aria-pressed="false">Tablet 768</button>
+            <button type="button" class="chip-btn" data-frame-width="390" aria-pressed="false">Phone 390</button>
+          </div>
+          <div id="stage" class="stage" data-frame-width="100%">
             <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin" title="Target frame"></iframe>
             <div id="pocOverlay" class="overlay" aria-hidden="true">
               <div class="decoy-app">
@@ -188,7 +196,7 @@
             <div class="poc-scale"><span>Victim view · near-invisible</span><span>Attacker view · explanatory</span></div>
           </div>
           <p class="stage-note">Decoy overlay demonstrates click passthrough with <code>pointer-events: none</code>.</p>
-          <p id="frameStatus" class="stage-note"></p>
+          <p id="frameStatus" class="stage-note" role="status" aria-live="polite"></p>
         </article>
 
         <article class="card inset-card">

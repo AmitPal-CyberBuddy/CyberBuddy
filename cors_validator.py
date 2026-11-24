@@ -87,6 +87,27 @@ def _vary(headers: dict[str, str]) -> str:
     return headers.get("vary") or ""
 
 
+def _comma_tokens(value: str | None) -> list[str]:
+    return [token.strip().lower() for token in (value or "").split(",") if token.strip()]
+
+
+def _lists_token(value: str | None, token: str) -> bool:
+    """True when a comma-separated CORS response header lists *token* exactly.
+
+    ``Access-Control-Allow-Methods`` and ``Access-Control-Allow-Headers`` hold
+    token lists (Fetch Standard, CORS protocol). A substring test is wrong in
+    both directions: ``ACAM: POSTPREVIEW`` "contains" POST and would credit a
+    preflight that browsers reject, while ``ACAH: X-Token-Extra`` "contains"
+    X-Token and would hide a real failure.
+    """
+    return token.strip().lower() in _comma_tokens(value)
+
+
+def _allows_any_header(value: str | None) -> bool:
+    """``Access-Control-Allow-Headers: *`` allows every requested header name."""
+    return "*" in _comma_tokens(value)
+
+
 def re_origin_in_vary(vary: str) -> bool:
     return any(part.strip().lower() == "origin" for part in vary.split(",")) if vary else False
 
@@ -99,6 +120,7 @@ def _assess_triplet(
     is_preflight: bool = False,
     preflight_method: str | None = None,
     preflight_headers: list[str] | None = None,
+    statuses: tuple[int | None, int | None, int | None] = (None, None, None),
 ) -> tuple[list[Check], str, str]:
     """Assess one method/preflight triplet and return (checks, risk, summary)."""
     prefix = f"{label}: " if label else ""
@@ -106,7 +128,14 @@ def _assess_triplet(
     acao_a = _acao(hdr_a)
     acao_b = _acao(hdr_b)
     acao_null = _acao(hdr_null)
-    creds = _acac(hdr_a) or _acac(hdr_b) or _acac(hdr_null)
+    # Credentials are decided per response. Laddering "any probe said ACAC"
+    # against "any probe reflected" invented a high-risk credential leak when
+    # the reflection came back *without* ACAC and only an unrelated response
+    # (e.g. the null-origin one) said ACAC: true.
+    creds_a = _acac(hdr_a)
+    creds_b = _acac(hdr_b)
+    creds_null = _acac(hdr_null)
+    creds_ab = creds_a or creds_b
     vary = _vary(hdr_a) or _vary(hdr_b) or _vary(hdr_null)
     checks: list[Check] = []
 
@@ -115,26 +144,51 @@ def _assess_triplet(
     null_reflected = acao_null == NULL_ORIGIN
     both_absent = acao_a is None and acao_b is None and acao_null is None
 
+    # An error response carries no usable CORS decision: a 401/403/500 with no
+    # ACAO says nothing about the policy on the real resource, and calling that
+    # "blocked by default (Pass)" invents a pass the tool never measured. When
+    # a probe *does* return ACAO on an error, that header is real evidence and
+    # is assessed normally below.
+    codes = [code for code in statuses if code is not None]
+    if both_absent and codes and all(code >= 400 for code in codes):
+        code = codes[0]
+        return (
+            [Check(
+                f"{prefix}CORS probe" if label else "CORS probe", "info",
+                f"The endpoint answered HTTP {code} for every probe origin with no "
+                "CORS headers. An error response does not reveal the CORS policy of "
+                f"{'this method' if not label else label}, so it was not assessed.",
+                evidence=f"HTTP {code} · ACAO absent for {ATTACKER_A}, {ATTACKER_B}, null",
+            )],
+            "unassessed",
+            f"HTTP {code} for every probe origin — CORS was not assessed.",
+        )
+
+    # The null-origin exposure is its own finding. It used to be an `elif`
+    # above the reflection branch, so a server that reflected *both* the null
+    # origin and two arbitrary origins produced one finding — the weaker one —
+    # and the two-origin reflection never appeared in the table at all.
     if null_reflected:
         checks.append(Check(
             f"{prefix}Access-Control-Allow-Origin: null" if label else "Access-Control-Allow-Origin: null", "weak",
             "The server allows the opaque null Origin. Sandboxed documents and data URLs can use it to read responses" +
-            (" with credentials." if creds else "."),
-            evidence=f"Origin null → ACAO: {acao_null}   ACAC: {'true' if creds else '(absent)'}",
+            (" with credentials." if creds_null else "."),
+            evidence=f"Origin null → ACAO: {acao_null}   ACAC: {'true' if creds_null else '(absent)'}",
         ))
-    elif both_absent:
+
+    if both_absent:
         checks.append(Check(
             f"{prefix}Access-Control-Allow-Origin", "ok",
             "No ACAO for either probe origin — cross-origin reads are blocked. Restrictive and safe.",
             evidence=f"Origin {ATTACKER_A} → (absent); Origin {ATTACKER_B} → (absent)",
         ))
     elif reflected:
-        if creds:
+        if creds_ab:
             checks.append(Check(
                 f"{prefix}Access-Control-Allow-Origin", "weak",
-                "The server reflects arbitrary Origins AND allows credentials. A malicious site "
-                "can read authenticated responses as the victim.",
-                evidence=f"ACAO: {acao_a} / {acao_b}   ACAC: true",
+                "The server reflects arbitrary Origins AND allows credentials on the same "
+                "response. A malicious site can read authenticated responses as the victim.",
+                evidence=f"ACAO: {acao_a} / {acao_b}   ACAC: {hdr_a.get('access-control-allow-credentials') or hdr_b.get('access-control-allow-credentials')}",
             ))
         else:
             checks.append(Check(
@@ -144,7 +198,7 @@ def _assess_triplet(
                 evidence=f"ACAO: {acao_a} / {acao_b}",
             ))
     elif wildcard:
-        if creds:
+        if creds_ab:
             checks.append(Check(
                 f"{prefix}Access-Control-Allow-Origin", "weak",
                 "Wildcard ACAO combined with Allow-Credentials: true. Browsers refuse this for "
@@ -166,10 +220,17 @@ def _assess_triplet(
             evidence=f"Origin {ATTACKER_A} → {acao_a or '(absent)'}; Origin {ATTACKER_B} → {acao_b or '(absent)'}",
         ))
 
-    if creds and not wildcard:
+    if (creds_a or creds_b or creds_null) and not wildcard:
+        where = []
+        if creds_a:
+            where.append(ATTACKER_A)
+        if creds_b:
+            where.append(ATTACKER_B)
+        if creds_null:
+            where.append("null")
         checks.append(Check(
             f"{prefix}Allow-Credentials", "info",
-            "Credentials explicitly allowed on at least one probe response.",
+            "Credentials explicitly allowed on the probe response(s) for: " + ", ".join(where) + ".",
             evidence="ACAC: true",
         ))
 
@@ -177,7 +238,7 @@ def _assess_triplet(
     if is_preflight and preflight_method:
         acam = (hdr_a.get("access-control-allow-methods") or hdr_b.get("access-control-allow-methods") or hdr_null.get("access-control-allow-methods") or "").strip()
         if acam:
-            if preflight_method.lower() in acam.lower():
+            if _lists_token(acam, preflight_method):
                 checks.append(Check(
                     f"{prefix}Access-Control-Allow-Methods", "info",
                     f"Preflight allows {preflight_method} (ACAM includes it).",
@@ -199,8 +260,11 @@ def _assess_triplet(
             acah = (hdr_a.get("access-control-allow-headers") or hdr_b.get("access-control-allow-headers") or hdr_null.get("access-control-allow-headers") or "").strip()
             wanted = ", ".join(preflight_headers)
             if acah:
-                # Check that all requested headers are allowed (case-insensitive)
-                missing = [h for h in preflight_headers if h.lower() not in acah.lower()]
+                # `*` is a wildcard for header names; otherwise compare tokens,
+                # not substrings (ACAH: X-Token-Extra does not allow X-Token).
+                missing = [] if _allows_any_header(acah) else [
+                    h for h in preflight_headers if not _lists_token(acah, h)
+                ]
                 if not missing:
                     checks.append(Check(
                         f"{prefix}Access-Control-Allow-Headers", "info",
@@ -243,23 +307,27 @@ def _assess_triplet(
 
     # Headline risk follows the observed access outcome, not a secondary
     # cache-hardening finding.
-    if null_reflected and creds:
+    # Order by severity, not by probe order: a credential-bearing reflection
+    # outranks a credential-free null reflection, and evaluating the null case
+    # first would report MEDIUM for a scan whose real finding is a credentialed
+    # two-origin reflection.
+    if reflected and creds_ab:
+        risk = "high"
+        summary = "Arbitrary Origin reflection with credentials was confirmed across two probe Origins."
+    elif null_reflected and creds_null:
         risk = "high"
         summary = "The server reflects the null Origin and allows credentials; opaque-origin documents can read authenticated responses."
     elif null_reflected:
         risk = "medium"
         summary = "The server reflects the null Origin; opaque-origin documents can read this response."
-    elif reflected and creds:
-        risk = "high"
-        summary = "Arbitrary Origin reflection with credentials was confirmed across two probe Origins."
     elif reflected:
         risk = "medium"
         summary = "Arbitrary Origin reflection was confirmed across two probe Origins. Safe only for intentionally public data."
     elif wildcard:
-        risk = "medium" if creds else "low"
+        risk = "medium" if creds_ab else "low"
         summary = (
             "Wildcard ACAO with credentials is misconfigured (browsers reject credentialed wildcard reads)."
-            if creds else
+            if creds_ab else
             "Wildcard ACAO allows unauthenticated cross-origin reads. Confirm this resource is intentionally public."
         )
     elif both_absent:
@@ -424,7 +492,7 @@ def scan_cors(
                 "method": method,
                 "kind": "direct",
                 "status_code": code_a,
-                "risk": "unassessed",
+                "risk": "unknown",
                 "checks": [asdict(info_check)],
                 "headers": {k: hdr_a.get(k, "") for k in ("access-control-allow-origin", "access-control-allow-credentials", "vary") if k in hdr_a},
                 "origins": [ATTACKER_A, ATTACKER_B, NULL_ORIGIN],
@@ -438,7 +506,9 @@ def scan_cors(
 
         # Assess triplet
         label = method if method != "GET" else None
-        checks, risk, summary = _assess_triplet(label, hdr_a, hdr_b, hdr_null)
+        checks, risk, summary = _assess_triplet(
+            label, hdr_a, hdr_b, hdr_null, statuses=(code_a, code_b, code_null),
+        )
         method_results.append({
             "method": method,
             "kind": "direct",
@@ -448,13 +518,17 @@ def scan_cors(
             "checks": [asdict(c) for c in checks],
             "headers": {k: hdr_a.get(k, "") for k in ("access-control-allow-origin", "access-control-allow-credentials", "access-control-allow-methods", "access-control-allow-headers", "vary") if k in hdr_a or k in hdr_b or k in hdr_null},
             "origins": [ATTACKER_A, ATTACKER_B, NULL_ORIGIN],
-            "unassessed": False,
+            "unassessed": risk == "unassessed",
+            "reason": f"HTTP {code_a}" if risk == "unassessed" else "",
             "evidence": f"{method} Origin {ATTACKER_A} → {hdr_a.get('access-control-allow-origin') or '(absent)'}; {ATTACKER_B} → {hdr_b.get('access-control-allow-origin') or '(absent)'}; null → {hdr_null.get('access-control-allow-origin') or '(absent)'}",
         })
-        tested_methods.append(method)
+        if risk == "unassessed":
+            unassessed_methods.append(method)
+        else:
+            tested_methods.append(method)
+            _update_max(risk)
         for c in checks:
             all_checks.append(c)
-        _update_max(risk)
         if final_url_overall is None:
             final_url_overall = final_a
             status_code_overall = code_a
@@ -519,7 +593,7 @@ def scan_cors(
                 "request_method": pre_m,
                 "request_headers": preflight_headers,
                 "status_code": code_a,
-                "risk": "unassessed",
+                "risk": "unknown",
                 "checks": [asdict(info_check)],
                 "headers": {},
                 "origins": [ATTACKER_A, ATTACKER_B, NULL_ORIGIN],
@@ -530,7 +604,11 @@ def scan_cors(
             all_checks.append(info_check)
             continue
         label = f"Preflight {pre_m}"
-        checks, risk, summary = _assess_triplet(label, hdr_a, hdr_b, hdr_null, is_preflight=True, preflight_method=pre_m, preflight_headers=preflight_headers)
+        checks, risk, summary = _assess_triplet(
+            label, hdr_a, hdr_b, hdr_null, is_preflight=True,
+            preflight_method=pre_m, preflight_headers=preflight_headers,
+            statuses=(code_a, code_b, code_null),
+        )
         method_results.append({
             "method": "OPTIONS",
             "kind": "preflight",
@@ -542,14 +620,18 @@ def scan_cors(
             "checks": [asdict(c) for c in checks],
             "headers": {k: hdr_a.get(k, "") for k in ("access-control-allow-origin", "access-control-allow-credentials", "access-control-allow-methods", "access-control-allow-headers", "vary") if k in hdr_a or k in hdr_b or k in hdr_null},
             "origins": [ATTACKER_A, ATTACKER_B, NULL_ORIGIN],
-            "unassessed": False,
+            "unassessed": risk == "unassessed",
+            "reason": f"HTTP {code_a}" if risk == "unassessed" else "",
             "evidence": f"Preflight {pre_m} Origin {ATTACKER_A} → {hdr_a.get('access-control-allow-origin') or '(absent)'}; {ATTACKER_B} → {hdr_b.get('access-control-allow-origin') or '(absent)'}; null → {hdr_null.get('access-control-allow-origin') or '(absent)'}",
         })
         # Record tested as preflight:POST etc.
-        tested_methods.append(f"preflight:{pre_m}")
+        if risk == "unassessed":
+            unassessed_methods.append(f"preflight:{pre_m}")
+        else:
+            tested_methods.append(f"preflight:{pre_m}")
+            _update_max(risk)
         for c in checks:
             all_checks.append(c)
-        _update_max(risk)
         if final_url_overall is None:
             final_url_overall = final_a
             status_code_overall = code_a
@@ -578,10 +660,28 @@ def scan_cors(
         assessed_risks = [r["risk"] for r in method_results if not r.get("unassessed") and r.get("risk") not in ("unknown", "unassessed")]
         if not assessed_risks:
             overall_risk = "unknown"
-            overall_summary = f"All selected methods were unassessed (unsupported). No CORS posture could be determined. Coverage: {', '.join(methods + [f'preflight:{m}' for m in preflight_methods])}."
+            reasons = sorted({
+                str(row.get("reason") or "")
+                for row in method_results
+                if row.get("unassessed") and row.get("reason")
+            })
+            why = (" (" + ", ".join(reasons) + ")") if reasons else " (method not supported)"
+            overall_summary = (
+                f"No selected method could be assessed{why}, so no CORS posture could be "
+                f"determined. Coverage: {', '.join(methods + [f'preflight:{m}' for m in preflight_methods])}."
+            )
         else:
             overall_risk = max_risk
             overall_summary = f"No risky CORS behavior observed for tested methods ({', '.join(tested_methods)})."
+    elif not tested_methods:
+        # Every probe failed or came back as an error status: there is no
+        # measured policy, so the headline must not be a PASS.
+        overall_risk = "unknown"
+        overall_summary = (
+            "No CORS policy could be assessed: "
+            + (", ".join(unassessed_methods) if unassessed_methods else "every probe failed")
+            + ". An error status or a failed request is not evidence of a restrictive policy."
+        )
     else:
         overall_risk = max_risk
         # Build summary with method awareness
@@ -593,7 +693,19 @@ def scan_cors(
                     risky_labels.append(f"preflight {r['request_method']}")
                 else:
                     risky_labels.append(r["method"])
-            overall_summary = f"High-risk CORS behavior observed for {', '.join(risky_labels)} — reflected Origin + credentials confirmed."
+            # Name the exposure that actually decided each verdict. The
+            # assessment already says which branch fired; re-deriving it from
+            # check names credited the null finding even when the deciding
+            # evidence was a two-origin reflection.
+            null_driven = bool(risky) and all(
+                "null Origin" in str(row.get("summary") or "") for row in risky
+            )
+            overall_summary = (
+                f"High-risk CORS behavior observed for {', '.join(risky_labels)} — "
+                + ("the null Origin is reflected with credentials"
+                   if null_driven else "reflected Origin + credentials confirmed")
+                + "."
+            )
             if len(tested_methods) > len(risky_labels):
                 overall_summary += f" Other tested methods were not vulnerable."
             overall_summary += f" Coverage: {', '.join(tested_methods)}."
