@@ -301,9 +301,14 @@ Seven new golden cases in `tests/grader_fixtures.json`.
 4. Alternatively *paste* a header value and grade it locally, with no network
    request and no target contacted.
 
-Note on numbering: the page's kicker says "Tool 04" while the site order is
-CSP third (CORS says "Tool 03"). The kickers were left alone in this pass — it
-is a copy change across four pages, not a defect in this tool.
+Note on numbering (corrected). An earlier draft of this section claimed the
+CSP kicker was off by one and that the site lists CSP third. Both statements
+were wrong. The canonical order is the `tools/index.html` catalog, the
+`TOOLS_MENU` array and the `<link rel="prefetch">` block, and all three agree:
+Clickjacking, Security Headers, **CORS, CSP**, DNS, CSRF, JWT. The kickers for
+01–04 already matched it; **DNS, CSRF and JWT were numbered 07, 05, 06** and
+are now 05, 06, 07. `ToolNumberingTests` pins the catalogue order and every
+kicker together so this cannot drift again.
 
 ### Phase 2 — collection / engine correctness
 
@@ -457,9 +462,8 @@ the deny and no-data paths; kept when the engine returns usable checks.
 
 ## Tool 04 — CORS Validator
 
-(Site order: the page's kicker reads "Tool 03" and says "Tool 04" nowhere, so
-this section keeps the audit's own numbering. The CSP page carries the same
-off-by-one kicker; both are copy changes, left alone.)
+(This is the fourth tool in site order — `tools/index.html`, `TOOLS_MENU` and
+the prefetch block all list CORS before CSP — and the page's kicker agrees.)
 
 ### What the tool does
 
@@ -620,3 +624,38 @@ now have their own label, banner class and `role="img"` name.
   behaviour when CORS *succeeds* (jsdom cannot model a real CORS decision).
 - `ACAO` on a redirect chain, and `Access-Control-Max-Age`, are not inspected;
   both are worth a follow-up pass rather than a change here.
+
+---
+
+## Cross-cutting — tool numbering (fixed)
+
+The audit labels tools by their position in the site catalogue, so the
+catalogue order is the one thing that has to be unambiguous. It is stated in
+three places, and they already agreed with each other:
+
+| # | Tool | `tools/index.html` card | `TOOLS_MENU` | `<link rel=prefetch>` | kicker before |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Clickjacking Validator | 1 | 1 | 1 | 01 ✓ |
+| 2 | Security Headers | 2 | 2 | 2 | 02 ✓ |
+| 3 | CORS Validator | 3 | 3 | 3 | 03 ✓ |
+| 4 | CSP Policy Auditor | 4 | 4 | 4 | 04 ✓ |
+| 5 | DNS & Domain Security Analyzer | 5 | 5 | 5 | **07 ✗** |
+| 6 | CSRF PoC Generator | 6 | 6 | 6 | **05 ✗** |
+| 7 | JWT Security Workbench | 7 | 7 | 7 | **06 ✗** |
+
+So the catalogue was right and the last three pages were wrong: DNS read
+"Tool 07", CSRF "Tool 05", JWT "Tool 06" — the numbering a reader would infer
+if they assumed DNS came last. Fixed to 05/06/07.
+
+**A correction to this document.** The Tool 03 and Tool 04 sections originally
+said the CSP page's "Tool 04" kicker was off by one and that the site lists CSP
+*third*. Both claims were wrong, and following them would have broken a
+correct page. The error came from trusting the tool sequence in the audit plan
+(headers → CSP → CORS) over the catalogue's actual order (headers → **CORS →
+CSP**). Both statements are corrected in place above.
+
+**Guard.** `ToolNumberingTests` (3 cases) now reads the catalogue cards, the
+`TOOLS_MENU` array, the prefetch block and every page's kicker, and fails if
+they disagree, if a number repeats, or if a page has no kicker at all.
+
+Verified: `python3 tools/verify.py` → **PASS**, 514 tests.

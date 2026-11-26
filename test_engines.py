@@ -1122,6 +1122,52 @@ console.log(JSON.stringify({
         self.assertIn("GET only", result.summary)
 
 
+class ToolNumberingTests(unittest.TestCase):
+    """The audit labels every tool by its position in the site catalogue.
+
+    Each tool page carries a "Tool NN" kicker. They drifted once — DNS, CSRF
+    and JWT read 07, 05, 06 — and a report that says "Tool 03" means nothing
+    if the site and the page disagree. The catalogue order is stated in three
+    places; all three must agree with each other and with the kickers.
+    """
+
+    ORDER = ["clickjacking", "headers", "cors", "csp", "dns", "csrf", "jwt"]
+
+    def _catalog_order(self) -> list[str]:
+        page = (ROOT / "tools" / "index.html").read_text(encoding="utf-8")
+        return re.findall(r'href="((?:clickjacking|headers|cors|csp|dns|csrf|jwt))/"', page)
+
+    def _menu_order(self) -> list[str]:
+        src = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = src.index("const TOOLS_MENU = [")
+        end = src.index("];", start)
+        return re.findall(r'href: "/tools/([a-z]+)/"', src[start:end])
+
+    def _prefetch_order(self) -> list[str]:
+        page = (ROOT / "index.html").read_text(encoding="utf-8")
+        return re.findall(r'<link rel="prefetch" href="tools/([a-z]+)/"', page)
+
+    def _kicker(self, slug: str) -> str:
+        page = (ROOT / "tools" / slug / "index.html").read_text(encoding="utf-8")
+        match = re.search(r'class="kicker reveal">Tool\s*(\d+)', page)
+        self.assertIsNotNone(match, f"{slug} has no Tool NN kicker")
+        return match.group(1).lstrip("0")
+
+    def test_catalog_menu_and_prefetch_agree(self):
+        self.assertEqual(self._catalog_order(), self.ORDER)
+        self.assertEqual(self._menu_order(), self.ORDER)
+        self.assertEqual(self._prefetch_order(), self.ORDER)
+
+    def test_every_kicker_matches_its_position_in_the_catalogue(self):
+        for index, slug in enumerate(self.ORDER, start=1):
+            with self.subTest(tool=slug):
+                self.assertEqual(self._kicker(slug), str(index), slug)
+
+    def test_kickers_are_unique(self):
+        numbers = [self._kicker(slug) for slug in self.ORDER]
+        self.assertEqual(len(numbers), len(set(numbers)), numbers)
+
+
 class CorsStrictnessTests(unittest.TestCase):
     """Tool 03 (CORS) engine regressions found in the 2026-11-20 audit."""
 
