@@ -199,7 +199,7 @@
       <tbody>
         <tr><td class="k">DMARC</td><td>20</td><td>One <code>_dmarc</code> TXT with <code>p=quarantine</code> or <code>p=reject</code>, full <code>pct=100</code> coverage, and no <code>sp=none</code> gap.</td></tr>
         <tr><td class="k">SPF</td><td>15</td><td>Exactly one <code>v=spf1</code> TXT with an <code>-all</code> (or <code>~all</code>) mechanism, within the 10-lookup budget.</td></tr>
-        <tr><td class="k">DKIM</td><td>10</td><td>A <code>v=DKIM1</code> key on a common selector (a miss is never proof of absence).</td></tr>
+        <tr><td class="k">DKIM</td><td>10</td><td>A published, unrevoked key (<code>p=</code> non-empty) on a common selector. The <code>v=DKIM1</code> tag is optional and need not come first (RFC 6376 §3.6.1); a miss is never proof of absence.</td></tr>
         <tr><td class="k">DNSSEC</td><td>10</td><td>DS published at the parent and DNSKEY at the apex.</td></tr>
         <tr><td class="k">Name servers</td><td>10</td><td>At least two authoritative name servers.</td></tr>
         <tr><td class="k">CAA</td><td>5</td><td>A certificate-authority authorization record.</td></tr>

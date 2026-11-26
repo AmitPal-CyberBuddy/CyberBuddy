@@ -136,7 +136,10 @@
       <strong>DKIM</strong> signs mail with a key published under a selector —
       <code>selector._domainkey.example.com</code>. A tool can only probe the
       selectors it knows, so a "no DKIM found" result is a hint, never a proof
-      that no key exists.
+      that no key exists. The version tag is optional and may appear anywhere in
+      the record, so <code>k=rsa; p=…</code> is as valid as
+      <code>v=DKIM1; k=rsa; p=…</code>; an empty <code>p=</code> is a deliberate
+      revocation, which the analyzer reports separately from an absent record.
     </p>
     <p>
       <strong>DNSSEC</strong> signs the zone so answers can be verified end to
@@ -162,7 +165,7 @@
       <tbody>
         <tr><td class="k">DMARC</td><td>20</td><td>One policy with <code>p=quarantine</code> or <code>p=reject</code>, <code>pct=100</code>, and no <code>sp=none</code> gap.</td></tr>
         <tr><td class="k">SPF</td><td>15</td><td>Exactly one record with <code>-all</code> (or <code>~all</code>), within the 10-lookup budget.</td></tr>
-        <tr><td class="k">DKIM</td><td>10</td><td>A key on the common selectors the tool probes.</td></tr>
+        <tr><td class="k">DKIM</td><td>10</td><td>An unrevoked key (<code>p=</code> present) on the common selectors the tool probes.</td></tr>
         <tr><td class="k">DNSSEC</td><td>10</td><td>DS at the parent and DNSKEY at the apex.</td></tr>
         <tr><td class="k">Name servers</td><td>10</td><td>At least two authoritative name servers.</td></tr>
         <tr><td class="k">CAA</td><td>5</td><td>The nearest inherited or exact CAA set contains an <code>issue</code> policy that names (or forbids) CAs.</td></tr>

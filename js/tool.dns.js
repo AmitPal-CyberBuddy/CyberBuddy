@@ -8,6 +8,21 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /* The previous target's report must not survive a failed or declined scan —
+     otherwise the Export menu can emit a report for a domain that was never
+     analyzed in this session. Mirrors the Tool 03 (CORS) controller. */
+  function clearReport() {
+    cbLastData = null;
+    $("results").classList.add("hidden");
+    $("summary").textContent = "";
+    const checks = $("checks").querySelector("tbody");
+    if (checks) checks.innerHTML = "";
+    const records = $("records").querySelector("tbody");
+    if (records) records.innerHTML = "";
+    const posture = $("posture");
+    if (posture) posture.innerHTML = "";
+  }
+
   function renderRecords(data) {
     const tbody = $("records").querySelector("tbody");
     const records = data.records || {};
@@ -84,17 +99,27 @@
       ? performance.now() : null;
 
     const consent = await ensureDnsConsent(domain);
-    if (consent === "deny") {
+    const declined = consent === "deny" ||
+      (typeof relayAllowed === "function" && !relayAllowed() &&
+        !(window.__cbEngine && window.__cbEngine.mode === "python"));
+    if (declined) {
       setLoading($("go"), false);
+      clearReport();
       $("staticNotice").innerHTML =
         "<h3>DNS analysis declined</h3>" +
         "<p>Public DNS lookups were declined, so this hosted page cannot read " +
         "the domain's records. Run <code>python3 server.py</code> locally to use " +
         "your configured resolver instead of Google Public DNS, then retry.</p>";
       $("staticNotice").classList.remove("hidden");
-      $("results").classList.add("hidden");
       return;
     }
+
+    // Whether the resolver answering these queries is a third party is
+    // disclosed before the first lookup, not discovered afterwards: the page
+    // labels relayed records "unverified" from the source, so a declined or
+    // blocked relay has to say so in the notice rather than fall through to
+    // "the resolver may be unreachable".
+    $("staticNotice").classList.add("hidden");
 
     const data = await apiDns(domain);
     if (data && t0 != null) {
@@ -103,13 +128,13 @@
     setLoading($("go"), false);
 
     if (!data || (data.error && !data.checks) || (data.status === "error" && !data.checks)) {
+      clearReport();
       $("staticNotice").innerHTML =
         "<h3>Could not analyze this domain</h3>" +
         "<p>No DNS data was returned. The resolver may be unreachable, blocked " +
         "or rate-limited. Run <code>python3 server.py</code> locally, then retry. " +
         (data && data.error ? "Detail: <code>" + esc(data.error) + "</code>" : "") + "</p>";
       $("staticNotice").classList.remove("hidden");
-      $("results").classList.add("hidden");
       return;
     }
 

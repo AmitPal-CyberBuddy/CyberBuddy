@@ -627,6 +627,157 @@ now have their own label, banner class and `role="img"` name.
 
 ---
 
+## Tool 05 — DNS & Domain Security Analyzer
+
+(Fifth tool in site order; the kicker read "Tool 07" and is corrected in the
+cross-cutting section below.)
+
+### What the tool does
+
+1. Validates the input as a **hostname** (a URL, path, port or `_dmarc` label is
+   rejected, never silently truncated).
+2. Asks a resolver for `A/AAAA/NS/MX/TXT/DS/DNSKEY` at the apex, `TXT` at
+   `_dmarc`, twelve `DKIM:<selector>` keys, and walks the RFC 8659 CAA tree from
+   the FQDN upward, keeping the first non-empty RRset.
+3. Scores six weighted controls (DMARC 20, SPF 15, DKIM 10, DNSSEC 10, name
+   servers 10, CAA 5) into 0–100 and A–F, refusing to grade at all when a query
+   failed — an incomplete lookup is not evidence of an absent record.
+4. Renders every finding with the raw record it used, and labels a relayed read
+   (Google Public DNS over DoH, after consent) **unverified**.
+
+Both graders — `dns_security.py` and the browser port `gradeDnsFromRecords()` in
+`js/app.js` — are exercised side by side; the parity test compares the finding
+*detail text* as well as the status and deduction.
+
+### Phase 2 — engine correctness
+
+**5.1 DKIM keys were rejected unless `v=DKIM1` came first — a false negative.**
+RFC 6376 §3.6.1 makes the version tag **optional** (it defaults to DKIM1) and
+says nothing about it having to be the first tag. The parser required
+`tags[0].lower() == "v=dkim1"`, so `k=rsa; p=MIGf…` and
+`k=rsa; p=MIGf…; v=DKIM1` — perfectly valid published keys — graded as
+*"No DKIM key on common selectors"* and cost the domain 5 points.
+
+Both ports now parse tags into a name→value map (first occurrence wins, as RFC
+6376 requires), accept a missing `v=`, reject a *different* `v=`, and treat an
+empty `p=` as a revocation. Verified: `k=rsa; p=…` → **100/A**, previously
+**95** with a DKIM "weak" finding.
+
+**5.2 A revoked key was reported as a missing key — a wrong remediation.** With
+`p=` empty (RFC 6376's revocation form) the advice was "no DKIM key on common
+selectors … a custom selector may still exist", i.e. go and look for a record
+that was deliberately retired. Revocations are now tracked separately and read
+*"DKIM key(s) on default, google are revoked (empty p=), so no active key is
+published on common selectors"*. The deduction is unchanged (an empty `p=`
+proves nothing signs), only the sentence that explains it.
+
+**5.3 Grade A claimed "the zone is signed" with no DNSSEC at all.**
+`summarize()` returned a fixed A-grade sentence ending "…and the zone is
+signed" regardless of the DNSSEC row. DNSSEC is 10 of the 100 points, so a zone
+with everything *except* DS/DNSKEY scores 90 → **A**. Confirmed: fixture minus
+DS and DNSKEY → `90 / A` with "the zone is signed" directly under a DNSSEC row
+saying "No DS or DNSKEY records". The A sentence is now conditional: signed
+zones keep the original wording, unsigned ones read *"Strong email posture —
+spoofing controls are enforced — but DNSSEC is not deployed, so lookups are not
+cryptographically authenticated."* The grade itself is unchanged (90 = A is the
+documented band).
+
+**5.4 `redirect=`-only SPF was described as a neutral result.** RFC 7208 §6.1
+forbids `all` alongside `redirect=`; the target policy decides. The engine's
+fall-through branch said *"SPF has no all mechanism — unmatched senders receive a
+neutral result; prefer -all"*, which is misleading advice for a legal record
+(retargeting is not `?all`). It now names the redirect target and says the check
+does not follow it: *"SPF has no all mechanism of its own and delegates to
+redirect=\_spf.example.com — the effective result comes from that policy, which
+this check does not follow. Confirm the target ends in -all."*
+
+**Deliberately not changed:** the 5-point deduction stays. Making a redirect-only
+policy full-credit would reward a record whose target policy was never fetched
+and might itself end in `+all` — a fail-open in the grader. An `info` status was
+drafted and rejected for that reason; the fix is the sentence, not the score.
+Likewise the "SPF has no all mechanism" branch without `redirect=` still means a
+neutral result and is still correct.
+
+**5.5 `v=spf10` / `v=dmarc10` were accepted as SPF/DMARC records.** The version
+test was `startswith("v=spf1")`, so a record whose version is `spf10` — not an
+SPF record at all per RFC 7208 §4.5 — scored as SPF, and the same held for
+`v=dmarc10` (RFC 7489 §6.3). Both now require a whole version tag (terminated by
+whitespace, `;` or end of string).
+
+**5.6 DKIM selector lists could drift between the two ports.** They are separate
+literals (`DKIM_SELECTORS` in Python, `DNS_DKIM_SELECTORS` in JS) that must
+probe exactly the same names, or the two graders disagree for no visible reason.
+`test_engine_and_browser_probe_the_same_dkim_selectors` now reads the JS array
+and fails on any divergence or duplicate.
+
+### Phase 3 — result / UX
+
+**5.7 A declined scan left the previous report on screen.** Declining the
+consent gate hid `#results` but never cleared `#summary`, the findings table,
+the record table or `cbLastData`, so the Export menu could still emit the
+**previous domain's** report for a scan that never happened. Same defect class as
+Tool 03's 3.x; fixed the same way (`clearReport()` on the decline and failure
+paths, `cbLastData = null`).
+
+**5.8 A stale session "no" could be bypassed, and only a fresh "deny" was
+checked.** The controller tested `consent === "deny"` but not the revoked-consent
+state, unlike the CORS controller. Both now share the rule: a refused relay is
+refused even when the gate short-circuits.
+
+**5.9 A failed lookup left the old summary in place.** `#results` was hidden but
+`#summary` still carried the previous verdict — and a hidden section is one
+`hidden`-class bug away from showing it. Cleared on every failure path.
+
+**5.10 The provenance was right but is now pinned by a test.** The resolver row
+is filled from `data.resolver` (the system resolver that actually answered) and
+falls back to `sourceLabel()`, which names the DoH relay as "public DNS
+(Google)". `test_the_page_never_claims_a_resolver_it_did_not_use` keeps it that
+way.
+
+**5.11 Considered and left as-is.** An apex `A: NXDOMAIN` with a working
+`_dmarc` record returns an ungraded `error` — defensible: a name that does not
+exist has no posture to measure, and the DNS-evidence rule is applied
+consistently. CAA inherited from a parent zone (`CAA_SOURCE` = the TLD) earns
+full credit with the source named in the evidence; RFC 8659 does make a parent's
+CAA set authoritative for the child, so the grade is correct even though it is
+generous in spirit. `CAA 0 issuewild` alone scores 3 of 5 (wildcard-only
+protection) — kept.
+
+### Verification
+
+- `python3 -m unittest test_engines -q` → **529 tests OK** (was 514; +15 for
+  Tool 05: 7 engine regressions, 1 selector-parity guard, 5 page-contract
+  assertions, 2 evidence/provenance checks).
+- `python3 /tmp/dnsparity.py` style check, now in-suite: the Python and browser
+  graders produce identical score, grade, risk, summary **and per-finding detail
+  text** across 12 record maps, including the DKIM shapes in 5.1/5.2. A separate
+  `test_js_finding_wording_matches_python` pins the copy character-for-character
+  on one map where all six controls have something to say.
+- jsdom harness `/tmp/dom-dns.js` → **15/15** against the fixed controller
+  (happy path, decline, hard failure, re-enabled button, invalid input). The same
+  harness against the previous controller → **12/15**, failing exactly the three
+  stale-report assertions above.
+- Live resolver check (`scan_dns`, system resolver, 2026-11-20): `cloudflare.com`
+  → 100/A "…and the zone is signed"; `github.com` → 90/A "…but DNSSEC is not
+  deployed" (it publishes no DS); `example.com` → 90/A with the DKIM revocation
+  sentence and the CAA gap named separately.
+- `python3 tools/verify.py` → **PASS** (20 pages, links clean).
+
+### Recommendations not made in this pass
+
+- **Follow `redirect=` and `include:`** to report the effective SPF verdict. It
+  needs a second round of queries and a loop guard (RFC 7208 caps lookups at 10
+  and forbids recursive `redirect`); the wording fix above is the honest interim.
+- **Look up the organisational domain's DMARC** when the apex has none
+  (RFC 7489 §3.2), so a subdomain that inherits `p=reject` is not marked
+  "missing".
+- **DKIM key strength** (`k=`, key length, `h=` allowed hashes): a published
+  `p=` says nothing about whether the key is 1024-bit RSA.
+- **CAA from the TLD** deserves a "inherited — verify the registry's policy"
+  note in the evidence line, even though the grade is per RFC 8659.
+
+---
+
 ## Cross-cutting — tool numbering (fixed)
 
 The audit labels tools by their position in the site catalogue, so the
@@ -658,4 +809,4 @@ CSP**). Both statements are corrected in place above.
 `TOOLS_MENU` array, the prefetch block and every page's kicker, and fails if
 they disagree, if a number repeats, or if a page has no kicker at all.
 
-Verified: `python3 tools/verify.py` → **PASS**, 514 tests.
+Verified: `python3 tools/verify.py` → **PASS**, 529 tests.

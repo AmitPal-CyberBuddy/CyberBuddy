@@ -18,8 +18,9 @@ Checks
 - SPF                   v=spf1 TXT, its qualifier (+all/?all/~all/-all) and
                         the 10-lookup budget from RFC 7208.
 - DMARC                 _dmarc TXT, its p= policy and subdomain policy.
-- DKIM                  v=DKIM1 TXT on common selectors (never a proof of
-                        absence — a custom selector may still exist).
+- DKIM                  An unrevoked key (non-empty p=) on common selectors;
+                        v=DKIM1 is optional per RFC 6376 §3.6.1 (and a miss is
+                        never a proof of absence — a custom selector may exist).
 - CAA                   Certificate Authority Authorization for issuance.
 
 Everything is stdlib: the engine speaks the DNS wire format directly over
@@ -686,29 +687,76 @@ def _is_null_mx(pairs: list[tuple[int, str]]) -> bool:
     return bool(pairs) and all(exchange in (".", "") for _pref, exchange in pairs)
 
 
+def _tag_starts_version(text: str, version: str) -> bool:
+    """True when ``text`` begins with ``<version>`` as a whole tag.
+
+    A plain ``startswith("v=spf1")`` also matches ``v=spf10``, and RFC 7208
+    section 4.5 says a record whose version is not ``spf1`` is not an SPF
+    record at all. The version term is delimited by ``;`` (DMARC) or by
+    whitespace/end-of-string (SPF), so require that boundary explicitly.
+    """
+    stripped = text.lstrip()
+    lowered = stripped.lower()
+    if not lowered.startswith(version):
+        return False
+    rest = lowered[len(version):]
+    return not rest or rest[0] in " \t\r\n;"
+
+
 def _spf_records(records: dict[str, list[str]]) -> list[str]:
-    return [t for t in records.get("TXT", []) if t.lstrip().lower().startswith("v=spf1")]
+    return [t for t in records.get("TXT", []) if _tag_starts_version(t, "v=spf1")]
 
 
 def _dmarc_records(records: dict[str, list[str]]) -> list[str]:
-    return [t for t in records.get("DMARC", []) if t.lstrip().lower().startswith("v=dmarc1")]
+    return [t for t in records.get("DMARC", []) if _tag_starts_version(t, "v=dmarc1")]
 
 
-def _dkim_records(records: dict[str, list[str]]) -> list[tuple[str, str]]:
-    """Return syntactically recognizable, non-revoked DKIM key records."""
+def dkim_selector_key(value: str) -> str | None:
+    """Return the published key from a DKIM TXT record, or None if unusable.
+
+    ``v=DKIM1;`` is optional in RFC 6376 section 3.6.1, and it is not required
+    to be the *first* tag — plenty of real records start with ``k=`` or ``p=``.
+    Requiring the version tag first (the previous behaviour) reported a
+    perfectly valid key as "no DKIM key on common selectors", a false negative
+    that cost the domain 5 points. What actually makes a record usable is a
+    non-empty ``p=``: an empty ``p=`` means the key is *revoked*.
+    """
+    tags: dict[str, str] = {}
+    for token in (value or "").split(";"):
+        token = token.strip()
+        if "=" not in token:
+            continue
+        name, tag_value = token.split("=", 1)
+        # Never overwrite: RFC 6376 says the first occurrence of a tag wins.
+        tags.setdefault(name.strip().lower(), tag_value.strip())
+    version = tags.get("v")
+    if version is not None and version.strip().lower() != "dkim1":
+        return None
+    return tags.get("p") or None
+
+
+def _dkim_scan(records: dict[str, list[str]]) -> tuple[list[tuple[str, str]], list[str]]:
+    """Split DKIM findings into (live keys, revoked selectors).
+
+    An empty ``p=`` is a *revocation* (RFC 6376 section 3.6.1), which is a very
+    different signal from "no key published here". Reporting both as "no DKIM
+    key on common selectors" told the operator to go looking for a missing
+    record that was in fact deliberately retired.
+    """
     found: list[tuple[str, str]] = []
+    revoked: list[str] = []
     for key, values in records.items():
         if not key.startswith("DKIM:"):
             continue
+        selector = key.split(":", 1)[1]
         for value in values:
-            tags = [token.strip() for token in value.split(";") if token.strip()]
-            if not tags or tags[0].lower() != "v=dkim1":
+            if not dkim_selector_key(value):
+                if selector not in revoked:
+                    revoked.append(selector)
                 continue
-            public_keys = [token[2:].strip() for token in tags if token.lower().startswith("p=")]
-            if public_keys and public_keys[-1]:
-                found.append((key.split(":", 1)[1], value))
-                break
-    return found
+            found.append((selector, value))
+            break
+    return found, revoked
 
 
 def _caa_properties(records: dict[str, list[str]]) -> list[tuple[int, str, str]]:
@@ -743,6 +791,20 @@ def _spf_qualifier(spf: str) -> str:
             return term
         if term.endswith("all") and term[:-3] in ("+", "-", "~", "?"):
             return term
+    return ""
+
+
+def _spf_redirect_target(spf: str) -> str:
+    """Return the ``redirect=`` target, or "" when the record has none.
+
+    RFC 7208 section 6.1: when no mechanism matches and ``redirect`` is present,
+    the result is whatever the *target* policy returns. A record such as
+    ``v=spf1 redirect=_spf.example.com`` therefore has no ``all`` mechanism by
+    design — that is legal, not an oversight.
+    """
+    for term in spf.lower().split():
+        if term.startswith("redirect="):
+            return term.split("=", 1)[1].strip()
     return ""
 
 
@@ -903,9 +965,19 @@ def grade_dns_from_records(
                                     "SPF ends in ?all (neutral) — permissive and easily spoofed; prefer -all.",
                                     text[:180], 5))
             elif not qualifier:
-                checks.append(Check("SPF", "weak",
-                                    "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.",
-                                    text[:180], 5))
+                target = _spf_redirect_target(text)
+                if target:
+                    # RFC 7208 6.1 hands the verdict to the target policy, so
+                    # "no all mechanism" is legal here. The deduction stays: the
+                    # engine does not follow redirect=, so an unknown target
+                    # policy must not earn full credit (it may end in +all).
+                    checks.append(Check("SPF", "weak",
+                                        f"SPF has no all mechanism of its own and delegates to redirect={target} — the effective result comes from that policy, which this check does not follow. Confirm the target ends in -all.",
+                                        text[:180], 5))
+                else:
+                    checks.append(Check("SPF", "weak",
+                                        "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.",
+                                        text[:180], 5))
             else:
                 checks.append(Check("SPF", "ok",
                                     "SPF present with a restrictive qualifier (" + qualifier + ").",
@@ -982,12 +1054,17 @@ def grade_dns_from_records(
                             "_dmarc TXT: (none)", 0))
 
     # DKIM
-    dkim = _dkim_records(records)
+    dkim, revoked = _dkim_scan(records)
     if dkim:
         selectors = ", ".join(s for s, _v in dkim[:5])
         checks.append(Check("DKIM", "ok",
                             f"DKIM keys published on {len(dkim)} common selector(s).",
                             "selectors: " + selectors, 0))
+    elif revoked and (receives_email or spf or dmarc):
+        checks.append(Check("DKIM", "weak",
+                            "DKIM key(s) on " + ", ".join(revoked[:5]) +
+                            " are revoked (empty p=), so no active key is published on common selectors. This is not proof that no signing selector exists — check the selector your mail actually signs with.",
+                            "selectors: " + ", ".join(revoked[:5]), 5))
     elif receives_email or spf or dmarc:
         checks.append(Check("DKIM", "weak",
                             "No DKIM key on common selectors. This is not proof of absence — a custom selector may still exist.",
@@ -1043,7 +1120,7 @@ def grade_dns_from_records(
         score=score,
         grade=grade,
         risk=risk_for(grade),
-        summary=summarize(grade, missing),
+        summary=summarize(grade, missing, dnssec=bool(ds and dnskey)),
     )
 
 
@@ -1063,13 +1140,25 @@ def risk_for(grade: str) -> str:
     return {"A": "low", "B": "low", "C": "medium", "D": "medium", "F": "high"}[grade]
 
 
-def summarize(grade: str, missing: list[str]) -> str:
+def summarize(grade: str, missing: list[str], dnssec: bool = False) -> str:
+    """One-line verdict that only claims what the findings actually measured.
+
+    The A-grade sentence used to end "…and the zone is signed" unconditionally.
+    DNSSEC is worth 10 points, so a zone with everything *except* DNSSEC still
+    scores 90 = A — the report then made a claim about the sign state that its
+    own DNSSEC row contradicted.
+    """
     extra = ""
     if missing and grade != "A":
         preview = ", ".join(missing[:4])
         extra = f" Missing: {preview}" + ("…" if len(missing) > 4 else "") + "."
     if grade == "A":
-        return "Strong DNS posture — email-spoofing controls are enforced and the zone is signed."
+        if dnssec:
+            return "Strong DNS posture — email-spoofing controls are enforced and the zone is signed."
+        return (
+            "Strong email posture — spoofing controls are enforced — but DNSSEC is "
+            "not deployed, so lookups are not cryptographically authenticated."
+        )
     if grade == "B":
         return "Good posture with a few gaps. Close the remaining DNS controls." + extra
     if grade == "C":

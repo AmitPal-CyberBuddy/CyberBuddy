@@ -4567,28 +4567,62 @@ function dnsStatusCodeName(code) {
   return ({ 0: "NOERROR", 2: "SERVFAIL", 3: "NXDOMAIN", 5: "REFUSED" }[code]) || ("RCODE" + code);
 }
 
+/* Mirror of _tag_starts_version() in dns_security.py: the version term needs a
+   real boundary, otherwise "v=spf10 ..." would be accepted as SPF. RFC 7208 4.5:
+   a record whose version is not spf1 is not an SPF record at all. */
+function tagStartsVersion(text, version) {
+  const lowered = String(text == null ? "" : text).trimStart().toLowerCase();
+  if (lowered.indexOf(version) !== 0) return false;
+  const rest = lowered.slice(version.length);
+  return !rest.length || " \t\r\n;".indexOf(rest[0]) !== -1;
+}
+
 function dnsSpfRecords(records) {
-  return (records.TXT || []).filter((t) => String(t).trim().toLowerCase().startsWith("v=spf1"));
+  return (records.TXT || []).filter((t) => tagStartsVersion(t, "v=spf1"));
 }
 
 function dnsDmarcRecords(records) {
-  return (records.DMARC || []).filter((t) => String(t).trim().toLowerCase().startsWith("v=dmarc1"));
+  return (records.DMARC || []).filter((t) => tagStartsVersion(t, "v=dmarc1"));
 }
 
-function dnsDkimRecords(records) {
+/* Mirror of dkim_selector_key() in dns_security.py. `v=DKIM1;` is optional
+   (RFC 6376 3.6.1) and need not be the first tag; what makes a record usable
+   is a non-empty `p=` — an empty one means the key is revoked. */
+function dkimSelectorKey(value) {
+  const tags = {};
+  String(value || "").split(";").forEach((token) => {
+    const trimmed = token.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) return;
+    const name = trimmed.slice(0, eq).trim().toLowerCase();
+    // The first occurrence of a tag wins (RFC 6376).
+    if (!Object.prototype.hasOwnProperty.call(tags, name)) tags[name] = trimmed.slice(eq + 1).trim();
+  });
+  if (Object.prototype.hasOwnProperty.call(tags, "v") && tags.v.toLowerCase() !== "dkim1") return null;
+  return tags.p || null;
+}
+
+/* Returns [live keys, revoked selectors]. An empty p= is a revocation
+   (RFC 6376 3.6.1), not an absent record — see _dkim_scan() in Python. */
+function dnsDkimScan(records) {
   const found = [];
+  const revoked = [];
   Object.keys(records || {}).forEach((key) => {
     if (key.indexOf("DKIM:") !== 0) return;
-    const value = (records[key] || []).find((candidate) => {
-      const tags = String(candidate).split(";").map((tag) => tag.trim()).filter(Boolean);
-      if (!tags.length || tags[0].toLowerCase() !== "v=dkim1") return false;
-      const keys = tags.filter((tag) => tag.toLowerCase().indexOf("p=") === 0).map((tag) => tag.slice(2).trim());
-      return keys.length && keys[keys.length - 1];
-    });
-    if (value) found.push([key.slice(5), value]);
+    const selector = key.slice(5);
+    const values = records[key] || [];
+    for (let i = 0; i < values.length; i++) {
+      if (!dkimSelectorKey(values[i])) {
+        if (revoked.indexOf(selector) === -1) revoked.push(selector);
+        continue;
+      }
+      found.push([selector, values[i]]);
+      break;
+    }
   });
-  return found;
+  return [found, revoked];
 }
+
 
 function dnsCaaProperties(records) {
   const parsed = [];
@@ -4611,6 +4645,16 @@ function dnsSpfQualifier(spf) {
   for (let i = terms.length - 1; i >= 0; i--) {
     if (["all", "+all", "-all", "~all", "?all"].indexOf(terms[i]) !== -1) return terms[i];
     if (/^[+~?-]all$/.test(terms[i])) return terms[i];
+  }
+  return "";
+}
+
+/* Mirror of _spf_redirect_target(): RFC 7208 6.1 hands the verdict to the
+   target policy, so a redirect-only record needs no `all` of its own. */
+function dnsSpfRedirectTarget(spf) {
+  const terms = String(spf || "").toLowerCase().split(/\s+/);
+  for (let i = 0; i < terms.length; i++) {
+    if (terms[i].indexOf("redirect=") === 0) return terms[i].slice(9).trim();
   }
   return "";
 }
@@ -4730,7 +4774,14 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
       } else if (qualifier === "?all") {
         checks.push(dnsFinding("SPF", "weak", "SPF ends in ?all (neutral) — permissive and easily spoofed; prefer -all.", text.slice(0, 180), 5));
       } else if (!qualifier) {
-        checks.push(dnsFinding("SPF", "weak", "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.", text.slice(0, 180), 5));
+        const target = dnsSpfRedirectTarget(text);
+        if (target) {
+          // Same call as the Python engine: legal per RFC 7208 6.1, but the
+          // redirect target is not followed, so it must not earn full credit.
+          checks.push(dnsFinding("SPF", "weak", "SPF has no all mechanism of its own and delegates to redirect=" + target + " — the effective result comes from that policy, which this check does not follow. Confirm the target ends in -all.", text.slice(0, 180), 5));
+        } else {
+          checks.push(dnsFinding("SPF", "weak", "SPF has no all mechanism — unmatched senders receive a neutral result; prefer -all.", text.slice(0, 180), 5));
+        }
       } else {
         checks.push(dnsFinding("SPF", "ok", "SPF present with a restrictive qualifier (" + qualifier + ").", text.slice(0, 180), 0));
       }
@@ -4785,10 +4836,14 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
     checks.push(dnsFinding("DMARC", "info", "No DMARC record — not required when the domain does not handle email.", "_dmarc TXT: (none)", 0));
   }
 
-  const dkim = dnsDkimRecords(records);
+  const dkimScan = dnsDkimScan(records);
+  const dkim = dkimScan[0];
+  const dkimRevoked = dkimScan[1];
   if (dkim.length) {
     const selectors = dkim.slice(0, 5).map((pair) => pair[0]).join(", ");
     checks.push(dnsFinding("DKIM", "ok", "DKIM keys published on " + dkim.length + " common selector(s).", "selectors: " + selectors, 0));
+  } else if (dkimRevoked.length && (receivesEmail || spf.length || dmarc.length)) {
+    checks.push(dnsFinding("DKIM", "weak", "DKIM key(s) on " + dkimRevoked.slice(0, 5).join(", ") + " are revoked (empty p=), so no active key is published on common selectors. This is not proof that no signing selector exists — check the selector your mail actually signs with.", "selectors: " + dkimRevoked.slice(0, 5).join(", "), 5));
   } else if (receivesEmail || spf.length || dmarc.length) {
     checks.push(dnsFinding("DKIM", "weak", "No DKIM key on common selectors. This is not proof of absence — a custom selector may still exist.", "common selectors: (none)", 5));
   } else {
@@ -4820,7 +4875,14 @@ function gradeDnsFromRecords(domain, records, statuses, source) {
   const missing = checks.filter((c) => c.status === "missing").map((c) => c.name);
   let summary;
   const extra = missing.length && grade !== "A" ? " Missing: " + missing.slice(0, 4).join(", ") + (missing.length > 4 ? "…" : "") + "." : "";
-  if (grade === "A") summary = "Strong DNS posture — email-spoofing controls are enforced and the zone is signed.";
+  // Only claim the zone is signed when the DNSSEC row measured it: DNSSEC is
+  // 10 points, so an otherwise perfect zone without it still scores 90 = A.
+  const dnssecOk = checks.some((c) => c.name === "DNSSEC" && c.status === "ok");
+  if (grade === "A") {
+    summary = dnssecOk
+      ? "Strong DNS posture — email-spoofing controls are enforced and the zone is signed."
+      : "Strong email posture — spoofing controls are enforced — but DNSSEC is not deployed, so lookups are not cryptographically authenticated.";
+  }
   else if (grade === "B") summary = "Good posture with a few gaps. Close the remaining DNS controls." + extra;
   else if (grade === "C") summary = "Notable gaps — attackers get signal here. Prioritize the missing records." + extra;
   else if (grade === "D") summary = "Weak DNS posture. Several anti-spoofing and integrity controls are missing." + extra;

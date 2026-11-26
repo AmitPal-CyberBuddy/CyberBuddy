@@ -6858,6 +6858,130 @@ class DnsEngineTests(unittest.TestCase):
         self.assertEqual(dnssec.deduction, 10)
         self.assertIn("evidence is incomplete", dnssec.detail)
 
+    STRONG = {
+        "A": ["203.0.113.10"],
+        "NS": ["ns1.example.com.", "ns2.example.com."],
+        "DS": ["12345 8 2 ABCDEF"],
+        "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
+        "MX": ["10 mail.example.com."],
+        "TXT": ["v=spf1 -all"],
+        "DMARC": ["v=DMARC1; p=reject"],
+        "DKIM:default": ["v=DKIM1; k=rsa; p=MIGfMA0G"],
+        "CAA": ['0 issue "letsencrypt.org"'],
+    }
+
+    def _check(self, records, name):
+        return next(c for c in self._grade(records).checks if c.name == name)
+
+    def test_dkim_key_does_not_require_the_optional_version_tag(self):
+        # RFC 6376 3.6.1: v= is optional (default DKIM1) and may appear in any
+        # position, so all three shapes below are valid published keys.
+        for record in (
+            "v=DKIM1; k=rsa; p=MIGfMA0G",
+            "k=rsa; p=MIGfMA0G",
+            "k=rsa; p=MIGfMA0G; v=DKIM1",
+        ):
+            with self.subTest(record=record):
+                check = self._check(dict(self.STRONG, **{"DKIM:default": [record]}), "DKIM")
+                self.assertEqual(check.status, "ok")
+                self.assertEqual(check.deduction, 0)
+
+    def test_dkim_rejects_other_versions_and_missing_or_empty_keys(self):
+        for record in ("v=DKIM2; k=rsa; p=abc", "v=DKIM1; k=rsa", "v=DKIM1; p="):
+            with self.subTest(record=record):
+                check = self._check(dict(self.STRONG, **{"DKIM:default": [record]}), "DKIM")
+                self.assertEqual(check.status, "weak")
+                self.assertEqual(check.deduction, 5)
+
+    def test_revoked_dkim_selector_is_reported_as_revoked_not_absent(self):
+        check = self._check({"MX": ["10 mail.example.com."], "DKIM:default": ["v=DKIM1; p="]}, "DKIM")
+        self.assertEqual(check.status, "weak")
+        self.assertIn("revoked", check.detail)
+        self.assertNotIn("No DKIM key on common selectors", check.detail)
+        self.assertIn("default", check.evidence)
+
+    def test_dkim_stays_informational_without_email(self):
+        check = self._check({"A": ["203.0.113.10"], "MX": ["0 ."]}, "DKIM")
+        self.assertEqual(check.status, "info")
+        self.assertEqual(check.deduction, 0)
+
+    def test_grade_a_summary_only_claims_dnssec_when_it_measured_it(self):
+        signed = self._grade(self.STRONG)
+        self.assertEqual((signed.score, signed.grade), (100, "A"))
+        self.assertIn("zone is signed", signed.summary)
+
+        unsigned = dict(self.STRONG)
+        del unsigned["DS"], unsigned["DNSKEY"]
+        result = self._grade(unsigned)
+        # 90 is still an A: DNSSEC is only 10 of the 100 points.
+        self.assertEqual((result.score, result.grade), (90, "A"))
+        self.assertNotIn("zone is signed", result.summary)
+        self.assertIn("DNSSEC is not deployed", result.summary)
+
+    def test_spf_redirect_only_record_is_described_accurately(self):
+        # RFC 7208 6.1 forbids all= alongside redirect=, so "no all mechanism"
+        # is legal here and must not be described as a neutral result.
+        check = self._check(
+            {"MX": ["10 mail.example.com."], "TXT": ["v=spf1 redirect=_spf.example.com"]}, "SPF"
+        )
+        self.assertEqual(check.status, "weak")
+        self.assertEqual(check.deduction, 5)
+        self.assertIn("redirect=_spf.example.com", check.detail)
+        self.assertNotIn("neutral result", check.detail)
+
+    def test_spf_and_dmarc_require_a_whole_version_tag(self):
+        # v=spf10 / v=dmarc10 are not SPF/DMARC records (RFC 7208 4.5, RFC 7489 6.3).
+        spf = self._check(
+            {"MX": ["10 mail.example.com."], "TXT": ["v=spf10 -all"]}, "SPF"
+        )
+        self.assertEqual(spf.status, "missing")
+        dmarc = self._check(
+            {"MX": ["10 mail.example.com."], "DMARC": ["v=dmarc10; p=reject"]}, "DMARC"
+        )
+        self.assertEqual(dmarc.status, "missing")
+
+    def test_source_chip_names_the_resolver_only_when_a_relay_was_disclosed(self):
+        # The report head must say who answered. A local system resolver and the
+        # hosted DNS-over-HTTPS relay are labelled differently, never merged.
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+
+        def label(source):
+            node = shutil.which("node")
+            if not node:
+                self.skipTest("node not available")
+            script = (
+                "const document = { documentElement: { classList: { add() {} } } };\n"
+                "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+                + app
+                + "\nconsole.log(JSON.stringify(sourceLabel({ _source: " + json.dumps(source) + " })));\n"
+            )
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+                fh.write(script)
+                path = fh.name
+            try:
+                proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+            finally:
+                os.unlink(path)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return json.loads(proc.stdout.strip().splitlines()[-1])
+
+        # The relayed read names the third party that answered the queries.
+        self.assertEqual(label("dns-relay"), "public DNS (Google)")
+        self.assertEqual(label("python"), "python engine")
+        self.assertNotEqual(label("python"), label("dns-relay"))
+
+    def test_engine_and_browser_probe_the_same_dkim_selectors(self):
+        # The graders can only agree when they query the same selectors; a
+        # selector added to one port silently becomes a parity break.
+        import re
+        from dns_security import DKIM_SELECTORS
+        app = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = app.index("const DNS_DKIM_SELECTORS = [")
+        block = app[start:app.index("];", start)]
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', block)), DKIM_SELECTORS)
+        self.assertEqual(len(DKIM_SELECTORS), len(set(DKIM_SELECTORS)))
+
     def test_single_ns_is_weak(self):
         result = self._grade({"A": ["203.0.113.10"], "NS": ["ns1.example.com."]})
         ns = next(c for c in result.checks if c.name == "Name servers")
@@ -7180,10 +7304,35 @@ class DnsParityTests(unittest.TestCase):
                 "TXT": ["v=spf1 -all", "v=spf1 ~all"],
                 "DMARC": ["v=DMARC1; p=reject", "v=DMARC1; p=quarantine"],
             },
+            # DKIM without the optional v= tag, and with v= in a later position.
+            {"MX": ["10 m.example.com."], "DKIM:default": ["k=rsa; p=MIGfMA0G"]},
+            {"MX": ["10 m.example.com."], "DKIM:google": ["k=rsa; p=MIGfMA0G; v=DKIM1"]},
+            # A revoked key must read as revoked, not as an absent record.
+            {"MX": ["10 m.example.com."], "DKIM:default": ["v=DKIM1; p="]},
+            # redirect=-only SPF (RFC 7208 6.1) and near-miss version tags.
+            {
+                "MX": ["10 m.example.com."],
+                "TXT": ["v=spf1 redirect=_spf.example.com"],
+                "DMARC": ["v=DMARC1; p=reject"],
+            },
+            {"MX": ["10 m.example.com."], "TXT": ["v=spf10 -all"], "DMARC": ["v=dmarc10; p=reject"]},
+            # A perfect posture minus DNSSEC still grades A; the summary must
+            # then not claim the zone is signed.
+            {
+                "A": ["203.0.113.10"],
+                "NS": ["ns1.example.com.", "ns2.example.com."],
+                "MX": ["10 mail.example.com."],
+                "TXT": ["v=spf1 -all"],
+                "DMARC": ["v=DMARC1; p=reject"],
+                "DKIM:default": ["v=DKIM1; p=abc"],
+                "CAA": ['0 issue "letsencrypt.org"'],
+            },
         ]
         expected = []
+        summaries = []
         for records in scenarios:
             result = grade_dns_from_records("example.com", records, {"A": "NOERROR"})
+            summaries.append(result.summary)
             expected.append({
                 check.name: (check.status, check.deduction)
                 for check in result.checks
@@ -7195,7 +7344,7 @@ class DnsParityTests(unittest.TestCase):
             + "\nconst scenarios = " + _json.dumps(scenarios) + ";\n"
             + "console.log(JSON.stringify(scenarios.map((records) => {"
             + " const r=gradeDnsFromRecords('example.com',records,{A:'NOERROR'},'browser');"
-            + " return Object.fromEntries(r.checks.map((c)=>[c.name,[c.status,c.deduction||0]]));"
+            + " return { summary: r.summary, checks: Object.fromEntries(r.checks.map((c)=>[c.name,[c.status,c.deduction||0]])) };"
             + "})));\n"
         )
         with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
@@ -7209,11 +7358,12 @@ class DnsParityTests(unittest.TestCase):
             os.unlink(path)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         actual = _json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual([row["summary"] for row in actual], summaries)
         normalized_expected = [
             {name: list(value) for name, value in checks.items()}
             for checks in expected
         ]
-        self.assertEqual(actual, normalized_expected)
+        self.assertEqual([row["checks"] for row in actual], normalized_expected)
 
     def test_browser_doh_filters_answer_types_and_walks_inherited_caa(self):
         node = shutil.which("node")
@@ -7250,6 +7400,55 @@ class DnsParityTests(unittest.TestCase):
         self.assertEqual(payload["records"]["CAA_SOURCE"], ["example.com"])
         self.assertEqual(payload["statuses"]["CAA@example.com"], "NOERROR")
 
+    def test_js_finding_wording_matches_python(self):
+        """Detail copy is part of the contract: the two graders must not drift
+        apart on how a finding is *explained* (this is how "no all mechanism"
+        survived in both ports while being wrong for redirect=)."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        import json as _json
+        from dns_security import grade_dns_from_records
+        records = {
+            "A": ["203.0.113.10"],
+            "NS": ["ns1.example.com.", "ns2.example.com."],
+            "DS": ["12345 8 2 ABCDEF"],
+            "DNSKEY": ["flags=257 protocol=3 algorithm=13 keylen=64"],
+            "MX": ["10 mail.example.com."],
+            "TXT": ["v=spf1 redirect=_spf.example.com"],
+            "DMARC": ["v=DMARC1; p=reject"],
+            "DKIM:default": ["k=rsa; p=MIGfMA0G; v=DKIM1", "v=DKIM1; p="],
+            "DKIM:google": ["v=DKIM1; p="],
+            "CAA": ['0 issue "letsencrypt.org"'],
+        }
+        py = grade_dns_from_records("example.com", records, {"A": "NOERROR"})
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', pathname: '/' }, addEventListener() {} };\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\nconst r = gradeDnsFromRecords('example.com', " + _json.dumps(records)
+            + ", {A:'NOERROR'}, 'browser');\n"
+            + "console.log(JSON.stringify(r.checks.map((c) => [c.name, c.status, c.detail])));\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        js_checks = _json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(
+            js_checks,
+            [[c.name, c.status, c.detail] for c in py.checks],
+        )
+        # Guard the specific wording this test was written for.
+        self.assertIn("redirect=_spf.example.com", js_checks[4][2])
+
     def test_js_grader_refuses_to_score_incomplete_dns_evidence(self):
         node = shutil.which("node")
         if not node:
@@ -7277,6 +7476,42 @@ class DnsParityTests(unittest.TestCase):
         self.assertEqual(payload["risk"], "unknown")
         self.assertIn("NS", payload["error"])
         self.assertEqual(payload["checks"][0]["name"], "DNS queries")
+
+
+class DnsPageContractTests(unittest.TestCase):
+    """Tool 05 (DNS) UI/UX regressions found in the 2026-11-20 audit."""
+
+    def setUp(self) -> None:
+        self.page = (ROOT / "tools" / "dns" / "index.html").read_text(encoding="utf-8")
+        self.js = (ROOT / "js" / "tool.dns.js").read_text(encoding="utf-8")
+
+    def test_declining_or_denying_clears_the_exportable_report(self):
+        self.assertIn("function clearReport()", self.js)
+        start = self.js.index("const consent = await ensureDnsConsent(domain);")
+        denial = self.js[start:self.js.index('$("staticNotice").classList.remove("hidden");', start)]
+        self.assertIn("clearReport();", denial)
+        self.assertIn("cbLastData = null;", self.js)
+
+    def test_a_stale_session_consent_denial_is_honoured(self):
+        # Consent revoked in this tab must stop the scan even when
+        # ensureDnsConsent short-circuits on a cached answer.
+        self.assertIn("relayAllowed()", self.js)
+        self.assertIn("declined", self.js)
+
+    def test_a_failed_lookup_cannot_leave_the_previous_report_visible(self):
+        failure = self.js[self.js.index('if (!data || (data.error && !data.checks)'):]
+        self.assertIn("clearReport();", failure)
+        self.assertIn("server.py", failure)
+
+    def test_the_page_never_claims_a_resolver_it_did_not_use(self):
+        # The hosted path relays to Google Public DNS, the local path uses the
+        # system resolver; the metadata row is filled from the result, not a
+        # hard-coded string.
+        self.assertIn('$("mResolver").textContent = data.resolver || sourceLabel(data);', self.js)
+        self.assertIn("DNS-over-HTTPS (Google Public DNS)", self.page)
+
+    def test_missing_dkim_is_described_as_evidence_not_proof(self):
+        self.assertIn("not proof that no key exists", self.page)
 
 
 class DnsSiteTests(unittest.TestCase):
