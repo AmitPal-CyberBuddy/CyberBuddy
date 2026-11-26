@@ -650,6 +650,228 @@ class HeadersPageContractTests(unittest.TestCase):
         self.assertIn(".grade.unknown {", self.css)
 
 
+class HeadersUngradedResultTests(unittest.TestCase):
+    """Tool 02 addendum: an unfinished request must not be reported as 0/F.
+
+    Found only by driving the live server (``GET /api/headers?url=…`` against a
+    host whose TLS handshake fails): the engine returned ``score: 0,
+    grade: "F", risk: "unknown"`` for a request that never completed, so the
+    page rendered a *graded* zero beside a verdict of UNKNOWN and the Markdown,
+    JSON, CSV and HTML exports all carried a letter grade for a scan that never
+    happened. The sibling engines (CSP, CORS, clickjacking) already reported
+    ``risk: "unknown"`` with no score; headers was the outlier.
+    """
+
+    def _run_app_js(self, harness: str):
+        """Run a fragment against js/app.js in a bare Node context.
+
+        The stub globals mirror BrowserUxContractTests._run_app_js; the exports
+        are pure functions over a result object, so no DOM is needed.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = (
+            "const document = { documentElement: { classList: { add() {} } } };\n"
+            "const window = { __cbEngine: {}, location: { origin: 'https://example.test', "
+            "pathname: '/' }, addEventListener() {} };\n"
+            "const localStorage = { getItem(){return null;}, setItem(){}, removeItem(){} };\n"
+            "const sessionStorage = localStorage;\n"
+            + (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+            + "\n" + harness
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+            handle.write(script)
+            path = handle.name
+        try:
+            proc = subprocess.run(
+                [node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=60
+            )
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_transport_failure_is_ungraded(self):
+        from security_headers import scan_headers
+
+        # 127.0.0.1:1 is refused immediately by the OS — a deterministic
+        # transport failure that never leaves the sandbox.
+        result = scan_headers("http://127.0.0.1:1/", timeout=3.0, allow_private=True)
+        self.assertIsNone(result.status_code)
+        self.assertIsNone(result.score, "a failed request has no score to report")
+        self.assertEqual(result.grade, "", "a failed request has no letter grade")
+        self.assertEqual(result.risk, "unknown")
+        payload = result.to_dict()
+        self.assertIsNone(payload["score"])
+        self.assertEqual(payload["grade"], "")
+
+    def test_rejected_target_is_ungraded(self):
+        from security_headers import scan_headers
+
+        # Validation refusal (credential in URL) — also nothing measured.
+        result = scan_headers("https://alice:hunter2@example.com/", timeout=3.0)
+        self.assertIsNone(result.score)
+        self.assertEqual(result.grade, "")
+        self.assertEqual(result.risk, "unknown")
+
+    def test_human_output_never_prints_a_zero_for_an_ungraded_result(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from security_headers import print_human, scan_headers
+
+        result = scan_headers("http://127.0.0.1:1/", timeout=3.0, allow_private=True)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_human(result)
+        out = buf.getvalue()
+        self.assertNotIn("0/100", out)
+        self.assertIn("Score:       —", out)
+
+    def test_a_measured_zero_is_still_a_graded_f(self):
+        # The fix must not blur the two cases: a reachable target that is
+        # missing every header really is a scored F.
+        result = grade_headers_from_map("https://example.com/", 200, "https://example.com/", {})
+        self.assertIsNotNone(result.score, "a measured response must carry a score")
+        self.assertEqual(result.grade, "F")
+        self.assertEqual(result.risk, "high")
+        self.assertLess(result.score, 45)
+
+    def test_hosted_fallback_payload_carries_no_grade(self):
+        # js/app.js apiHeaders() built a 0/"F" payload for a lookup it could not
+        # perform, which is what put a graded zero on screen next to
+        # "Could not read headers". Assert the literal payload shape, since the
+        # page controller now honours data.grade rather than inventing one.
+        js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+        start = js.index("async function gradeHeadersLive(url) {")
+        end = js.index("async function gradeCspLive(url) {")
+        block = js[start:end]
+        self.assertIn('score: null, grade: "", risk: "unknown"', block)
+        self.assertNotIn('score: 0, grade: "F"', block)
+
+    def test_csp_exports_are_titled_csp_not_security_headers(self):
+        # markdownKind() matched "checks + grade" as headers *before* it looked
+        # for a CSP payload, so a graded CSP audit exported as
+        # "# CyberBuddy — Security Headers Report" in Markdown, CSV and HTML.
+        # Both grader families carry checks and a grade, so the CSP-only field
+        # must be tested first.
+        context = "\n".join([
+            'const csp = gradeCspFromMap("https://example.com", 200, "https://example.com",',
+            '  {"content-security-policy": "default-src *"});',
+            'const headers = gradeHeadersFromMap("https://example.com", 200, "https://example.com", {});',
+            'const dns = gradeDnsFromRecords("example.com", {A: ["203.0.113.10"]}, {A: "NOERROR"}, "t");',
+            'console.log(JSON.stringify({',
+            '  csp: { kind: markdownKind(csp), title: reportToolTitle(csp),',
+            '    md: toMarkdown(csp).split("\\n")[0], csv: toCsv(csp) },',
+            '  headers: { kind: markdownKind(headers), title: reportToolTitle(headers) },',
+            '  dns: { kind: markdownKind(dns), title: reportToolTitle(dns) }',
+            '}));',
+        ])
+        result = self._run_app_js(context)
+        self.assertEqual(result["csp"]["kind"], "csp")
+        self.assertEqual(result["csp"]["title"], "CSP Policy Auditor")
+        self.assertIn("CSP Policy Auditor Report", result["csp"]["md"])
+        self.assertNotIn("Security Headers", result["csp"]["md"])
+        self.assertIn("CSP Policy Auditor", result["csp"]["csv"])
+        self.assertEqual(result["headers"]["kind"], "headers")
+        self.assertEqual(result["headers"]["title"], "Security Headers")
+        self.assertEqual(result["dns"]["kind"], "dns")
+
+    def test_ungraded_results_never_reach_an_export_as_a_grade(self):
+        # An HTTP 429 / NXDOMAIN / refused lookup carries grade "—" and, in
+        # DNS's case, score 0. Every human-readable export must show the
+        # absence of a grade instead of "Grade — (0/100)".
+        context = "\n".join([
+            'const data = { url: "https://example.com", final_url: "https://example.com",',
+            '  status_code: 429, risk: "unknown", grade: "—", score: 0, domain: "example.com",',
+            '  summary: "HTTP status 429 received.", checks: [{ name: "HTTP status", status: "info", detail: "rate limited" }] };',
+            'const md = toMarkdown(data);',
+            'const csv = toCsv(data);',
+            'const html = toStandaloneHtml(data);',
+            'const card = buildEvidenceCardSpec(data, "Security Headers");',
+            'console.log(JSON.stringify({ md: md, csv: csv, html: html, hero: card.hero,',
+            '  leak: /Grade [A-F]/.test(md) || /GRADE [A-F]/.test(card.hero) || /— · 0\\/100/.test(html) }));',
+        ])
+        result = self._run_app_js(context)
+        self.assertFalse(result["leak"], result["md"][:400])
+        self.assertIn("not graded", result["md"])
+        self.assertNotIn("Grade —", result["md"])
+        self.assertNotIn("GRADE", result["hero"])
+
+    def test_a_measured_grade_still_reaches_every_export(self):
+        context = "\n".join([
+            'const data = { url: "https://example.com", final_url: "https://example.com", status_code: 200,',
+            '  risk: "high", grade: "F", score: 20,',
+            '  summary: "Missing headers.", checks: [{ name: "CSP", status: "missing", detail: "absent" }] };',
+            'console.log(JSON.stringify({ md: toMarkdown(data), csv: toCsv(data), html: toStandaloneHtml(data),',
+            '  card: buildEvidenceCardSpec(data, "Security Headers").hero }));',
+        ])
+        result = self._run_app_js(context)
+        self.assertIn("Grade F (20/100)", result["md"])
+        self.assertIn("GRADE F · 20/100", result["card"])
+        self.assertIn("F · 20/100", result["html"])
+        # CSV metadata rows: record_type, key, "", "", value, "", ""
+        self.assertIn('"metadata","grade","","","F","",""', result["csv"])
+        self.assertIn('"metadata","score","","","20","",""', result["csv"])
+
+    def test_an_http_error_response_is_not_a_network_failure(self):
+        # The engine reached the host and got a status code; the page said
+        # "Target not reachable", which sends a reader hunting a DNS or TLS
+        # fault for a site that just answered. Both controllers must key
+        # "unreachable" on the missing-response flag, not on the status code.
+        headers_js = (ROOT / "js" / "tool.headers.js").read_text(encoding="utf-8")
+        csp_js = (ROOT / "js" / "tool.csp.js").read_text(encoding="utf-8")
+        self.assertIn("const noResponse = !!data._unreachable;", headers_js)
+        self.assertIn("const unreachable = !!data._unreachable;", csp_js)
+        for js, name in ((headers_js, "tool.headers.js"), (csp_js, "tool.csp.js")):
+            with self.subTest(controller=name):
+                # The risk label and banner class must follow the response
+                # flag alone; a status-code test there re-labels a live host.
+                self.assertNotIn('risk + (unreachable ? "unreachable"', js)
+        self.assertIn('"CSP posture: NOT GRADED — HTTP " + data.status_code + " response cannot be assessed"', csp_js)
+
+    def test_an_unassessed_cors_probe_is_not_reported_as_an_observation(self):
+        # A 415 or a 4xx to every probe reaches the export with risk "unknown".
+        # The evidence card said "NO ARBITRARY-ORIGIN REFLECTION OBSERVED ·
+        # UNKNOWN" while the page's own verdict for that result says NOT
+        # ASSESSED — the card claimed an observation never made.
+        context = "\n".join([
+            'const unknown = buildEvidenceCardSpec({ url: "https://e.com", checks: [],',
+            '  origins_tested: ["https://a.test", "https://b.test"], risk: "unknown", headers: {} }, "CORS Validator");',
+            'const pass = buildEvidenceCardSpec({ url: "https://e.com", checks: [],',
+            '  origins_tested: ["https://a.test", "https://b.test"], risk: "low", headers: {} }, "CORS Validator");',
+            'console.log(JSON.stringify({ unknown: unknown.hero, pass: pass.hero }));',
+        ])
+        result = self._run_app_js(context)
+        self.assertNotIn("NO ARBITRARY-ORIGIN REFLECTION OBSERVED", result["unknown"])
+        self.assertIn("NOT ASSESSED", result["unknown"])
+        self.assertEqual(result["pass"], "NO ARBITRARY-ORIGIN REFLECTION OBSERVED · PASS")
+
+    def test_suite_chip_shows_no_score_without_a_grade(self):
+        # "Headers · UNKNOWN · 0/100" is a measurement that was never taken.
+        context = "\n".join([
+            'console.log(JSON.stringify({',
+            '  ungraded: suiteToolChip("Headers", { risk: "unknown", grade: "—", score: 0 }, true),',
+            '  graded: suiteToolChip("Headers", { risk: "high", grade: "F", score: 20 }, true),',
+            '  dnsUngraded: suiteToolChip("DNS", { risk: "unknown", grade: "—", score: 0 }, true)',
+            '}));',
+        ])
+        result = self._run_app_js(context)
+        self.assertNotIn("/100", result["ungraded"])
+        self.assertNotIn("/100", result["dnsUngraded"])
+        self.assertIn("20/100", result["graded"])
+        self.assertIn("F", result["graded"])
+
+    def test_page_renders_no_letter_when_nothing_was_graded(self):
+        js = (ROOT / "js" / "tool.headers.js").read_text(encoding="utf-8")
+        # One definition of "graded" drives the gauge, the badge and the
+        # aria-label, so they cannot disagree again.
+        self.assertIn('const measured = !unreachable && score != null && !!data.grade && data.grade !== "—";', js)
+        self.assertIn('$("grade").textContent = measured ? grade : "—";', js)
+        self.assertIn("!measured", js)
+
+
 class CspStrictnessTests(unittest.TestCase):
     """Tool 03 engine regressions found in the 2026-11-20 audit.
 

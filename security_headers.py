@@ -61,8 +61,11 @@ class HeadersResult:
     final_url: str
     status_code: int | None
     checks: list[Check] = field(default_factory=list)
-    score: int = 0
-    grade: str = "F"
+    score: int | None = None
+    # Empty when nothing was measured (invalid target, transport failure,
+    # policy refusal). A default of "F" made every ungraded failure look like
+    # a graded zero — the other engines use "" / "—" for exactly this reason.
+    grade: str = ""
     risk: str = "unknown"
     summary: str = ""
     headers: dict[str, str] = field(default_factory=dict)
@@ -754,7 +757,7 @@ def scan_headers(
         return HeadersResult(
             url=safe_url, final_url=safe_url, status_code=None,
             checks=[Check("request", "error", str(exc))],
-            grade="F", risk="unknown", summary=str(exc),
+            risk="unknown", summary=str(exc),
         )
 
     try:
@@ -765,7 +768,7 @@ def scan_headers(
         return HeadersResult(
             url=safe_url, final_url=safe_url, status_code=None,
             checks=[Check("request", "error", f"Request failed: {exc}")],
-            grade="F", risk="unknown", summary=f"Request failed: {exc}",
+            risk="unknown", summary=f"Request failed: {exc}",
         )
 
     return grade_headers_from_map(url, code, final_url, headers)
@@ -775,7 +778,9 @@ def print_human(result: HeadersResult) -> None:
     print(f"\nTarget:      {result.url}")
     print(f"Final URL:   {result.final_url}")
     print(f"HTTP status: {result.status_code}")
-    print(f"Score:       {result.score}/100  Grade: {result.grade}  Risk: {result.risk.upper()}")
+    score = f"{result.score}/100" if result.score is not None else "—"
+    grade = result.grade or "—"
+    print(f"Score:       {score}  Grade: {grade}  Risk: {result.risk.upper()}")
     print("-" * 72)
     for c in result.checks:
         print(f"[{c.status.upper():7}] {c.name}: {c.detail}")

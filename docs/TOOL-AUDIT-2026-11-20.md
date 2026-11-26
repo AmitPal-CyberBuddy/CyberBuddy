@@ -283,6 +283,91 @@ Seven new golden cases in `tests/grader_fixtures.json`.
   accessible names. Re-verified: 494 tests, `verify.py` PASS, headers jsdom
   run 21/21.
 
+### Addendum — found by driving the live server, after the seven passes closed
+
+The seven tool passes above graded the engines in isolation. A final
+end-to-end pass (`python3 server.py` + `curl` on every `/api/*` endpoint, then
+the same payloads through the real page controllers in jsdom) found four
+defects that isolated engine tests could not see, because each of them only
+appears when one layer's *honest* output meets another layer's *default*.
+All four are fixed.
+
+**2.1 An unfinished request was reported as a graded 0/F.**
+`GET /api/headers?url=https://example.com` from this sandbox fails the TLS
+handshake and returned `score: 0, grade: "F", risk: "unknown"`. The CSP, CORS
+and clickjacking engines already returned `risk: "unknown"` with no score on
+the same path; headers was the only one that invented a letter. On the page
+that produced a *graded* zero gauge and an `F` badge beside a verdict of
+UNKNOWN, and the Markdown, JSON, CSV, HTML and PNG exports carried `Grade F
+(0/100)` for a request that never completed.
+
+- `security_headers.py`: `HeadersResult.score: int | None = None`,
+  `grade: str = ""`; both failure returns (invalid target, transport failure)
+  no longer pass `grade="F"`; `print_human` prints `—` for score and grade.
+- `js/app.js` `gradeHeadersLive()`'s hosted fallback (the `_source: "none"`
+  payload behind "Could not read headers") returned `score: 0, grade: "F"` —
+  the one payload that still reached the page — and now returns
+  `score: null, grade: ""`.
+- `js/tool.headers.js` derives one `measured` flag (a real letter **and** a
+  score) and drives the gauge, the badge, its `aria-label` and the verdict from
+  it, so they can no longer disagree. A measured 0 that is genuinely graded F
+  still renders F.
+
+**2.2 An HTTP error response was described as an unreachable host.**
+Both the headers and CSP controllers treated `status_code >= 400` as
+"unreachable". A 404 or a 429 *is* a response: the engine reached the host and
+read a status line, it simply cannot assess headers from an error page. The
+pages said "Target not reachable — the host may be down, timing out, or
+refusing connections", which sends a reader hunting DNS and TLS faults for a
+site that just answered, and the CSP page badged it `UNREACHABLE` with the
+`aria-label` "the target could not be reached". Both now key that claim on
+`_unreachable` (no response at all) and only use the status code to say
+plainly that an `HTTP <code>` response cannot be graded. Verified against the
+live server: `http://127.0.0.1:8080/does-not-exist` → `score: 0, grade: "—",
+status 404`, and the page renders `UNKNOWN`, no letter, "not graded".
+
+**2.3 Every CSP export was titled "Security Headers".**
+`markdownKind()` tested `checks + grade → headers` *before* it looked for a CSP
+payload, and a graded CSP audit has both. So `Copy Markdown`, `Download
+Markdown`, `Download HTML`, `Download CSV` and the JSON envelope all labelled a
+CSP audit as a Security Headers report — the one field a pasted report uses to
+say which tool produced it. The kind is now decided by a field only that tool
+emits (`domain`, `policy`, `origins_tested`, `findings`) before falling back to
+the shared `checks` shape.
+
+**2.4 Ungraded results leaked a grade into exports.**
+With 2.1 fixed, the engines' other "nothing was graded" spelling is grade `"—"`
+with `score: 0` (HTTP error, NXDOMAIN, incomplete DNS evidence). The export
+layer tested the *presence* of `data.grade`, so those printed
+`Grade — (0/100)`, `GRADE — · 0/100` in the PNG evidence card, and a graded
+`F`-shaped chip in the hub suite and the recent-scans list. One predicate,
+`isGradedResult()` in `js/app.js`, now gates the Markdown, CSV, standalone
+HTML, evidence-card, suite-chip and recent-scan paths: a letter counts only
+when it names a band and comes with a finite score, and the result is not
+flagged unreachable. Ungraded exports say "not graded" and omit the score
+column instead of inventing a zero; measured grades are unchanged.
+
+**2.5 An unassessed CORS probe was exported as an observation.**
+Same class, different tool: for a result the page itself labels **NOT
+ASSESSED** (a 415, or a 4xx to every probe → `risk: "unknown"`), the PNG
+evidence card said `NO ARBITRARY-ORIGIN REFLECTION OBSERVED · UNKNOWN` — a
+negative finding on top of an admission that nothing was found. It now reads
+`CORS POSTURE NOT ASSESSED · NOT ASSESSED`, with the PASS wording unchanged for
+a real `risk: "low"`. The hub suite chip likewise printed `Headers · UNKNOWN ·
+0/100`; a score is now shown only beside a real grade.
+
+**Tests.** `HeadersUngradedResultTests` (12 cases, 544 → 556 tests) covers the
+engine's ungraded paths plus the human print, a real graded F, the hosted
+payload shape, the `measured` flag, transport-vs-HTTP-error wording, CSP
+export titling across the headers, CSP and DNS grader shapes,
+ungraded-vs-graded export content, the `markdownKind` ordering, the CORS
+evidence-card wording for an unknown outcome, and the suite chip's score.
+`node /tmp/dom-headers.js` → 14/14, `node /tmp/dom-csp.js` → 8/8 (both drive
+the real pages under jsdom).
+
+Verified: `python3 -m unittest test_engines -q` → **556 tests OK**;
+`python3 tools/verify.py` → PASS.
+
 ---
 
 ## Tool 03 — CSP Policy Auditor
@@ -1060,7 +1145,7 @@ Verified: `python3 tools/verify.py` → **PASS**, 544 tests.
 
 ## Closing summary
 
-All seven tools in catalogue order are done. 514 → 544 tests, `verify.py`
+All seven tools in catalogue order are done. 514 → 556 tests, `verify.py`
 PASS at every step, each tool's browser controller additionally exercised under
 jsdom (Clickjacking/Headers/CSP/CORS/DNS/CSRF/JWT harnesses in `/tmp`, not
 committed). The defects fell into four recurring classes, which is the part
@@ -1083,6 +1168,17 @@ worth carrying into new tools:
    and — via the export menu — CSRF flows; all four controllers now clear the
    report and its exportable state on failure or refusal, and each is pinned by
    a page-contract test rather than by inspection.
+
+A fifth class was added at the very end, from the live-server pass: **a
+result shape the engine never intended**. Three engines spelled "nothing was
+graded" three different ways (`grade: ""`, `grade: "—"`, and — for headers — 
+`0/F`), and the export layer believed whichever one it was handed. The lesson
+generalises: when a field means "no measurement", it needs one spelling
+enforced at the boundary, and every consumer must test *that* rather than the
+field's presence. The same pass also caught two headline strings built from a
+`risk` that can legitimately be `"unknown"` (the CORS evidence card, the hub
+suite chip): both now have an explicit "not assessed" branch instead of
+falling through to the positive-wording default.
 
 Deliberately not done, recorded per tool: following SPF `include:`/`redirect=`
 chains, organisational-domain DMARC inheritance, DKIM key strength, EdDSA,

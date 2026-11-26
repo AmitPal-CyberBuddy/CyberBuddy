@@ -15,28 +15,46 @@
     $("results").classList.remove("is-refreshing");
     setSourceChip(data);
 
-    const unreachable = !!data._unreachable || (data.status_code != null && data.status_code >= 400);
+    /* "Unreachable" is a transport claim: no response at all. An HTTP 404/429
+       is a *response* — the engine reached the host and saw a status code, it
+       just cannot assess headers from it (it returns grade "—", risk
+       "unknown"). Calling that "Target not reachable" sent readers to check
+       DNS for a site that had just answered. */
+    const noResponse = !!data._unreachable;
+    const httpError = !noResponse && data.status_code != null && data.status_code >= 400;
+    const unreachable = noResponse || httpError;
     const score = data.score != null ? data.score : null;
     const grade = data.grade ? data.grade.toUpperCase() : "—";
-    const risk = unreachable ? "UNREACHABLE" : (data.risk || "unknown").toUpperCase();
+    const risk = noResponse ? "UNREACHABLE" : (data.risk || "unknown").toUpperCase();
+    // A result is graded only when the engine both measured a score and issued
+    // a real letter. Anything else — transport failure, an HTTP error or
+    // rate-limited response the engine marks with grade "—", a lookup the
+    // relay declined, a payload with no grade — has no posture to report.
+    const measured = !unreachable && score != null && !!data.grade && data.grade !== "—";
 
-    if (unreachable) {
-      $("gauge").innerHTML = '<div class="score-gauge gauge-f" role="img" aria-label="No score — target unreachable">' +
+    if (!measured) {
+      // The aria-label must not claim "target unreachable" for a lookup that
+      // simply never produced a result; say only what is true.
+      $("gauge").innerHTML = '<div class="score-gauge gauge-f" role="img" aria-label="' +
+        (noResponse ? "No score — target unreachable" : "No score — this response could not be assessed") + '">' +
         '<svg viewBox="0 0 120 120" aria-hidden="true"><circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
         '<text class="gauge-num" x="60" y="58" style="font-size:15px">no</text><text class="gauge-num" x="60" y="76" style="font-size:15px">data</text></svg>' +
         '<span class="gauge-band">not graded</span></div>';
     } else {
-      renderGauge($("gauge"), score != null ? score : 0, grade);
+      renderGauge($("gauge"), score, grade);
     }
 
-    $("grade").textContent = grade;
-    $("grade").className = "grade " + (unreachable ? "unknown" : (gradeFor(score) || grade.toLowerCase()));
+    /* The box itself said "F" while the gauge said "not graded": the API used
+       to return grade:"F" for a request that never completed, so the export
+       carried a graded zero too. No measurement, no letter. */
+    $("grade").textContent = measured ? grade : "—";
+    $("grade").className = "grade " + (measured ? (gradeFor(score) || grade.toLowerCase()) : "unknown");
     bump($("grade"));
 
     $("verdict").textContent = risk;
-    $("verdict").className = "risk " + (unreachable ? "unreachable" : (data.risk || "unknown"));
+    $("verdict").className = "risk " + (noResponse ? "unreachable" : (data.risk || "unknown"));
     bump($("verdict"));
-    $("verdictBanner").className = "verdict-banner " + (unreachable ? "unreachable" : (data.risk || "unknown"));
+    $("verdictBanner").className = "verdict-banner " + (noResponse ? "unreachable" : (data.risk || "unknown"));
 
     $("mTarget").textContent = data.url || "—";
     $("mFinal").textContent = data.final_url || "—";
@@ -59,7 +77,7 @@
     $("grade").setAttribute("role", "img");
     $("grade").setAttribute(
       "aria-label",
-      unreachable || data.grade === "—"
+      !measured
         ? "No grade — this response could not be assessed"
         : "Grade " + grade + (score != null ? ", " + score + " out of 100" : "")
     );

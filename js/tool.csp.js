@@ -7,7 +7,11 @@
   function $(id) { return document.getElementById(id); }
 
   function setVerdict(data) {
-    const unreachable = !!data._unreachable || (data.status_code != null && data.status_code >= 400);
+    /* Only a missing response is "unreachable". An HTTP 4xx/5xx *is* a
+       response: the auditor reached the host and cannot assess a policy from
+       an error page, so it reports unknown with no grade — it must not send
+       the reader looking for a network fault that did not happen. */
+    const unreachable = !!data._unreachable;
     const risk = unreachable ? "unreachable" : (data.risk || "unknown").toLowerCase();
     const grade = data.grade || "";
     const score = data.score != null ? data.score : null;
@@ -36,7 +40,10 @@
     );
     bump($("verdict"));
 
-    let label = unreachable ? "CSP posture: NOT GRADED — target unreachable" : "CSP posture: UNABLE TO DETERMINE";
+    let label = unreachable ? "CSP posture: NOT GRADED — target unreachable"
+      : (data.status_code != null && data.status_code >= 400
+        ? "CSP posture: NOT GRADED — HTTP " + data.status_code + " response cannot be assessed"
+        : "CSP posture: UNABLE TO DETERMINE");
     if (grade === "A") label = "CSP posture: STRONG — no dangerous source pattern";
     else if (grade === "B") label = "CSP posture: GOOD — a few optional hardening gaps";
     else if (grade === "C") label = "CSP posture: FAIR — review the directive gaps";

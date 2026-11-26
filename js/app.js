@@ -1403,6 +1403,18 @@ function initUrlInput(input) {
   });
 }
 
+/* A letter is only a measurement when it names a band. The engines use "—"
+   (or "") for "nothing was graded" on an HTTP error, a refused lookup, an
+   unreachable host or an incomplete evidence set; every export and every
+   headline has to read those through here, or it prints a graded zero that
+   the page never showed. */
+function isGradedResult(data) {
+  if (!data || data._unreachable) return false;
+  const grade = String(data.grade || "").toUpperCase();
+  if (!grade || grade === "—" || grade === "-") return false;
+  return data.score != null && Number.isFinite(Number(data.score));
+}
+
 function gradeFor(score) {
   score = Number(score) || 0;
   if (score >= 90) return "a";
@@ -1780,8 +1792,11 @@ function evidenceCardKind(data, toolName) {
   if (name.includes("clickjack") || Array.isArray(data && data.findings)) return "clickjacking";
   if (name.includes("cors") || (data && Array.isArray(data.origins_tested))) return "cors";
   if (name.includes("csp") || (data && Object.prototype.hasOwnProperty.call(data, "policy"))) return "csp";
-  if (name.includes("dns") || (data && data.domain && data.grade)) return "dns";
-  if (name.includes("header") || (data && data.grade)) return "headers";
+  // `domain` / `checks` already identify these two, graded or not: an
+  // ungraded result (grade "—") still needs its own evidence card, not the
+  // generic one.
+  if (name.includes("dns") || (data && data.domain)) return "dns";
+  if (name.includes("header") || (data && Array.isArray(data.checks))) return "headers";
   return "generic";
 }
 
@@ -1877,15 +1892,21 @@ function buildEvidenceCardSpec(data, toolName) {
     const coverageLabel = data._source === "browser"
       ? "SINGLE-ORIGIN BROWSER PROBE (not proof of reflection) — cannot forge Origin, cannot set Access-Control-Request-Method/Headers, cannot inspect preflight"
       : (genuineProof ? "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)" : "TWO-ORIGIN REFLECTION PROOF (python engine / published scan)");
+    /* An unknown outcome is not a pass. "NO ARBITRARY-ORIGIN REFLECTION
+       OBSERVED · UNKNOWN" claims an observation the probe never made — the
+       on-screen verdict for this same result says NOT ASSESSED, and the test:
+       a 415 or a 4xx to every probe reaches here with risk "unknown". */
     const outcome = risk === "high" ? "REFLECTION + CREDENTIALS CONFIRMED"
       : risk === "medium" ? "PERMISSIVE CORS OUTCOME"
-      : "NO ARBITRARY-ORIGIN REFLECTION OBSERVED";
+      : risk === "low" ? "NO ARBITRARY-ORIGIN REFLECTION OBSERVED"
+      : "CORS POSTURE NOT ASSESSED";
+    const outcomeTag = risk === "low" ? "PASS" : risk === "unknown" ? "NOT ASSESSED" : risk.toUpperCase();
     return {
       kind: kind,
       title: "CORS VALIDATOR",
       // Same PASS wording as the on-screen verdict and the exports, so a
       // PNG evidence card cannot disagree with the Markdown beside it.
-      hero: outcome + " · " + (risk === "low" ? "PASS" : risk.toUpperCase()),
+      hero: outcome + " · " + outcomeTag,
       risk: risk,
       meta: commonMeta.concat([
         ["Probe coverage", coverageLabel],
@@ -1909,8 +1930,8 @@ function buildEvidenceCardSpec(data, toolName) {
 
   if (kind === "csp") {
     const directives = Object.keys(data.directives || {}).sort();
-    const gradeHero = data.grade
-      ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100" : "";
+    const gradeHero = isGradedResult(data)
+      ? "GRADE " + String(data.grade).toUpperCase() + " · " + data.score + "/100" : "";
     const posture = risk === "low" ? "ENFORCED POLICY IS RESTRICTIVE" : "POLICY NEEDS ATTENTION";
     return {
       kind: kind,
@@ -1948,9 +1969,8 @@ function buildEvidenceCardSpec(data, toolName) {
     const dmarc = (rec.DMARC || []).join(" ") || "";
     const dkimCount = Object.keys(rec).filter((k) => k.indexOf("DKIM:") === 0 && (rec[k] || []).length).length;
     const dnssec = (data.checks || []).find((check) => check.name === "DNSSEC");
-    const gradeHero = data.grade
-      ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100 · "
-      : "";
+    const gradeHero = isGradedResult(data)
+      ? "GRADE " + String(data.grade).toUpperCase() + " · " + data.score + "/100 · " : "";
     return {
       kind: kind,
       title: "DNS & DOMAIN SECURITY",
@@ -1976,9 +1996,8 @@ function buildEvidenceCardSpec(data, toolName) {
     };
   }
 
-  const grade = data.grade
-    ? "GRADE " + String(data.grade).toUpperCase() + " · " + (data.score != null ? data.score : "?") + "/100 · "
-    : "";
+  const grade = isGradedResult(data)
+    ? "GRADE " + String(data.grade).toUpperCase() + " · " + data.score + "/100 · " : "";
   return {
     kind: kind,
     title: kind === "headers" ? "SECURITY HEADERS" : String(toolName || "CYBERBUDDY").toUpperCase(),
@@ -2248,11 +2267,16 @@ function initExportMenu(toolName, getData) {
 
 function markdownKind(data) {
   if (!data) return "generic";
-  if (Array.isArray(data.checks) && data.domain && data.grade) return "dns";
-  if (Array.isArray(data.checks) && data.grade) return "headers";
+  // Order matters. A graded CSP audit carries `checks` *and* a grade, so the
+  // old "checks + grade → headers" rule swallowed it and every CSP export was
+  // titled "Security Headers". Identify a tool by a field only it emits
+  // (`domain`, `policy`, `origins_tested`) before falling back to the shared
+  // `checks` + grade shape that only the headers grader produces.
+  if (Array.isArray(data.checks) && data.domain) return "dns";
   if (Array.isArray(data.checks) && Object.prototype.hasOwnProperty.call(data, "policy")) return "csp";
   if (Array.isArray(data.checks) && data.origins_tested) return "cors";
   if (Array.isArray(data.findings)) return "clickjacking";
+  if (Array.isArray(data.checks)) return "headers";
   return "generic";
 }
 
@@ -2379,7 +2403,9 @@ function toMarkdown(data) {
   const kind = markdownKind(data);
   const title = reportToolTitle(data);
   const risk = reportRiskLabel(data);
-  const grade = data.grade ? " — Grade " + data.grade.toUpperCase() + " (" + (data.score ?? "?") + "/100)" : "";
+  const grade = isGradedResult(data)
+    ? " — Grade " + String(data.grade).toUpperCase() + " (" + data.score + "/100)"
+    : (data.grade ? " — not graded" : "");
   const pasted = !!data._pasted;
   const lines = [
     "# CyberBuddy — " + title + " Report",
@@ -2429,7 +2455,9 @@ function toCsv(data) {
     tool: reportToolTitle(data), target: redactUrlCredentials(data.url),
     final_url: redactUrlCredentials(data.final_url || data.url),
     http_status: data.status_code != null ? data.status_code : "",
-    risk: reportRiskLabel(data), grade: data.grade || "", score: data.score ?? "",
+    risk: reportRiskLabel(data),
+    grade: isGradedResult(data) ? String(data.grade).toUpperCase() : "",
+    score: isGradedResult(data) ? data.score : "",
     source: sourceLabel(data), generated: fmtStampUtc(), summary: data.summary || ""
   };
   Object.keys(meta).forEach((key) => rows.push(["metadata", key, "", "", meta[key], "", ""]));
@@ -2461,7 +2489,7 @@ function toStandaloneHtml(data) {
     "<dl><dt>Target</dt><dd>" + (data._pasted ? "pasted header (no target)" : safe(redactUrlCredentials(data.url))) + "</dd><dt>Final URL</dt><dd>" +
     (data._pasted ? "—" : safe(redactUrlCredentials(data.final_url || data.url))) + "</dd><dt>HTTP status</dt><dd>" +
     safe(data.status_code != null ? data.status_code : "—") + "</dd><dt>Risk</dt><dd class=\"risk\">" +
-    safe(reportRiskLabel(data)) + "</dd><dt>Grade / score</dt><dd>" + safe(data.grade ? data.grade + " · " + data.score + "/100" : "—") +
+    safe(reportRiskLabel(data)) + "</dd><dt>Grade / score</dt><dd>" + safe(isGradedResult(data) ? String(data.grade).toUpperCase() + " · " + data.score + "/100" : "—") +
     "</dd><dt>Source</dt><dd>" + safe(sourceLabel(data)) + "</dd><dt>Generated</dt><dd>" + safe(fmtStampUtc()) +
     "</dd></dl><h2>Summary</h2><p>" + safe(data.summary || "No summary provided.") + "</p>" + policy +
     "<h2>Findings</h2><table><thead><tr><th>Check</th><th>Status</th><th>Severity</th><th>Assessment</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>" +
@@ -4326,7 +4354,11 @@ async function gradeHeadersLive(url) {
     return {
       url: url, final_url: url, status_code: null,
       checks: [check("request", "error", "Could not read response headers from this hosted page. The target may be unreachable, the lookup may have been declined or rate-limited, or the Python engine is offline.", "", 0)],
-      score: 0, grade: "F", risk: "unknown",
+      // Nothing was measured: no score, no letter. The sibling graders
+      // (CSP, CORS, clickjacking) already omit a grade on this path; this one
+      // used to return 0/"F", so the page and the exports reported a graded
+      // zero for a lookup that never happened.
+      score: null, grade: "", risk: "unknown",
       summary: "No header data. The target may be unreachable, the lookup may have been declined or rate-limited, or its headers are blocked. Run python3 server.py for a same-origin scan, or retry.",
       headers: {}, _source: "none"
     };
@@ -5360,11 +5392,11 @@ function recentScanSummary(s) {
   ["clickjacking", "cors", "csp", "dns"].forEach((k) => {
     if (s[k] && s[k].risk) out[k] = { risk: s[k].risk };
   });
-  if (s.headers && s.headers.grade) {
-    out.headers = {
-      grade: s.headers.grade,
-      score: s.headers.score != null ? s.headers.score : null
-    };
+  // Only a measured letter is worth remembering: a 429 or an unreachable host
+  // reports grade "—", and storing that would let a later chip advertise a
+  // grade for a scan that was never completed.
+  if (isGradedResult(s.headers)) {
+    out.headers = { grade: String(s.headers.grade).toUpperCase(), score: s.headers.score };
   }
   return out;
 }
@@ -5375,8 +5407,10 @@ function suiteToolChip(label, data, withScore) {
   const isCorsPass = label === "CORS" && risk === "low";
   const displayRisk = isCorsPass ? "PASS" : (data.risk || "unknown").toUpperCase();
   let text = esc(label) + " · <b>" + esc(displayRisk) + "</b>";
-  if (withScore && data.score != null) text += " · <b>" + esc(String(data.score)) + "/100</b>";
-  if (data.grade) text += " · <b>" + esc(String(data.grade).toUpperCase()) + "</b>";
+  // A score is a measurement: only show it beside a real grade, so an
+  // ungraded headers result cannot read "Headers · UNKNOWN · 0/100".
+  if (withScore && isGradedResult(data)) text += " · <b>" + esc(String(data.score)) + "/100</b>";
+  if (isGradedResult(data)) text += " · <b>" + esc(String(data.grade).toUpperCase()) + "</b>";
   return '<span class="suite-tool-chip ' + esc(risk) + '">' + text + "</span>";
 }
 
@@ -5384,7 +5418,7 @@ function suiteSummaryHtml(s, engineNote) {
   const hd = s.headers;
   const worst = worstSuiteTool(s);
   const headersSelected = !s.active || s.active.includes("headers");
-  const gauge = hd && hd.score != null
+  const gauge = isGradedResult(hd)
     ? gaugeHtml(hd.score, hd.grade, true)
     : '<div class="score-gauge gauge-f"><svg viewBox="0 0 120 120" aria-hidden="true">' +
       '<circle class="gauge-track" cx="60" cy="60" r="52" pathLength="100"/>' +
@@ -5433,7 +5467,8 @@ function suiteCard(title, data, listKey, href) {
   const risk = (data.risk || "unknown").toLowerCase();
   const isCorsPass = title === "CORS" && risk === "low";
   const displayRisk = isCorsPass ? "PASS" : (data.risk || "unknown").toUpperCase();
-  const grade = data.grade ? '<span class="grade ' + gradeFor(data.score) + '">' + esc(data.grade) + "</span>" : "";
+  const grade = isGradedResult(data)
+    ? '<span class="grade ' + gradeFor(data.score) + '">' + esc(String(data.grade).toUpperCase()) + "</span>" : "";
   const items = (data[listKey] || []).slice(0, 3).map((c) =>
     '<li><span class="f-status ' + esc(c.status) + '">' + esc(c.status) + "</span> " + esc(c.name) + "</li>"
   ).join("");
@@ -5849,10 +5884,9 @@ function renderRecentScans() {
   const chips = items.map((it) => {
     let badge = "";
     const s = it.summary;
-    if (s && s.headers && s.headers.grade) {
-      const sc = s.headers.score != null ? " " + s.headers.score : "";
+    if (s && s.headers && s.headers.grade && s.headers.score != null) {
       badge = '<span class="chip-grade grade-' + esc(String(s.headers.grade).toLowerCase()) + '">' +
-        esc(String(s.headers.grade).toUpperCase()) + esc(String(sc)) + "</span>";
+        esc(String(s.headers.grade).toUpperCase()) + " " + esc(String(s.headers.score)) + "</span>";
     }
     return '<button type="button" class="recent-chip" data-url="' + esc(it.url) + '">' +
       esc(it.url) + badge + "</button>";
