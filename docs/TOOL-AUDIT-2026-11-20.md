@@ -287,6 +287,10 @@ Seven new golden cases in `tests/grader_fixtures.json`.
 
 ## Tool 03 — CSP Policy Auditor
 
+(**Fourth** in catalogue order — the page's kicker reads "Tool 04", and the
+section numbered Tool 04 below is CORS, which the catalogue lists **third**.
+Nothing was renumbered; see the cross-cutting section.)
+
 ### What the tool does
 
 1. Reads the target's `Content-Security-Policy` and
@@ -462,8 +466,10 @@ the deny and no-data paths; kept when the engine returns usable checks.
 
 ## Tool 04 — CORS Validator
 
-(This is the fourth tool in site order — `tools/index.html`, `TOOLS_MENU` and
-the prefetch block all list CORS before CSP — and the page's kicker agrees.)
+(**Third** in catalogue order — `tools/index.html`, `TOOLS_MENU` and the
+prefetch block all list CORS before CSP, and the page's kicker reads "Tool 03".
+The audit plan's sequence was headers → CSP → CORS; the catalogue's is headers
+→ CORS → CSP, and the catalogue wins. See the cross-cutting section.)
 
 ### What the tool does
 
@@ -911,6 +917,112 @@ with copy that explains the limit. The same 781 KB input is refused in 1.7 ms.
 
 ---
 
+## Tool 07 — JWT Security Workbench
+
+(Seventh and last tool in site order. Engine: `js/jwt.engine.js` — pure and
+DOM-free, run under Node by the tests. Controller: `js/tool.jwt.js`. Secret
+testing runs in `js/jwt.worker.js`. No network anywhere; that is asserted by
+existing tests and unchanged here.)
+
+### What the tool does
+
+1. Decodes a compact JWS locally (`alg:none`, JWE and unknown `crit` headers are
+   rejected outright) and shows header, payload and signature length.
+2. Verifies HS256/384/512, RS/PS256/384/512 and ES256/384 with a key the analyst
+   supplies (secret, PEM, JWK or JWKS by `kid`), with an explicit expected
+   algorithm available for pinning.
+3. Validates registered claims (`exp`/`nbf`/`iat` with skew, `iss`/`aud`/`sub`,
+   type checks) and emits contextual observations — never a score.
+4. Edits, signs, and builds authorized-test templates (`alg:none`, tamper,
+   claim+re-sign, algorithm confusion, embedded JWK, `jku`/`x5u`, `kid`), plus a
+   bounded HS-only secret search in a Worker.
+
+### Phase 2 — engine correctness
+
+**7.1 A password claim travelled into the shareable report.** The Markdown export
+redacts a fixed list of *registered* names (`sub`, `jti`, `email`, …). A token
+carrying `password`, `password_hash`, `api_key`, `clientSecret`, `X-Access-Token`
+or `sessionid` — precisely the claims people paste into a test token — had every
+value written verbatim into a report the page invites you to share. Confirmed by
+probe: `hunter2`, `AKIA-…` and a session id all appeared in the output.
+
+Redaction is now name-based and pattern-based: a fixed deny-list plus strong
+markers matched anywhere in the normalised name (`password`, `passwd`, `secret`,
+`apikey`, `token`, `session`, `cookie`, `credential`, `privatekey`), plus
+credential-shaped suffixes (`…key`, …`keyid`). False positives are explicitly
+tested for and suppressed (`tokenType`, `apiKeyId`, `monkey`, `passwordAge`), and
+`iss`/`aud`/`role`/`scope` stay readable because they are the analytically useful
+part. `test_markdown_withholds_custom_credential_claims` pins both directions.
+
+**7.2 "Auto" expected algorithm silently accepted the token's own header.**
+`verifyToken()` used `opts.alg || key.alg || null`; with no pin and no key alg
+there was nothing to compare, so the header alg was accepted by definition and
+the result was a bare `valid: true`. On a workbench whose whole point is catching
+header-driven algorithms, the *default option* had the weakness. The expectation
+is now the pin, else the key's alg, else the header alg, and in the last case the
+result carries an explicit `notice` and the UI prints it under the verdict
+("…a relying party must take the algorithm from its own configuration"). A key
+whose `alg` disagrees with the header is now rejected up front. The select label
+reads *"Auto — supplied key's alg, else the token's"* and the hint explains the
+policy, instead of claiming it "rejects an incompatible key family".
+
+**7.3 Fractional NumericDates passed claim validation.** RFC 7519 defines
+NumericDate in whole seconds; `exp: now + 0.4` was accepted as valid-time and
+`iat` likewise. A strict relying party may reject or truncate it. Both now fail
+with "must be a whole number of seconds (NumericDate)".
+
+**7.4 No key was needed to notice an impossible signature length.** A token
+declaring `HS256` with a 3-byte signature decoded cleanly and produced no
+observation. HS256/384/512 are always exactly 32/48/64 bytes and JWS-ECDSA uses
+fixed-width `r||s` (64/96), so a mismatch is provable from the token alone. A new
+`high` observation reports it — including the common DER-encoded ECDSA producer
+— while RSA lengths remain variable and are not flagged.
+
+**7.5 `searchHmacSecret()` threw an opaque `TypeError` with no signature bytes.**
+`asUint8(undefined)` crashed before any candidate was tried. It now rejects with
+"signature must be the token's signature bytes".
+
+### Phase 3 — result / UX
+
+**7.6 The verify result line never said which algorithm was expected.** It
+printed "Signature matches using HS384." with no indication that HS384 came from
+the token. It now appends either the notice from 7.2 or `Expected algorithm:
+<alg>.`, so a verified signature can no longer be read as "the algorithm policy
+passed".
+
+**7.7 Confirmed working, left alone.** Clearing or corrupting the token hides the
+decoded panel and disables both export buttons; a different token invalidates the
+previous verification (`lastVerification = null`) so the Markdown report cannot
+claim a verdict for a token it never saw; the mask checkbox does not survive an
+edit; variant builders keep every guard (`alg:none` only as a labelled template,
+public keys cannot sign, `jku`/`x5u` must be absolute http(s), `kid` defaults to
+a path-traversal probe); the worker is bounded and cancellable. All still pass.
+
+### Verification
+
+- `python3 -m unittest test_engines -q` → **544 tests OK** (537 after Tool 06,
+  +7 for Tool 07).
+- `JwtWorkbenchTests` (60 pre-existing cases) and `JwtVaptTests` → OK unchanged;
+  the stricter rules in 7.2–7.4 did not break any existing contract.
+- jsdom harness `/tmp/dom-jwt.js` → **15/15** (decode, verify with the right and
+  wrong secret, expired claims, explicit pin mismatch, the Auto notice, export
+  enable/disable, cleared and malformed tokens). Against the previous build it
+  fails exactly the two Auto-notice assertions (13/15).
+- `python3 tools/verify.py` → **PASS**, 20 pages, links clean.
+
+### Recommendations not made in this pass
+
+- **ES512 / EdDSA (Ed25519)** are not implemented (Web Crypto's ECDSA is
+  P-256/P-384 only in the shapes used here). The page says which algorithms are
+  supported; adding EdDSA needs an explicit curve and `OKP` JWK path.
+- **`typ`/`cty` handling**: `typ` is displayed but never validated against a
+  policy, and `cty` (nested JWT) is not detected — a nested token is treated as
+  an ordinary payload object.
+- **Key-rotation awareness**: a JWKS with several keys for the same `kid` picks
+  the first compatible one; multiple matches are not reported.
+
+---
+
 ## Cross-cutting — tool numbering (fixed)
 
 The audit labels tools by their position in the site catalogue, so the
@@ -942,4 +1054,38 @@ CSP**). Both statements are corrected in place above.
 `TOOLS_MENU` array, the prefetch block and every page's kicker, and fails if
 they disagree, if a number repeats, or if a page has no kicker at all.
 
-Verified: `python3 tools/verify.py` → **PASS**, 537 tests.
+Verified: `python3 tools/verify.py` → **PASS**, 544 tests.
+
+---
+
+## Closing summary
+
+All seven tools in catalogue order are done. 514 → 544 tests, `verify.py`
+PASS at every step, each tool's browser controller additionally exercised under
+jsdom (Clickjacking/Headers/CSP/CORS/DNS/CSRF/JWT harnesses in `/tmp`, not
+committed). The defects fell into four recurring classes, which is the part
+worth carrying into new tools:
+
+1. **A grader honoured the spec's letter in one direction only.** DKIM keys
+   required the optional `v=` tag first (5.1), grade A claimed DNSSEC without
+   DNSSEC (5.3), a 401 with no CORS header read as "Pass" (3.4), "Auto"
+   expected-algorithm accepted whatever the token said (7.2). Each one produced
+   a confident verdict from evidence that did not support it.
+2. **Copy outlived the code.** `redirect=`-only SPF described as "neutral"
+   (5.4), the token panel claiming "included by default" after exclusion (6.7),
+   the CAA/DKIM sentences telling the analyst to fix a record that was
+   deliberately revoked (5.2). Fixing wording is not cosmetic when the wording
+   is the remediation advice.
+3. **Computed and then dropped.** `parseRequest()` built a `warnings` array
+   nothing rendered (6.4), a relay consent answer was checked only when fresh
+   (5.8), an exclusion produced an unassessed PoC that still read LIMITED (6.5).
+4. **A previous report surviving a failed scan.** Found in the CSP, CORS, DNS
+   and — via the export menu — CSRF flows; all four controllers now clear the
+   report and its exportable state on failure or refusal, and each is pinned by
+   a page-contract test rather than by inspection.
+
+Deliberately not done, recorded per tool: following SPF `include:`/`redirect=`
+chains, organisational-domain DMARC inheritance, DKIM key strength, EdDSA,
+nested-JWT (`cty`) handling, and a real-browser pass (Chromium is unavailable
+here — every visual claim in this document is from the markup and the DOM
+harness, not from a rendered page).

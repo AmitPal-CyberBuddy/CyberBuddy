@@ -259,7 +259,7 @@
             <button type="button" id="jwtVerify" class="btn btn-primary">Verify signature &amp; claims</button>
             <label class="jwt-pin-alg" for="jwtExpectedAlg">Expected algorithm
               <select id="jwtExpectedAlg" class="jwt-select">
-                <option value="">Auto from compatible supplied key</option>
+                <option value="">Auto &mdash; supplied key's alg, else the token's</option>
                 <option value="HS256">HS256</option><option value="HS384">HS384</option><option value="HS512">HS512</option>
                 <option value="RS256">RS256</option><option value="RS384">RS384</option><option value="RS512">RS512</option>
                 <option value="PS256">PS256</option><option value="PS384">PS384</option><option value="PS512">PS512</option>
@@ -267,7 +267,7 @@
               </select>
             </label>
           </div>
-          <p class="form-hint">Set an expected algorithm when your issuer configuration defines one. “Auto” still rejects an incompatible key family, but an explicit value also rejects a different token header algorithm.</p>
+          <p class="form-hint">Set an expected algorithm when your issuer configuration defines one — that is what a relying party must do. “Auto” accepts the token header's algorithm when no key alg or pin is supplied, and the result says so: a verifier that takes its algorithm from the token is exposed to algorithm-substitution attacks. An explicit value rejects any different header algorithm, and a key whose alg disagrees is always rejected.</p>
 
           <div id="jwtVerifyResult" class="jwt-verify-result hidden" role="status" aria-live="polite"></div>
         </article>

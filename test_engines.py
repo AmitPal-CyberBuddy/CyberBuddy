@@ -5881,6 +5881,137 @@ global.FileReaderSync = class { readAsText() { return ''; } };
         self.assertIn("JWT decode &amp; verify", landing)
 
 
+class JwtToolAuditTests(unittest.TestCase):
+    """Tool 07 (JWT Security Workbench) regressions found in the 2026-11-20 audit."""
+
+    def _run(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        script = (ROOT / "js" / "jwt.engine.js").read_text(encoding="utf-8") + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_markdown_withholds_custom_credential_claims(self):
+        # The redaction list held registered names only, so a password pasted
+        # into a test token travelled into the shareable report verbatim.
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+const b = (o) => J.b64urlEncode(new TextEncoder().encode(JSON.stringify(o)));
+const token = b({alg:"HS256",typ:"JWT"}) + "." + b({
+  sub:"user-1", email:"a@b.c", password:"hunter2", password_hash:"$2y$abcdef",
+  clientSecret:"cs-123", api_key:"AKIA-123", "X-Access-Token":"at-999",
+  sessionid:"sess-1", role:"admin", iss:"https://issuer.example", aud:"api",
+  tokenType:"Bearer", monkey:"m", apikeyId:"k1"
+}) + "." + "AAAA";
+const md = J.buildMarkdown(J.parseToken(token), {});
+console.log(JSON.stringify({ md: md,
+  leaks: ["hunter2","$2y$abcdef","cs-123","AKIA-123","at-999","sess-1","user-1","a@b.c"]
+    .filter((s) => md.indexOf(s) !== -1),
+  keeps: ["admin","https://issuer.example","api","Bearer"]
+    .filter((s) => md.indexOf(s) === -1),
+  names: ["`monkey`","`apikeyId`","`tokenType`"].filter((s) => md.indexOf(s) !== -1) }));
+""")
+        self.assertEqual(out["leaks"], [])
+        # Claim names that merely *look* credential-shaped stay readable.
+        self.assertEqual(out["keeps"], [])
+        self.assertEqual(out["names"], ["`monkey`", "`apikeyId`", "`tokenType`"])
+
+    def test_auto_expected_algorithm_is_reported_not_silent(self):
+        # verifyToken() with no pin used the token header's alg and returned a
+        # bare valid:true; the UI's "Auto" option therefore looked like a policy.
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+(async () => {
+  const t = await J.signToken({alg:"HS384"}, {a:1}, "s3cret");
+  const auto = await J.verifyToken(t.token, "s3cret", {});
+  const pinned = await J.verifyToken(t.token, "s3cret", {alg:"HS384"});
+  const wrong = await J.verifyToken(t.token, "s3cret", {alg:"HS256"});
+  console.log(JSON.stringify({auto: auto, pinned: pinned, wrong: wrong}));
+})();
+""")
+        self.assertTrue(out["auto"]["valid"])
+        self.assertEqual(out["auto"]["expectedAlg"], "HS384")
+        self.assertIn("header's HS384", out["auto"]["notice"])
+        self.assertNotIn("notice", out["pinned"])
+        self.assertFalse(out["wrong"]["valid"])
+        self.assertIn("Algorithm mismatch", out["wrong"]["error"])
+
+    def test_key_alg_mismatch_is_rejected_even_without_a_pin(self):
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+const b = (o) => J.b64urlEncode(new TextEncoder().encode(JSON.stringify(o)));
+const token = b({alg:"HS256"}) + "." + b({a:1}) + "." + "AAAA";
+J.verifyToken(token, {kty:"RSA", n:"abc", e:"AQAB", alg:"RS256"}, {}).then((r) => {
+  console.log(JSON.stringify(r));
+});
+""")
+        self.assertFalse(out["valid"])
+        self.assertIn("RS256", out["error"])
+
+    def test_fractional_numeric_dates_are_rejected(self):
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+const now = Math.floor(Date.now() / 1000);
+console.log(JSON.stringify({
+  whole: J.validateClaims({exp: now + 600}, {}),
+  fractional: J.validateClaims({exp: now + 600.5}, {}),
+  fractionalIat: J.validateClaims({iat: now + 0.25, exp: now + 600}, {})
+}));
+""")
+        self.assertTrue(out["whole"]["valid"])
+        self.assertFalse(out["fractional"]["valid"])
+        self.assertEqual(out["fractional"]["errors"][0]["code"], "exp")
+        self.assertIn("whole number", out["fractional"]["errors"][0]["message"])
+        self.assertFalse(out["fractionalIat"]["valid"])
+
+    def test_signature_length_that_cannot_match_the_alg_is_flagged(self):
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+const b = (o) => J.b64urlEncode(new TextEncoder().encode(JSON.stringify(o)));
+const sig = (len) => J.b64urlEncode(new Uint8Array(len));
+const obs = (alg, len) => J.observations(J.parseToken(b({alg:alg}) + "." + b({x:1}) + "." + sig(len)))
+  .filter((o) => o.code === "sig-length");
+console.log(JSON.stringify({
+  hs256ok: obs("HS256", 32), hs256bad: obs("HS256", 31),
+  hs512bad: obs("HS512", 32), es256ok: obs("ES256", 64), es256der: obs("ES256", 70),
+  rs256any: obs("RS256", 256)
+}));
+""")
+        self.assertEqual(out["hs256ok"], [])
+        self.assertEqual(out["rs256any"], [])
+        self.assertEqual(out["es256ok"], [])
+        self.assertEqual(out["hs256bad"][0]["level"], "high")
+        self.assertEqual(out["hs512bad"][0]["level"], "high")
+        self.assertIn("not JWS-conformant", out["es256der"][0]["message"])
+
+    def test_secret_search_rejects_a_missing_signature_instead_of_crashing(self):
+        out = self._run(r"""
+const J = CyberBuddyJwt;
+J.searchHmacSecret({alg:"HS256", signingInput:"a.b", candidates:["x"]}).then(
+  () => console.log(JSON.stringify({rejected:false})),
+  (e) => console.log(JSON.stringify({rejected:true, message:e.message}))
+);
+""")
+        self.assertTrue(out["rejected"])
+        self.assertIn("signature", out["message"])
+
+    def test_page_says_what_auto_actually_does(self):
+        page = (ROOT / "tools" / "jwt" / "index.html").read_text(encoding="utf-8")
+        controller = (ROOT / "js" / "tool.jwt.js").read_text(encoding="utf-8")
+        self.assertIn("else the token's", page)
+        self.assertNotIn("Auto from compatible supplied key", page)
+        self.assertIn("res.notice", controller)
+
+
 class JwtVaptTests(unittest.TestCase):
     """VAPT Testing Suggestions & Test Payloads: the Analyze & Verify panel
     derives prioritized authorized-test vectors from the decoded token

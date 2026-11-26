@@ -292,6 +292,11 @@
         lines.push(res.error || "Signature verification failed.");
       } else {
         lines.push("Signature matches using " + res.alg + ".");
+        // "Auto" still pins something: the key's alg, else the token's own.
+        // Say which, and say that the token's header was the source — a
+        // relying party must not take the algorithm from the token.
+        if (res.notice) lines.push(res.notice);
+        else if (res.expectedAlg) lines.push("Expected algorithm: " + res.expectedAlg + ".");
       }
     } catch (e) {
       ok = false;

@@ -194,6 +194,19 @@
     if (h.jwk) obs("high", "jwk", "Header carries an embedded jwk; do not trust a key supplied by the token.");
     if (h.kid != null) obs("info", "kid", "Key id present: " + String(h.kid));
     var spec = algSpec(h.alg);
+    /* A declared signature algorithm that cannot have produced these bytes is
+       worth seeing even when the analyst has no key to verify with: HS* is
+       always exactly the hash length, and JWS ECDSA uses fixed-width r||s. */
+    if (spec && parsed.signature) {
+      var sigLen = parsed.signature.length;
+      var wantLen = { HS256: 32, HS384: 48, HS512: 64, ES256: 64, ES384: 96 }[h.alg];
+      if (wantLen && sigLen !== wantLen) {
+        obs("high", "sig-length", "The " + h.alg + " signature is " + sigLen +
+          " bytes, but " + h.alg + " uses " + wantLen + " bytes" +
+          (/^ES/.test(h.alg) ? " (r||s); a DER-encoded ECDSA signature here means the producer is not JWS-conformant" : "") +
+          " — the bytes cannot have come from the declared algorithm.");
+      }
+    }
     if (spec && spec.kty === "oct" && h.alg && /^HS/.test(h.alg))
       obs("info", "hmac", "HMAC token — verification needs the shared secret.");
     return out;
@@ -221,8 +234,15 @@
       if (!has(name)) return null;
       // NumericDate is a JSON number. A numeric string must not silently
       // pass: a relying party may reject it or interpret it differently.
+      // RFC 7519 NumericDate is seconds since the epoch, and a fractional
+      // value has no defined meaning (a strict parser may reject or truncate
+      // it, so exp=now+0.4 may or may not be expired).
       if (typeof payload[name] !== "number" || !isFinite(payload[name])) {
         errors.push({ code: name, message: name + " must be a numeric NumericDate" });
+        return null;
+      }
+      if (!Number.isInteger(payload[name])) {
+        errors.push({ code: name, message: name + " must be a whole number of seconds (NumericDate)" });
         return null;
       }
       return payload[name];
@@ -353,7 +373,18 @@
     catch (e) { return Promise.resolve({ valid: false, error: e.message }); }
 
     var spec = algSpec(parsed.header.alg);
-    var expectedAlg = opts.alg || (key && typeof key === "object" && !Array.isArray(key) && key.kty && key.alg) || null;
+    /* "Auto" must still pin something. Deriving the expectation from *the
+       token's own header* means any alg in the supported list is accepted by
+       definition, which is the classic JWT weakness this workbench is supposed
+       to catch. The expectation is now the key's alg, then the header alg, and
+       with nothing supplied it is the header alg plus an explicit notice. */
+    var keyAlg = key && typeof key === "object" && !Array.isArray(key) && key.alg;
+    var expectedAlg = opts.alg || keyAlg || parsed.header.alg;
+    var autoAlg = !opts.alg;
+    if (keyAlg && keyAlg !== parsed.header.alg) {
+      return Promise.resolve({ valid: false, alg: parsed.header.alg,
+        error: "The supplied key is for " + keyAlg + " but the token header says " + parsed.header.alg });
+    }
     if (expectedAlg && expectedAlg !== parsed.header.alg) {
       return Promise.resolve({ valid: false, error: "Algorithm mismatch: header says " + parsed.header.alg + ", expected " + expectedAlg });
     }
@@ -390,8 +421,13 @@
     return keyTask.then(function (cryptoKey) {
       return crypto().subtle.verify(algorithm, cryptoKey, asUint8(parsed.signature), signingInput);
     }).then(function (ok) {
-      if (!ok) return { valid: false, alg: parsed.header.alg, error: "Signature does not match" };
-      return { valid: true, alg: parsed.header.alg, keyMatched: true };
+      if (!ok) return { valid: false, alg: parsed.header.alg, expectedAlg: expectedAlg, error: "Signature does not match" };
+      var result = { valid: true, alg: parsed.header.alg, expectedAlg: expectedAlg, keyMatched: true };
+      if (autoAlg) {
+        result.notice = "No expected algorithm was supplied: the header's " + parsed.header.alg +
+          " was accepted for this key. A relying party must take the algorithm from its own configuration.";
+      }
+      return result;
     }).catch(function (err) {
       return { valid: false, alg: parsed.header.alg, error: err && err.message ? err.message : String(err) };
     });
@@ -1103,6 +1139,9 @@
     if (!opts.candidates || !Array.isArray(opts.candidates) || !opts.candidates.length) {
       return Promise.reject(new Error("candidates must be a non-empty array"));
     }
+    if (!opts.signature || typeof opts.signature.length !== "number") {
+      return Promise.reject(new Error("signature must be the token's signature bytes"));
+    }
     var target = asUint8(opts.signature);
     var input = new TextEncoder().encode(opts.signingInput);
     var c = crypto();
@@ -1170,9 +1209,47 @@
      analyst has not run a verify, the report says so rather than implying an
      unverified token is fine.
      ---------------------------------------------------------------------- */
+  /* Claim names whose VALUE is withheld from the report. Matched
+     case-insensitively, both exactly and as a suffix, so `AccessPassword`,
+     `api_key`, `client_secret`, `x-session-id` and similar custom claims are
+     covered — a fixed list of registered names let a password pasted into a
+     test token travel into a shared report verbatim. `iss` and `aud` stay
+     readable: they identify the relying party, not the subject. */
   var SENSITIVE_CLAIMS = ["sub", "jti", "email", "name", "preferred_username",
-    "given_name", "family_name", "phone_number", "sid", "nonce", "at_hash",
-    "c_hash", "azp", "act", "cnf"];
+    "given_name", "family_name", "middle_name", "nickname", "phone_number",
+    "phone", "sid", "session", "session_id", "sessionid", "nonce", "at_hash",
+    "c_hash", "azp", "act", "cnf", "password", "passwd", "pwd", "secret",
+    "token", "access_token", "refresh_token", "id_token", "api_key", "apikey",
+    "key", "ssn", "address", "birthdate", "account", "account_id", "card",
+    "credit_card", "iban"];
+
+  /* Strong markers match anywhere in the claim name: `clientSecret`,
+     `X-Access-Token`, `password_hash` and `sessionid` all carry material. */
+  var SENSITIVE_MARKERS = ["password", "passwd", "secret", "apikey",
+    "token", "session", "cookie", "credential", "privatekey"];
+  var SENSITIVE_EXACT_MARKERS = ["pwd"];
+  /* Names that end with these hold a credential of their own. */
+  var SENSITIVE_SUFFIXES = ["key", "keyid"];
+
+  /* …but a name that only *looks* like a credential type is not one. */
+  var NOT_SENSITIVE = ["tokentype", "tokencount", "sessioncount", "monkey",
+    "apikeyid", "apikeycount", "passwordage", "sessionlimit"];
+
+  function isSensitiveClaim(name) {
+    var n = String(name == null ? "" : name).toLowerCase().replace(/^[-_.\s]+/, "");
+    if (!n) return false;
+    var normalized = n.replace(/[-_.\s]/g, "");
+    if (NOT_SENSITIVE.indexOf(normalized) !== -1) return false;
+    if (SENSITIVE_CLAIMS.indexOf(n) !== -1 || SENSITIVE_CLAIMS.indexOf(normalized) !== -1) return true;
+    // `nonce`/`azp`/`cnf`/`act` are matched exactly; as substrings they would
+    // swallow ordinary claims like "monkey". Only credential-bearing markers
+    // are matched anywhere in the name.
+    if (SENSITIVE_EXACT_MARKERS.indexOf(normalized) !== -1) return true;
+    if (SENSITIVE_MARKERS.some(function (m) { return normalized.indexOf(m) !== -1; })) return true;
+    return SENSITIVE_SUFFIXES.some(function (suffix) {
+      return normalized.length > suffix.length && normalized.slice(-suffix.length) === suffix;
+    });
+  }
 
   /* Registered claim timestamps render in IST (Asia/Kolkata, UTC+5:30) so a
      pasted report does not depend on the reader's timezone. */
@@ -1217,7 +1294,7 @@
         var v = p[k];
         var shown;
         if (k === "exp" || k === "iat" || k === "nbf") shown = fmtClaimTime(v);
-        else if (SENSITIVE_CLAIMS.indexOf(k) !== -1) shown = "(present, value withheld)";
+        else if (isSensitiveClaim(k)) shown = "(present, value withheld)";
         else if (typeof v === "object" && v !== null) shown = "(" + (Array.isArray(v) ? "array" : "object") + ")";
         else shown = String(v);
         lines.push("- **`" + k + "`:** " + shown);
@@ -1269,6 +1346,7 @@
     b64urlDecode: b64urlDecode,
     b64urlEncode: b64urlEncode,
     buildMarkdown: buildMarkdown,
+    isSensitiveClaim: isSensitiveClaim,
     parseToken: parseToken,
     tryParseToken: tryParseToken,
     observations: observations,

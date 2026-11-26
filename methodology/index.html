@@ -281,14 +281,14 @@
       </thead>
       <tbody>
         <tr><td class="k">Claim inspection</td><td>Structural decode &amp; timestamps</td><td>Validates <code>iat</code>, <code>nbf</code>, <code>exp</code> (with configurable clock skew), <code>iss</code>, <code>aud</code>, and <code>sub</code> without requiring a key.</td></tr>
-        <tr><td class="k">Crypto verification</td><td>Web Crypto API</td><td>Validates HS256/384/512, RS256/384/512, PS256/384/512, and ES256/384/512 signatures with algorithm pinning against downgrade and substitution.</td></tr>
+        <tr><td class="k">Crypto verification</td><td>Web Crypto API</td><td>Validates HS256/384/512, RS256/384/512, PS256/384/512, and ES256/384/512 signatures with algorithm pinning against downgrade and substitution. An explicit expected algorithm is the policy; “Auto” falls back to the supplied key’s alg and then to the token header’s, and says in the result when it did — the header never silently becomes the policy. A key whose own alg disagrees with the header is rejected, and a signature whose byte length cannot belong to the declared HS/ES algorithm is flagged.</td></tr>
         <tr><td class="k">Test variants</td><td>Authorized template generation</td><td>Constructs <code>alg:none</code>, RSA-to-HMAC key confusion, embedded JWK, <code>jku</code>/<code>x5u</code> header injection, and <code>kid</code> path traversal test templates for authorized verification.</td></tr>
         <tr><td class="k">VAPT recommendations</td><td>Context-aware rule engine</td><td>Derives prioritized, severity-tagged (CRITICAL / HIGH / INFO) test vectors from the decoded token's algorithm, headers and claims; each builds locally as a labelled TEST PAYLOAD with Burp Suite steps naming the risky (HTTP 200) versus expected (401/403) response. Suggestions are vectors, never findings.</td></tr>
         <tr><td class="k">Secret dictionary test</td><td>Isolated Web Worker</td><td>Offline candidate search against HMAC signatures without sending tokens or candidate passwords over the wire.</td></tr>
       </tbody>
     </table>
     <p style="margin: 16px 0 0;">
-      JWT evaluation produces no artificial score: tokens are either cryptographically valid or invalid for the provided key, claims either pass or fail, and variant templates and VAPT payloads are labelled as test artifacts, never findings.
+      JWT evaluation produces no artificial score: tokens are either cryptographically valid or invalid for the provided key, claims either pass or fail, and variant templates and VAPT payloads are labelled as test artifacts, never findings. The Markdown export carries the token’s shape, never its credentials: a claim whose name looks credential-bearing (password, secret, token, session, <code>api_key</code>, <code>*Key</code>, …) is reported as “present, value withheld”, while role, scope, issuer and audience stay readable.
     </p>
   </article>
 
