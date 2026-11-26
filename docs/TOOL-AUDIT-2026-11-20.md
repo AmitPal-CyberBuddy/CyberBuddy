@@ -778,6 +778,139 @@ protection) — kept.
 
 ---
 
+## Tool 06 — CSRF PoC Generator
+
+(Sixth tool in site order. This one has **no Python engine and no network
+path** by design: the parser and generator are pure functions in
+`js/tool.csrf.js`, exercised directly under Node.)
+
+### What the tool does
+
+1. Parses a pasted raw HTTP request (request line, headers, query string,
+   `urlencoded` / `multipart` / `text/plain` / JSON body).
+2. Rebuilds it as one or more standalone HTML pages using only what a browser
+   can send — forms for GET/POST, `fetch()` for JSON and non-form methods.
+3. Labels each variant READY / LIMITED / NOT DIRECTLY REPRESENTABLE from
+   **browser mechanics only**, never as a vulnerability verdict, and lists the
+   conditions a test needs (state change, ambient cookies, no effective token).
+4. Flags likely CSRF-token fields so the analyst can include or exclude them.
+
+### Phase 2 — engine correctness
+
+**6.1 A JSON CSRF token was invisible — the one field this tool exists to
+surface.** `{"csrfToken":"AAA","email":"a@b.c"}` reported
+**"Body parameters: none"**, `Likely tokens —`, no token panel, and no
+limitation. It sat under a copy block promising tokens are "included by
+default (CyberBuddy never silently removes them)", and the Markdown export said
+the same. A JSON endpoint is exactly where a hand-rolled token check is easy to
+miss, so the tool was quietest where it mattered most.
+
+JSON keys are now parsed into `jsonKeys`, token-like names (`csrfToken`,
+`_csrf`, `authenticity_token`, …) join the token list with `source: "json"`,
+the meta row counts them ("2 JSON keys"), the report lists them, and unticking
+one **removes the key and re-serializes the body** — with a limitation saying
+the bytes may differ. Body byte-for-byte fidelity is preserved whenever nothing
+is excluded; invalid JSON and non-object (array/scalar) bodies are left
+untouched and get no key analysis.
+
+**6.2 A URL fragment was treated as part of the request.** `GET /search?q=1&page=2#results`
+is sent as `/search?q=1&page=2` — the fragment never leaves the browser. The
+parser split the query on `?` only, so `page` became `2#results` and the
+generated form re-sent that corrupted value; the action URL kept `#results`
+too. Fragments are now stripped on both target forms (absolute and
+origin-form) before the query is split. Verified: hidden inputs are `q=1`,
+`page=2`, action `https://app.example.com/search`, no `#` anywhere.
+
+**6.3 The scheme was guessed as HTTPS for a port that says otherwise.**
+Origin-form requests have no scheme, so one is inferred from the `Host`. The
+rule was "local host ⇒ http, else https", which turned
+`Host: app.example.com:80` into `https://app.example.com:80/x` — a TLS
+handshake against a plain-HTTP port, i.e. a PoC that cannot work. Port `80`
+now means `http`; `443` and no port stay `https`; any other port stays `https`
+but the assumption is **disclosed** in the report as a limitation.
+
+**6.4 `parseRequest()` computed a `warnings` array that nothing ever read.**
+`warnings` was initialised, returned, and never rendered, tested or exported —
+so anything pushed into it (now, 6.3) would have vanished. Generation now folds
+every parse warning into the report's limitations, and a test asserts the
+scheme note reaches it.
+
+**6.5 Excluding the guard tested nothing and still read as a result.**
+With a single `X-Requested-With` header, the request is LIMITED *because* the
+guard needs `fetch()` + preflight. Unticking that header produced a fetch
+variant **without the guard**, while the status, the copy and the reason still
+said "depends on a CORS preflight" — the report claimed to have exercised a
+guard that was not in the payload. The result now carries `unassessed: true`,
+the chip reads `LIMITED · NOT ASSESSED`, and the reason says plainly that the
+guard was excluded and therefore not tested. A token-only request that keeps
+its Content-Type takes the same path for the same reason.
+
+**6.6 `X-Requested-With` could not be excluded at all.** The only exclusion UI
+was the token panel, and `looksLikeToken("x-requested-with")` is false — so the
+canonical CSRF guard header could never be removed to test whether the server
+enforces it. Non-token `X-*` headers now have their own "Replayed guard headers"
+panel (same `excluded` map, `data-header-uid`), absent from the generated HTML.
+
+**6.7 The token panel's copy did not change on exclusion.** It kept saying the
+fields "are included by default" while the generated PoC had already dropped
+them. `#tokenNote` now states *"N of M likely token field(s) will be LEFT OUT of
+the generated PoC"*, distinguishes that from the pasted request (which is never
+modified), and adds "the guard is NOT assessed" when every token is excluded.
+
+### Phase 4 — robustness
+
+**6.8 A large paste could hang or exhaust the tab.** Measured under Node: a
+100 KB body of 200 k parameters produced a **9 MB** PoC in ~0.5 s, and a 4×
+larger body died in `String.split` inside the V8 heap. The page accepted
+anything. Requests are now refused above **512 KB** (`too-large`) and **2,000
+parameters** (`too-many-params`, query, urlencoded, multipart and text/plain),
+with copy that explains the limit. The same 781 KB input is refused in 1.7 ms.
+
+### Considered and deliberately left alone
+
+- **HTML forms cannot control `Content-Type`.** The default urlencoded form is
+  still the primary variant, with `multipart` and `text/plain` offered as
+  alternatives (never the other way round). The JSON-as-`text/plain` trick
+  stays a labelled alternative, only offered when the body can be framed as a
+  single `name=value` pair.
+- **`json-fetch` is kept as the default JSON variant.** The `text/plain` trick is
+  more likely to work in practice, but promoting it would bury the honest
+  statement that JSON bodies need a preflight behind an encoding the server may
+  reject; both remain visible, and 6.1 makes the token caveat explicit.
+- **`HEAD`, `OPTIONS`, `TRACE`** keep their existing treatment (HEAD is
+  LIMITED via `fetch()`, TRACE is not representable). OPTIONS is now also
+  reachable as a requested method (`options` variant) — no change to its
+  classification.
+
+### Verification
+
+- `python3 -m unittest test_engines -q` → **537 tests OK** (529 after Tool 05,
+  +8 for Tool 06: JSON key/token handling, byte-fidelity guard, fragment
+  stripping, scheme inference, unassessed guard, size limits, panel wiring).
+- `CsrfParserTests` (23 cases, pre-existing) → OK. One assertion was updated
+  rather than deleted: `test_fetch_honors_query_and_header_exclusions`
+  asserted `READY` for a PoC that sends no guard header at all — the exact
+  defect 6.5 describes.
+- jsdom harness `/tmp/dom-csrf.js` → **22/22** (JSON token toggle round-trip,
+  "LEFT OUT"/"NOT assessed" copy, guard-header exclusion, NOT ASSESSED chip,
+  fragment-free URL, error path clearing the report). The same harness against
+  the previous controller fails immediately (no token checkbox for JSON keys).
+- `python3 tools/verify.py` → **PASS**, 20 pages, links clean.
+
+### Recommendations not made in this pass
+
+- **Auto-read the page's form** to pick up the token it actually emits (a
+  browser extension or a paste-the-HTML flow), so the PoC does not depend on a
+  static token that can never match.
+- **`SameSite` pre-check**: the page could ask for the cookie's `SameSite`
+  attribute (or a pasted `Set-Cookie`) and say up front that `Strict` makes most
+  of the variants impossible.
+- **Fetch Metadata** (`Sec-Fetch-Site`) is a real modern control; the tool
+  mentions Origin/Referer but not `Sec-Fetch-*`, which the browser sets and the
+  attacker cannot forge.
+
+---
+
 ## Cross-cutting — tool numbering (fixed)
 
 The audit labels tools by their position in the site catalogue, so the
@@ -809,4 +942,4 @@ CSP**). Both statements are corrected in place above.
 `TOOLS_MENU` array, the prefetch block and every page's kicker, and fails if
 they disagree, if a number repeats, or if a page has no kicker at all.
 
-Verified: `python3 tools/verify.py` → **PASS**, 529 tests.
+Verified: `python3 tools/verify.py` → **PASS**, 537 tests.

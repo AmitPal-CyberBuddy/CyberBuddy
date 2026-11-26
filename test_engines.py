@@ -3639,14 +3639,19 @@ const C = CyberBuddyCsrf;
 const p = C.parseRequest("POST /t?csrf=QUERYSECRET&a=1 HTTP/1.1\nHost: example.com\nContent-Type: text/plain\nX-CSRF-Token: HEADERSECRET\n\nx=y");
 const g = C.generatePoc(p, {});
 const e = C.generatePoc(p, {excluded:{"q:0":true,"h:x-csrf-token":true}});
-console.log(JSON.stringify({status:g.status, html:g.variants[0].html, excluded:e.variants[0].html, excludedStatus:e.status}));
+console.log(JSON.stringify({status:g.status, html:g.variants[0].html, excluded:e.variants[0].html, excludedStatus:e.status, unassessed:e.unassessed, reason:e.reason}));
 ''')
         self.assertEqual(out["status"], "LIMITED")
         self.assertIn('"x-csrf-token": "HEADERSECRET"', out["html"])
-        self.assertEqual(out["excludedStatus"], "READY")
         self.assertNotIn("QUERYSECRET", out["excluded"])
         self.assertNotIn("HEADERSECRET", out["excluded"])
         self.assertIn("https://example.com/t?a=1", out["excluded"])
+        # Excluding the only guard header leaves nothing for the PoC to test.
+        # It used to report READY ("simple request, no preflight") for a PoC
+        # that sends no guard header at all.
+        self.assertEqual(out["excludedStatus"], "LIMITED")
+        self.assertTrue(out["unassessed"])
+        self.assertIn("NOT assessed", out["reason"])
 
     def test_plain_body_exclusion_does_not_use_query_indices(self):
         out = self._run_csrf(r'''
@@ -3961,6 +3966,151 @@ console.log(JSON.stringify({
 ''')
         self.assertEqual(out["a"], "csrf-post-victim.example.com.html")
         self.assertEqual(out["b"], "csrf-get-a-b-c.com.html")
+
+
+class CsrfToolAuditTests(unittest.TestCase):
+    """Tool 06 (CSRF PoC Generator) regressions found in the 2026-11-20 audit."""
+
+    def _run(self, harness: str):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        import tempfile
+        script = (ROOT / "js" / "tool.csrf.js").read_text(encoding="utf-8") + "\n" + harness
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run([node, path], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_json_token_fields_are_detected_and_excludable(self):
+        # A JSON body has no "parameters", so `{"csrfToken":"…"}` was reported
+        # as "Body parameters: none" and the token was never offered — the one
+        # field a CSRF PoC must tell the analyst about.
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const raw = 'POST /api/p HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{"csrfToken":"AAA","email":"a@b.c"}';
+const p = C.parseRequest(raw);
+const keep = C.generatePoc(p, {excluded:{}});
+const drop = C.generatePoc(p, {excluded:{"j:csrfToken":true}});
+const bit = (g) => (g.variants[0].html.split("\n").filter((l) => l.indexOf("body:") === 0 || l.indexOf("      body:") === 0)[0] || "");
+console.log(JSON.stringify({
+  tokens: p.tokens.map((t) => [t.name, t.source]),
+  keys: p.jsonKeys.map((k) => k.name),
+  params: keep.params,
+  keep: bit(keep),
+  drop: bit(drop),
+  limitations: drop.limitations.filter((l) => /re-serialized/.test(l))
+}));
+""")
+        self.assertEqual(out["tokens"], [["csrfToken", "json"]])
+        self.assertEqual(out["keys"], ["csrfToken", "email"])
+        self.assertEqual(out["params"]["json"], 2)
+        self.assertIn("csrfToken", out["keep"])
+        self.assertNotIn("csrfToken", out["drop"])
+        self.assertIn("a@b.c", out["drop"])
+        self.assertTrue(out["limitations"])
+
+    def test_non_object_json_is_left_byte_for_byte(self):
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const arr = C.parseRequest('POST /a HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n[{"csrfToken":"A"}]');
+const bad = C.parseRequest("POST /a HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/json\r\n\r\n{not json}");
+console.log(JSON.stringify({arrKeys: arr.jsonKeys.length, arrRoundTrip: arr.jsonRoundTrip, badRoundTrip: bad.jsonRoundTrip}));
+""")
+        self.assertEqual(out["arrKeys"], 0)
+        self.assertFalse(out["badRoundTrip"])
+
+    def test_fragment_never_reaches_the_poc(self):
+        # `#results` is client-side only; it used to contaminate the last query
+        # parameter ("page=2#results") and the form action.
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("GET https://app.example.com/search?q=1&page=2#results HTTP/1.1\r\n\r\n");
+const g = C.generatePoc(p, {excluded:{}});
+console.log(JSON.stringify({url: g.url, query: p.queryParams.map((x) => [x.name, x.value]), html: g.variants[0].html}));
+""")
+        self.assertNotIn("#", out["url"])
+        self.assertEqual(out["query"], [["q", "1"], ["page", "2"]])
+        self.assertNotIn("#results", out["html"])
+
+    def test_origin_form_port_decides_the_scheme_and_a_guess_is_disclosed(self):
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const rows = {};
+[["app.example.com", ""], ["app.example.com:80", ""], ["app.example.com:443", ""],
+ ["app.example.com:8080", ""], ["10.0.0.5:80", ""]].forEach(([host]) => {
+  const p = C.parseRequest("POST /x HTTP/1.1\r\nHost: " + host + "\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\na=1");
+  const g = C.generatePoc(p, {excluded:{}});
+  rows[host] = {url: p.url, warned: g.limitations.some((l) => /assumes https:\/\//.test(l))};
+});
+console.log(JSON.stringify(rows));
+""")
+        self.assertEqual(out["app.example.com"]["url"], "https://app.example.com/x")
+        self.assertEqual(out["app.example.com:80"]["url"], "http://app.example.com:80/x")
+        self.assertEqual(out["app.example.com:443"]["url"], "https://app.example.com:443/x")
+        # No scheme in the request line: a non-standard port is a guess, so it
+        # must be disclosed in the report (the parse-time `warnings` array was
+        # computed and then never rendered anywhere).
+        self.assertEqual(out["app.example.com:8080"]["url"], "https://app.example.com:8080/x")
+        self.assertTrue(out["app.example.com:8080"]["warned"])
+        self.assertFalse(out["app.example.com:443"]["warned"])
+        self.assertEqual(out["10.0.0.5:80"]["url"], "http://10.0.0.5:80/x")
+
+    def test_excluding_the_only_guard_header_is_reported_as_unassessed(self):
+        # Excluding the sole X-* header left a fetch variant that sends no guard
+        # at all, and the report still promised it tested the guard.
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const p = C.parseRequest("POST /x HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\nX-Requested-With: XMLHttpRequest\r\n\r\na=1");
+const all = C.generatePoc(p, {excluded:{}});
+const drop = C.generatePoc(p, {excluded:{"h:x-requested-with":true}});
+console.log(JSON.stringify({all: [all.status, all.unassessed], drop: [drop.status, drop.unassessed],
+  reason: drop.reason, html: drop.variants[0].html}));
+""")
+        self.assertEqual(out["all"], ["LIMITED", False])
+        self.assertEqual(out["drop"], ["LIMITED", True])
+        self.assertIn("NOT assessed", out["reason"])
+        self.assertNotIn("x-requested-with", out["html"].lower())
+
+    def test_oversized_or_explosive_input_is_refused_fast(self):
+        out = self._run(r"""
+const C = CyberBuddyCsrf;
+const big = "POST /x HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n" + "a=1&".repeat(200000);
+const many = "POST /x HTTP/1.1\r\nHost: e.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n" + "a=1&".repeat(3000);
+const started = Date.now();
+const bigParsed = C.parseRequest(big);
+const manyParsed = C.parseRequest(many);
+console.log(JSON.stringify({bigOk: bigParsed.ok, bigCode: bigParsed.errors[0].code,
+  manyOk: manyParsed.ok, manyCode: manyParsed.errors[0].code, ms: Date.now() - started}));
+""")
+        self.assertFalse(out["bigOk"])
+        self.assertEqual(out["bigCode"], "too-large")
+        self.assertFalse(out["manyOk"])
+        self.assertEqual(out["manyCode"], "too-many-params")
+        # The old path built a 9 MB string and could exhaust the heap; a refusal
+        # must be immediate.
+        self.assertLess(out["ms"], 2000)
+
+    def test_guard_headers_have_their_own_exclusion_panel(self):
+        # X-Requested-With is not "token-like", so before this the canonical
+        # CSRF guard header could not be excluded from the PoC at all.
+        js = (ROOT / "js" / "tool.csrf.js").read_text(encoding="utf-8")
+        page = (ROOT / "tools" / "csrf" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function renderGuardHeaders(", js)
+        self.assertIn("data-header-uid", js)
+        self.assertIn('id="headerList"', page)
+        self.assertIn('id="headersPanel"', page)
+
+    def test_excluding_a_token_changes_the_panel_copy(self):
+        js = (ROOT / "js" / "tool.csrf.js").read_text(encoding="utf-8")
+        page = (ROOT / "tools" / "csrf" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="tokenNote"', page)
+        self.assertIn("the guard is NOT assessed", js)
 
 
 class VerdictContractTests(unittest.TestCase):

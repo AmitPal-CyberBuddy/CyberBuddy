@@ -120,8 +120,11 @@
         Parses a pasted Burp request and rebuilds it as standalone HTML — forms
         for GET/POST, <code>fetch()</code> for JSON and non-form methods — each
         labelled <strong>READY</strong>, <strong>LIMITED</strong>, or
-        <strong>NOT DIRECTLY REPRESENTABLE</strong> by browser mechanics. It
-        runs entirely in your browser, never sends or stores the request, and
+        <strong>NOT DIRECTLY REPRESENTABLE</strong> by browser mechanics. Likely
+        CSRF-token fields (form, JSON key or <code>X-*</code> header) are listed
+        and can be left out, and a PoC that ends up sending no guard at all is
+        marked <strong>NOT ASSESSED</strong> rather than reported as a result.
+        It runs entirely in your browser, never sends or stores the request, and
         never executes the PoC.
       </p>
       <p class="std-line">OWASP WSTG-SESS-05 · CWE-352</p>

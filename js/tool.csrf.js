@@ -91,6 +91,12 @@
     return out;
   }
 
+  /* Size guards. Pasted requests are normally a few KB; a multi-megabyte body
+     (or one with millions of parameters) is either a mistake or a way to
+     freeze the tab. Refuse it with a clear message instead of thrashing. */
+  var MAX_REQUEST_BYTES = 512 * 1024;
+  var MAX_PARAMS = 2000;
+
   function looksLikeToken(name) {
     var n = String(name == null ? "" : name).toLowerCase();
     if (!n) return false;
@@ -152,6 +158,15 @@
     return { host: host, port: port };
   }
 
+  /* A fragment is client-side only: it is never sent in the request line, so it
+     must not survive into the PoC URL. `GET /s?q=1&page=2#results` previously
+     parsed `page` as `2#results` and re-sent that corrupted value. */
+  function stripFragment(value) {
+    var text = String(value == null ? "" : value);
+    var hash = text.indexOf("#");
+    return hash === -1 ? text : text.slice(0, hash);
+  }
+
   function looksLocal(host) {
     return /^(localhost|127\.(\d{1,3}\.){2}\d{1,3}|::1|0\.0\.0\.0)$/i.test(String(host || ""));
   }
@@ -197,6 +212,17 @@
      ---------------------------------------------------------------------- */
   function parseRequest(raw) {
     var text = normalizeLines(raw);
+    if (text.length > MAX_REQUEST_BYTES) {
+      return {
+        ok: false,
+        errors: [{
+          code: "too-large",
+          message: "That request is " + Math.round(text.length / 1024) + " KB. The generator accepts up to " +
+            Math.round(MAX_REQUEST_BYTES / 1024) + " KB \u2014 trim the body to the fields that matter " +
+            "(large uploads and generated payloads are not CSRF test candidates anyway)."
+        }]
+      };
+    }
     var lines = text.split("\n");
     var errors = [];
     var warnings = [];
@@ -267,8 +293,12 @@
       scheme = absolute.scheme;
       host = absolute.host;
       port = absolute.port;
-      path = absolute.path;
-      query = absolute.query;
+      // Drop any fragment before the query is split.
+      var absPathQuery = stripFragment(absolute.path + (absolute.query ? "?" + absolute.query : ""));
+      var absQ = absPathQuery.indexOf("?");
+      path = absQ === -1 ? absPathQuery : absPathQuery.slice(0, absQ);
+      query = absQ === -1 ? "" : absPathQuery.slice(absQ + 1);
+      if (!path) path = "/";
       if (!host) { errors.push({ code: "host", message: "The absolute request URL is missing a host." }); fatal = true; }
     } else {
       var hostHeader = hval(headers, "host");
@@ -280,13 +310,27 @@
         fatal = true;
         scheme = "https"; path = target; query = "";
       } else {
-        var pathQuery = target;
+        var pathQuery = stripFragment(target);
         if (pathQuery.charAt(0) !== "/" && pathQuery.charAt(0) !== "*") pathQuery = "/" + pathQuery;
         if (pathQuery === "*") pathQuery = "/";
         var q = pathQuery.indexOf("?");
         path = q === -1 ? pathQuery : pathQuery.slice(0, q);
         query = q === -1 ? "" : pathQuery.slice(q + 1);
-        scheme = looksLocal(host) ? "http" : "https";
+        /* Origin-form says nothing about the scheme, so infer it from the Host
+           port instead of assuming TLS. `Host: app.example.com:80` used to
+           become https://app.example.com:80 — a TLS handshake on a plain-HTTP
+           port, i.e. a PoC that could never work. */
+        if (looksLocal(host)) {
+          scheme = "http";
+        } else if (port === "80") {
+          scheme = "http";
+        } else if (port === "" || port === "443") {
+          scheme = "https";
+        } else {
+          scheme = "https";
+          warnings.push("No scheme in the request line: the PoC assumes https:// for port " + port +
+            ". Edit the generated HTML if the target answers plain HTTP there.");
+        }
       }
     }
     if (scheme !== "http" && scheme !== "https") {
@@ -310,6 +354,11 @@
 
     // --- Parameters ---
     var queryParams = parsePairs(query, true);
+    if (queryParams.length > MAX_PARAMS) {
+      errors.push({ code: "too-many-params", message: "The query string has " + queryParams.length +
+        " parameters (limit " + MAX_PARAMS + "). A PoC with that many hidden inputs is not testable." });
+      fatal = true;
+    }
     var bodyParams = [];
     var textPlainPairs = [];
     var isJson = mediaType === "application/json" || (mediaType !== "" && mediaType.slice(-5) === "+json");
@@ -317,10 +366,20 @@
 
     if (mediaType === "application/x-www-form-urlencoded") {
       bodyParams = parsePairs(body, true);
+      if (bodyParams.length > MAX_PARAMS) {
+        errors.push({ code: "too-many-params", message: "The body has " + bodyParams.length +
+          " parameters (limit " + MAX_PARAMS + "). A PoC with that many hidden inputs is not testable." });
+        fatal = true;
+      }
     } else if (mediaType === "multipart/form-data") {
       var mp = parseMultipart(body, ctParams.boundary);
       if (mp.error) { errors.push({ code: "multipart", message: mp.error }); fatal = true; }
       bodyParams = mp.params;
+      if (bodyParams.length > MAX_PARAMS) {
+        errors.push({ code: "too-many-params", message: "The multipart body has " + bodyParams.length +
+          " parts (limit " + MAX_PARAMS + ")." });
+        fatal = true;
+      }
     } else if (mediaType === "text/plain") {
       var allPairs = true;
       String(body || "").split(/\r?\n/).forEach(function (line, idx, arr) {
@@ -332,6 +391,38 @@
       if (!textPlainPairs.length) allPairs = false;
       if (!allPairs) textPlainPairs = [];
       bodyParams = textPlainPairs;
+    }
+
+    /* --- JSON keys (for token detection and reporting only). ---
+       A JSON body has no "parameters", so it was reported as "Body
+       parameters: none" and a `{"csrfToken": "…"}` field was never flagged as a
+       likely token — the one thing this tool must not hide, because a PoC that
+       carries a static token will fail for a reason the analyst needs to know. */
+    var jsonKeys = [];
+    var jsonDocument = null;
+    // True only when the pasted body parsed as JSON, i.e. re-serializing it
+    // after an exclusion reproduces a body the server can act on.
+    var jsonRoundTrip = false;
+    if (isJson && body) {
+      try {
+        var doc = JSON.parse(body);
+        if (doc !== null && typeof doc === "object") {
+          jsonRoundTrip = true;
+          if (!Array.isArray(doc)) {
+            Object.keys(doc).forEach(function (key) {
+              jsonKeys.push({
+                name: key,
+                uid: "j:" + key,
+                token: looksLikeToken(key),
+                index: jsonKeys.length
+              });
+            });
+          }
+        }
+        jsonDocument = doc;
+      } catch (_) {
+        // Not valid JSON: no key-level analysis and no re-serialization.
+      }
     }
 
     // --- Custom X-* headers (only these may be replayed by fetch). ---
@@ -369,6 +460,9 @@
     customHeaders.forEach(function (h) {
       if (h.token) tokens.push({ name: h.name, source: "header", uid: h.uid, index: h.index });
     });
+    jsonKeys.forEach(function (k) {
+      if (k.token) tokens.push({ name: k.name, source: "json", uid: k.uid, index: k.index });
+    });
 
     var hasFileFields = bodyParams.some(function (p) { return p.file; });
 
@@ -398,7 +492,10 @@
       tokens: tokens,
       hasFileFields: hasFileFields,
       isJson: isJson,
-      jsonRaw: jsonRaw
+      jsonRaw: jsonRaw,
+      jsonKeys: jsonKeys,
+      jsonDocument: jsonDocument,
+      jsonRoundTrip: jsonRoundTrip
     };
   }
 
@@ -582,11 +679,29 @@
       }).join(delimiter);
     }
 
+    /* A JSON key the analyst unticks must actually leave the body — otherwise
+       the report says "you excluded token field csrfToken" while the value is
+       still in the payload, which is the opposite of what the UI promised. */
+    if (parsed.isJson && parsed.jsonRoundTrip && parsed.jsonKeys.some(function (k) { return excluded[k.uid]; })) {
+      var jsonBody = Object.assign({}, parsed.jsonDocument);
+      parsed.jsonKeys.forEach(function (k) { if (excluded[k.uid]) delete jsonBody[k.name]; });
+      parsed.body = JSON.stringify(jsonBody);
+      parsed.jsonRaw = parsed.body;
+      limitations.push("Excluded JSON key(s) were removed and the object re-serialized; key order, spacing and escaping may differ from the pasted bytes. " +
+        "If the pasted body repeated a key, JSON.parse already kept only the last value \u2014 compare against the original before relying on this variant.");
+    }
+
     if (parsed.mediaType === "text/plain" && bIncluded.length !== parsed.bodyParams.length) {
       parsed.body = bIncluded.map(function (p) { return p.raw; }).join(parsed.body.indexOf("\r\n") !== -1 ? "\r\n" : "\n");
     }
 
+    /* Parse-time warnings (e.g. an inferred scheme) belong in the report, not
+       in a field the page never rendered. This bug class has bitten the other
+       tools: computed, then dropped before display. */
+    (parsed.warnings || []).forEach(function (warning) { limitations.push(warning); });
+
     var activeCustomHeaders = parsed.customHeaders.filter(function (h) { return !excluded[h.uid]; });
+    var excludedCustomHeaders = parsed.customHeaders.filter(function (h) { return excluded[h.uid]; });
     var customHeaderNames = activeCustomHeaders.map(function (h) { return h.name; });
     if (customHeaderNames.length) {
       var manyHeaders = customHeaderNames.length > 1;
@@ -649,6 +764,23 @@
     // Unsafe bytes/long Content-Type values are not CORS-safelisted, even
     // when the MIME essence is text/plain.
     var unsafeContentType = parsed.contentType.length > 128 || /[\x00-\x08\x0a-\x1f\x7f"():<>?@\[\]{}]/.test(parsed.contentType);
+    /* Only the Content-Type is left (every X-* header was excluded): the
+       generated fetch variant would carry *no* guard header at all, so it
+       cannot test a Content-Type check, and the old copy claimed it did. */
+    var contentTypeOnly = !activeCustomHeaders.length && excludedCustomHeaders.length > 0 &&
+      !(unsafeContentType && parsed.mediaType === "text/plain");
+    if (contentTypeOnly) {
+      status = "LIMITED";
+      reason = "Every X-* header was excluded, so the only non-form element left is Content-Type — and an HTML form cannot set one at all. This PoC sends the same body with the browser's default type, so it does not test a Content-Type check. The guard was NOT assessed.";
+      limitations.push("No guard header was sent: the excluded X-* header(s) (" +
+        excludedCustomHeaders.map(function (h) { return h.name; }).join(", ") +
+        ") were the whole point of the fetch variant. Re-enable them to test the guard, and remember a server that only checks for their presence is not protected.");
+      variants.push(fetchVariant(parsed, opts, "custom-fetch", "Request with the original body via fetch()",
+        method, headerTokenObjects(), method === "GET" || method === "HEAD" ? null : parsed.body || null,
+        reason, "limited"));
+      return finish(parsed, variants, limitations, status, reason, auto, true);
+    }
+
     if (activeCustomHeaders.length || (unsafeContentType && parsed.mediaType === "text/plain")) {
       status = "LIMITED";
       reason = "Custom headers or a non-safelisted Content-Type value require fetch() and a successful CORS preflight; a form cannot reproduce them.";
@@ -802,7 +934,7 @@
     return finish(parsed, variants, limitations, status, reason, auto);
   }
 
-  function finish(parsed, variants, limitations, status, reason, auto) {
+  function finish(parsed, variants, limitations, status, reason, auto, unassessed) {
     if (!variants.length) {
       status = "NOT DIRECTLY REPRESENTABLE";
       reason = reason || "No browser mechanism can reproduce this request.";
@@ -810,6 +942,11 @@
     }
     return {
       status: status,
+      /* True when the request's only non-form element was excluded, so the
+         thing the analyst wanted to test was never put in front of the server.
+         Reported separately from status: LIMITED describes the mechanics, this
+         says the guard itself was not exercised. */
+      unassessed: !!unassessed,
       reason: reason,
       repro: reproLabel(status),
       method: parsed.method,
@@ -821,7 +958,8 @@
       params: {
         query: parsed.queryParams.length,
         body: parsed.bodyParams.length,
-        file: parsed.bodyParams.filter(function (p) { return p.file; }).length
+        file: parsed.bodyParams.filter(function (p) { return p.file; }).length,
+        json: (parsed.jsonKeys || []).length
       },
       tokens: parsed.tokens,
       hasFileFields: parsed.hasFileFields,
@@ -886,6 +1024,12 @@
     lines.push("- **URL:** " + parsed.url);
     lines.push("- **Query parameters:** " + (q.length ? q.length + " (" + q.join(", ") + ")" : "none"));
     lines.push("- **Body parameters:** " + (b.length ? b.length + " (" + b.join(", ") + ")" : "none"));
+    var jk = (parsed.jsonKeys || []).map(function (k) { return k.name; });
+    if (jk.length) {
+      lines.push("- **JSON keys:** " + jk.length + " (" + jk.join(", ") + ")");
+    } else if (parsed.isJson) {
+      lines.push("- **JSON keys:** not listed (the body is not a flat JSON object)");
+    }
     lines.push("- **Content-Type:** " + (parsed.contentType || "(none)"));
     lines.push("- **Mechanism status:** " + gen.status);
     lines.push("- **Reproducibility:** " + gen.repro);
@@ -980,6 +1124,13 @@
         var el = document.querySelector('[data-token-uid="' + t.uid + '"]');
         if (el && !el.checked) excluded[t.uid] = true;
       });
+      /* Guard headers that are not token-like (X-Requested-With is the classic
+         one) are replayed by the fetch variant but were absent from the UI, so
+         they could not be excluded at all. Same `excluded` map, separate list. */
+      lastParsed.customHeaders.forEach(function (h) {
+        var el = document.querySelector('[data-header-uid="' + h.uid + '"]');
+        if (el && !el.checked) excluded[h.uid] = true;
+      });
       return excluded;
     }
 
@@ -994,11 +1145,51 @@
         return;
       }
       panel.classList.remove("hidden");
+      /* Exclusion means the PoC *lacks* the field. Excluding the only
+         non-form guard used to leave READY/LIMITED unchanged, so the report
+         still read "depends on a preflight" for a PoC that sends no guard. */
+      var excludedCount = parsed.tokens.filter(function (t) { return excluded[t.uid]; }).length;
+      var note = $("tokenNote");
+      if (note) {
+        note.textContent = excludedCount
+          ? excludedCount + " of " + parsed.tokens.length + " likely token field(s) will be LEFT OUT of the generated PoC. " +
+            "Unticking removes the field; it never removes it from the pasted request above, and a PoC that omits a token " +
+            "only tests whether the server actually validates it (an authorized check)." +
+            (excludedCount === parsed.tokens.length ? " Nothing is left to test a token check with — the guard is NOT assessed." : "")
+          : "These fields look like anti-CSRF tokens. They are included by default (CyberBuddy never silently removes them); " +
+            "untick one to test whether the server actually validates it. A static PoC value will not match a real " +
+            "per-session token \u2014 that is expected, not a broken PoC.";
+      }
       list.innerHTML = parsed.tokens.map(function (t) {
         return '<label class="csrf-token-item" for="tok-' + t.uid.replace(/[^a-z0-9-]/g, "") + '">' +
           '<input type="checkbox" id="tok-' + t.uid.replace(/[^a-z0-9-]/g, "") + '" data-token-uid="' + escHtml(t.uid) + '"' + (excluded[t.uid] ? '' : ' checked') + ' />' +
           "<code>" + escHtml(t.name) + "</code>" +
           '<span class="csrf-token-src">' + escHtml(t.source) + "</span></label>";
+      }).join("");
+      list.querySelectorAll("input[type=checkbox]").forEach(function (el) {
+        el.addEventListener("change", function () { regenerate(); });
+      });
+    }
+
+    function renderGuardHeaders(parsed, excluded) {
+      var panel = $("headersPanel");
+      var list = $("headerList");
+      if (!panel || !list) return;
+      excluded = excluded || {};
+      var headers = parsed.customHeaders || [];
+      if (!headers.length) {
+        panel.classList.add("hidden");
+        list.innerHTML = "";
+        return;
+      }
+      panel.classList.remove("hidden");
+      list.innerHTML = headers.map(function (h) {
+        var id = "hdr-" + h.uid.replace(/[^a-z0-9-]/g, "");
+        return '<label class="csrf-token-item" for="' + id + '">' +
+          '<input type="checkbox" id="' + id + '" data-header-uid="' + escHtml(h.uid) + '"' +
+          (excluded[h.uid] ? "" : " checked") + " />" +
+          "<code>" + escHtml(h.name) + "</code>" +
+          '<span class="csrf-token-src">header</span></label>';
       }).join("");
       list.querySelectorAll("input[type=checkbox]").forEach(function (el) {
         el.addEventListener("change", function () { regenerate(); });
@@ -1050,7 +1241,7 @@
       var repro = gen.status === "READY" ? "repro-ready"
         : gen.status === "LIMITED" ? "repro-limited" : "repro-none";
       var verdict = $("verdict");
-      verdict.textContent = gen.status;
+      verdict.textContent = gen.unassessed ? gen.status + " \u00b7 NOT ASSESSED" : gen.status;
       verdict.className = "risk " + repro;
       /* Match the scanners' verdict-transition animation (re-triggered by
          forcing a reflow, otherwise re-adding the class is a no-op). */
@@ -1062,7 +1253,9 @@
 
       var prot = $("protection");
       if (prot) {
-        prot.textContent = gen.status === "READY" ? "READY \u2014 reproduced as a simple browser request (no preflight)."
+        prot.textContent = gen.unassessed
+          ? gen.status + " \u2014 the guard this PoC was meant to test was excluded, so it was NOT assessed."
+          : gen.status === "READY" ? "READY \u2014 reproduced as a simple browser request (no preflight)."
           : gen.status === "LIMITED" ? "LIMITED \u2014 depends on a CORS preflight, server leniency or manual input."
           : "NOT DIRECTLY REPRESENTABLE \u2014 no browser mechanism can reproduce this request.";
         prot.className = "protection-line " + repro;
@@ -1080,6 +1273,7 @@
       $("mContentType").textContent = parsed.contentType || "(none)";
       $("mRepro").textContent = gen.repro;
       $("mParams").textContent = gen.params.query + " query \u00b7 " + gen.params.body + " body" +
+        (gen.params.json ? " \u00b7 " + gen.params.json + " JSON key" + (gen.params.json === 1 ? "" : "s") : "") +
         (gen.params.file ? " \u00b7 " + gen.params.file + " file" : "");
       $("mTokens").textContent = parsed.tokens.length ? String(parsed.tokens.length) : "\u2014";
 
@@ -1103,6 +1297,7 @@
       $("limitations").innerHTML = gen.limitations.map(function (text) { return "<li>" + escHtml(text) + "</li>"; }).join("");
       $("limitationsPanel").classList.toggle("hidden", !gen.limitations.length);
       renderTokens(parsed, excluded);
+      renderGuardHeaders(parsed, excluded);
       renderVariants(gen);
       renderPreview(gen);
 

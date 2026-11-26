@@ -102,6 +102,10 @@
         placeholder="POST /account/change-email HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/x-www-form-urlencoded&#10;Cookie: session=&#8230;&#10;&#10;email=attacker@example.com"></textarea>
       <p id="requestError" class="field-error hidden" role="alert"></p>
     </div>
+    <p class="form-hint">
+      Up to <strong>512 KB</strong> and <strong>2,000 parameters</strong>. Larger pastes are refused rather than
+      turned into a page that freezes the tab.
+    </p>
     <p id="requestHint" class="form-hint">
       Paste from Burp Repeater &middot; <strong>Local only.</strong> The request is parsed and turned into a
       PoC in this tab &mdash; it is never sent, stored, cached, relayed, or placed in the URL. The PoC is
@@ -179,12 +183,23 @@
 
       <article class="card inset-card" id="tokensPanel">
         <h3 class="card-title">Likely CSRF-token fields</h3>
-        <p class="card note">
+        <p class="card note" id="tokenNote">
           These fields look like anti-CSRF tokens. They are included by default (CyberBuddy never silently
           removes them); untick one to test whether the server actually validates it. A static PoC value will
           not match a real per-session token &mdash; that is expected, not a broken PoC.
         </p>
         <div id="tokenList" class="csrf-token-list"></div>
+      </article>
+
+      <article class="card inset-card hidden" id="headersPanel">
+        <h3 class="card-title">Replayed guard headers</h3>
+        <p class="card note">
+          <code>X-*</code> headers are carried only by the <code>fetch()</code> variant, and a cross-site page can
+          send them (once the target answers the preflight) &mdash; so a server that merely checks for their
+          presence is not protected. Untick one to generate a PoC without it; that tests the guard rather than
+          the header.
+        </p>
+        <div id="headerList" class="csrf-token-list"></div>
       </article>
 
       <article class="card inset-card">
